@@ -1,0 +1,21 @@
+[package]
+name = "zeni"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "zeni_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "sqlite", "migrate", "macros"] }
+thiserror = "2"
+ts-rs = "12"
+
+[dev-dependencies]
+serde_json = "1"
