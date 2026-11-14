@@ -20,7 +20,7 @@ V3.1 adds CSV import for the checking account, with a column mapping saved per f
 
 - Header-less files, other delimiters, custom date format strings.
 - Pending transactions.
-- Editing or splitting single raw rows; non-checking accounts (V9).
+- Editing or splitting single raw rows; non-checking accounts (V10).
 
 ## Edge Cases
 

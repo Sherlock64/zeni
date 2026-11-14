@@ -16,7 +16,7 @@ V5 lets the user give transactions readable nicknames through match rules that a
 
 ## Out of Scope
 
-- Default category per nickname (V6) and default budget item (V10).
+- Default category per nickname (V6) and default budget item (V11).
 - Glob patterns, manual rule ordering, bulk import of rules.
 - Automatic deletion of stale nicknames.
 
