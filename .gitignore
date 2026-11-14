@@ -29,3 +29,6 @@ src-tauri/gen/
 .vscode/
 *.swp
 .DS_Store
+
+# UI snapshots (scripts/snapshot.sh)
+snapshots/

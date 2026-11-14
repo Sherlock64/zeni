@@ -21,3 +21,15 @@ First read `CLAUDE.md` and `.claude/skills/build-version/dev-contract.md`, and f
 - Tests sit next to the file they test as `*.test.tsx`. Mock `@/lib/commands` with `vi.mock`, reset with `beforeEach(() => vi.resetAllMocks())` (define global stubs such as `matchMedia` and `scrollTo` as plain functions, so the reset doesn't wipe them), render inside a fresh `QueryClientProvider` with `retry: false`, give tests that route a fresh router with `createMemoryHistory` (see `src/components/app-shell.test.tsx`), and query by role or text.
 
 If a needed command does not exist yet, code against the contract in your task message and mock it in tests. Report anything the contract is missing.
+
+## Snapshots
+
+Check what you built by looking at it, not by reading the code. Tests prove behaviour; snapshots prove it looks right.
+
+- `snapshot.html` loads the real app in a plain browser with IPC answered by `src/snapshot.ts` from the fake responses in `src/lib/snapshot-fixtures.ts`, keyed by command name. Add a fixture for every command your pages call, using the contract's response type. `?fail=<command>` makes that command reject, for error states.
+- The organizer keeps `pnpm dev` running on port 1420. Don't start or stop it; if `scripts/snapshot.sh` says Vite isn't running, report `BLOCKED`.
+- Capture each state of every page or component you changed (success, empty, error; loading if it is visible for long):
+  `scripts/snapshot.sh 'snapshot.html?fail=app_info#/settings' snapshots/V<n>/<task>-settings-error.png`
+  An optional third argument sets the size (default `1280x800`); also capture `800x600` for any page with a table or a wide layout.
+- Open every PNG with Read and check it against the PRD and the existing pages: layout, alignment, spacing, overflow, truncation, empty space, readable contrast, and that the state shown is the one intended. Fix what's wrong and capture again. Prefix file names with your task ID, since other ui-devs write to the same folder.
+- `snapshots/` is gitignored. List every PNG you kept in `SNAPSHOTS`.
