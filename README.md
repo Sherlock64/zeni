@@ -23,7 +23,7 @@ To import bank transactions from OFX or QFX files: [docs/importing.md](docs/impo
 
 ```sh
 pnpm install
-pnpm tauri dev      # run in dev mode
+pnpm tauri dev      # run in dev mode (own database under dev/; import the files in samples/)
 pnpm test           # frontend tests
 pnpm tauri build    # release build (.deb)
 

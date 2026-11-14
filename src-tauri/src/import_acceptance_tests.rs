@@ -330,3 +330,24 @@ fn no_fitid_rows_dedupe_only_against_earlier_imports() {
     );
     assert_eq!(db.scalar("SELECT COUNT(*) FROM raw_transactions"), 3);
 }
+
+/// The manual-testing samples in `samples/` (see its README) stay importable and consecutive.
+#[test]
+fn samples_import_as_consecutive_months() {
+    let db = database("samples");
+    let sample = |file: &str| {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../samples")
+            .join(file);
+        run(imports::import_path(&db.state, &path)).unwrap()
+    };
+    use BalanceCheck::*;
+    assert_eq!(
+        outcome(&sample("checking-2026-08.ofx")),
+        (26, 0, Baseline, Some(486851), None)
+    );
+    assert_eq!(
+        outcome(&sample("checking-2026-09.qfx")),
+        (27, 0, Passed, Some(658651), Some(658651))
+    );
+}

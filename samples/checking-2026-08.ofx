@@ -1,0 +1,250 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<?OFX OFXHEADER="200" VERSION="220" SECURITY="NONE" OLDFILEUID="NONE" NEWFILEUID="NONE"?>
+<OFX>
+  <SIGNONMSGSRSV1>
+    <SONRS>
+      <STATUS>
+        <CODE>0</CODE>
+        <SEVERITY>INFO</SEVERITY>
+      </STATUS>
+      <DTSERVER>20260831180000.000[-5:EST]</DTSERVER>
+      <LANGUAGE>ENG</LANGUAGE>
+      <FI>
+        <ORG>Example Community Bank</ORG>
+        <FID>00000</FID>
+      </FI>
+    </SONRS>
+  </SIGNONMSGSRSV1>
+  <BANKMSGSRSV1>
+    <STMTTRNRS>
+      <TRNUID>0</TRNUID>
+      <STATUS>
+        <CODE>0</CODE>
+        <SEVERITY>INFO</SEVERITY>
+      </STATUS>
+      <STMTRS>
+        <CURDEF>USD</CURDEF>
+        <BANKACCTFROM>
+          <BANKID>000000000</BANKID>
+          <ACCTID>0000000000</ACCTID>
+          <ACCTTYPE>CHECKING</ACCTTYPE>
+        </BANKACCTFROM>
+        <BANKTRANLIST>
+          <DTSTART>20260801</DTSTART>
+          <DTEND>20260831</DTEND>
+        <STMTTRN>
+          <TRNTYPE>DEBIT</TRNTYPE>
+          <DTPOSTED>20260801</DTPOSTED>
+          <TRNAMT>-1250.00</TRNAMT>
+          <FITID>ECB20260801001</FITID>
+          <NAME>OAKWOOD APTS RENT</NAME>
+          <MEMO>ACH payment</MEMO>
+        </STMTTRN>
+        <STMTTRN>
+          <TRNTYPE>POS</TRNTYPE>
+          <DTPOSTED>20260802</DTPOSTED>
+          <TRNAMT>-54.23</TRNAMT>
+          <FITID>ECB20260802002</FITID>
+          <NAME>CORNER GROCERY #112</NAME>
+          <MEMO>Card purchase</MEMO>
+        </STMTTRN>
+        <STMTTRN>
+          <TRNTYPE>DEBIT</TRNTYPE>
+          <DTPOSTED>20260803</DTPOSTED>
+          <TRNAMT>-29.99</TRNAMT>
+          <FITID>ECB20260803003</FITID>
+          <NAME>FITLIFE GYM MEMBERSHIP</NAME>
+          <MEMO>Recurring</MEMO>
+        </STMTTRN>
+        <STMTTRN>
+          <TRNTYPE>POS</TRNTYPE>
+          <DTPOSTED>20260804</DTPOSTED>
+          <TRNAMT>-4.25</TRNAMT>
+          <FITID>ECB20260804004</FITID>
+          <NAME>BEAN THERE CAFE</NAME>
+          <MEMO>Card purchase</MEMO>
+        </STMTTRN>
+        <STMTTRN>
+          <TRNTYPE>DEBIT</TRNTYPE>
+          <DTPOSTED>20260805</DTPOSTED>
+          <TRNAMT>-89.99</TRNAMT>
+          <FITID>ECB20260805005</FITID>
+          <NAME>CITY POWER &amp; LIGHT</NAME>
+          <MEMO>Utility autopay</MEMO>
+        </STMTTRN>
+        <STMTTRN>
+          <TRNTYPE>POS</TRNTYPE>
+          <DTPOSTED>20260806</DTPOSTED>
+          <TRNAMT>-36.12</TRNAMT>
+          <FITID>ECB20260806006</FITID>
+          <NAME>QUICKFUEL #0412 EXAMPLEVILLE</NAME>
+          <MEMO>Card purchase</MEMO>
+        </STMTTRN>
+        <STMTTRN>
+          <TRNTYPE>DIRECTDEP</TRNTYPE>
+          <DTPOSTED>20260807</DTPOSTED>
+          <TRNAMT>2100.00</TRNAMT>
+          <FITID>ECB20260807007</FITID>
+          <NAME>ACME PAYROLL</NAME>
+          <MEMO>Direct deposit</MEMO>
+        </STMTTRN>
+        <STMTTRN>
+          <TRNTYPE>XFER</TRNTYPE>
+          <DTPOSTED>20260808</DTPOSTED>
+          <TRNAMT>-200.00</TRNAMT>
+          <FITID>ECB20260808008</FITID>
+          <NAME>TRANSFER TO SAVINGS 0000</NAME>
+          <MEMO>Online transfer</MEMO>
+        </STMTTRN>
+        <STMTTRN>
+          <TRNTYPE>POS</TRNTYPE>
+          <DTPOSTED>20260809</DTPOSTED>
+          <TRNAMT>-61.54</TRNAMT>
+          <FITID>ECB20260809009</FITID>
+          <NAME>FRESH MARKET 0457</NAME>
+          <MEMO>Card purchase</MEMO>
+        </STMTTRN>
+        <STMTTRN>
+          <TRNTYPE>ATM</TRNTYPE>
+          <DTPOSTED>20260810</DTPOSTED>
+          <TRNAMT>-60.00</TRNAMT>
+          <FITID>ECB20260810010</FITID>
+          <NAME>ATM WITHDRAWAL 1 EXAMPLE ST</NAME>
+        </STMTTRN>
+        <STMTTRN>
+          <TRNTYPE>POS</TRNTYPE>
+          <DTPOSTED>20260811</DTPOSTED>
+          <TRNAMT>-5.00</TRNAMT>
+          <FITID>ECB20260811011</FITID>
+          <NAME>BEAN THERE CAFE</NAME>
+          <MEMO>Card purchase</MEMO>
+        </STMTTRN>
+        <STMTTRN>
+          <TRNTYPE>POS</TRNTYPE>
+          <DTPOSTED>20260812</DTPOSTED>
+          <TRNAMT>-15.49</TRNAMT>
+          <FITID>ECB20260812012</FITID>
+          <NAME>STREAMFLIX.COM 800-555-0100</NAME>
+          <MEMO>Card purchase</MEMO>
+        </STMTTRN>
+        <STMTTRN>
+          <TRNTYPE>POS</TRNTYPE>
+          <DTPOSTED>20260813</DTPOSTED>
+          <TRNAMT>-23.99</TRNAMT>
+          <FITID>ECB20260813013</FITID>
+          <NAME>SHOPMART*ORDER 7741</NAME>
+          <MEMO>Online purchase</MEMO>
+        </STMTTRN>
+        <STMTTRN>
+          <TRNTYPE>POS</TRNTYPE>
+          <DTPOSTED>20260814</DTPOSTED>
+          <TRNAMT>-48.10</TRNAMT>
+          <FITID>ECB20260814014</FITID>
+          <NAME>LUIGIS TRATTORIA</NAME>
+          <MEMO>Card purchase</MEMO>
+        </STMTTRN>
+        <STMTTRN>
+          <TRNTYPE>POS</TRNTYPE>
+          <DTPOSTED>20260815</DTPOSTED>
+          <TRNAMT>-5.75</TRNAMT>
+          <FITID>ECB20260815015</FITID>
+          <NAME>BEAN THERE CAFE</NAME>
+          <MEMO>Card purchase</MEMO>
+        </STMTTRN>
+        <STMTTRN>
+          <TRNTYPE>POS</TRNTYPE>
+          <DTPOSTED>20260816</DTPOSTED>
+          <TRNAMT>-68.85</TRNAMT>
+          <FITID>ECB20260816016</FITID>
+          <NAME>CORNER GROCERY #112</NAME>
+          <MEMO>Card purchase</MEMO>
+        </STMTTRN>
+        <STMTTRN>
+          <TRNTYPE>DEBIT</TRNTYPE>
+          <DTPOSTED>20260818</DTPOSTED>
+          <TRNAMT>-41.20</TRNAMT>
+          <FITID>ECB20260818017</FITID>
+          <NAME>WATER &amp; SEWER DEPT</NAME>
+          <MEMO>Utility autopay</MEMO>
+        </STMTTRN>
+        <STMTTRN>
+          <TRNTYPE>POS</TRNTYPE>
+          <DTPOSTED>20260819</DTPOSTED>
+          <TRNAMT>-40.99</TRNAMT>
+          <FITID>ECB20260819018</FITID>
+          <NAME>QUICKFUEL #0412 EXAMPLEVILLE</NAME>
+          <MEMO>Card purchase</MEMO>
+        </STMTTRN>
+        <STMTTRN>
+          <TRNTYPE>POS</TRNTYPE>
+          <DTPOSTED>20260820</DTPOSTED>
+          <TRNAMT>-10.99</TRNAMT>
+          <FITID>ECB20260820019</FITID>
+          <NAME>TUNEBOX MUSIC SUBSCR</NAME>
+          <MEMO>Card purchase</MEMO>
+        </STMTTRN>
+        <STMTTRN>
+          <TRNTYPE>DIRECTDEP</TRNTYPE>
+          <DTPOSTED>20260821</DTPOSTED>
+          <TRNAMT>2100.00</TRNAMT>
+          <FITID>ECB20260821020</FITID>
+          <NAME>ACME PAYROLL</NAME>
+          <MEMO>Direct deposit</MEMO>
+        </STMTTRN>
+        <STMTTRN>
+          <TRNTYPE>DEBIT</TRNTYPE>
+          <DTPOSTED>20260822</DTPOSTED>
+          <TRNAMT>-65.00</TRNAMT>
+          <FITID>ECB20260822021</FITID>
+          <NAME>PHONECO WIRELESS AUTOPAY</NAME>
+          <MEMO>Recurring</MEMO>
+        </STMTTRN>
+        <STMTTRN>
+          <TRNTYPE>XFER</TRNTYPE>
+          <DTPOSTED>20260822</DTPOSTED>
+          <TRNAMT>-200.00</TRNAMT>
+          <FITID>ECB20260822022</FITID>
+          <NAME>TRANSFER TO SAVINGS 0000</NAME>
+          <MEMO>Online transfer</MEMO>
+        </STMTTRN>
+        <STMTTRN>
+          <TRNTYPE>POS</TRNTYPE>
+          <DTPOSTED>20260824</DTPOSTED>
+          <TRNAMT>-76.16</TRNAMT>
+          <FITID>ECB20260824023</FITID>
+          <NAME>FRESH MARKET 0457</NAME>
+          <MEMO>Card purchase</MEMO>
+        </STMTTRN>
+        <STMTTRN>
+          <TRNTYPE>POS</TRNTYPE>
+          <DTPOSTED>20260825</DTPOSTED>
+          <TRNAMT>-4.25</TRNAMT>
+          <FITID>ECB20260825024</FITID>
+          <NAME>BEAN THERE CAFE</NAME>
+          <MEMO>Card purchase</MEMO>
+        </STMTTRN>
+        <STMTTRN>
+          <TRNTYPE>CHECK</TRNTYPE>
+          <DTPOSTED>20260826</DTPOSTED>
+          <TRNAMT>-150.00</TRNAMT>
+          <FITID>ECB20260826025</FITID>
+          <CHECKNUM>1002</CHECKNUM>
+          <NAME>CHECK 1002</NAME>
+        </STMTTRN>
+        <STMTTRN>
+          <TRNTYPE>POS</TRNTYPE>
+          <DTPOSTED>20260827</DTPOSTED>
+          <TRNAMT>-5.00</TRNAMT>
+          <FITID>ECB20260827026</FITID>
+          <NAME>BEAN THERE CAFE</NAME>
+          <MEMO>Card purchase</MEMO>
+        </STMTTRN>
+        </BANKTRANLIST>
+        <LEDGERBAL>
+          <BALAMT>4868.51</BALAMT>
+          <DTASOF>20260831180000.000[-5:EST]</DTASOF>
+        </LEDGERBAL>
+      </STMTRS>
+    </STMTTRNRS>
+  </BANKMSGSRSV1>
+</OFX>

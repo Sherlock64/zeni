@@ -21,7 +21,7 @@ pub fn run() {
         .setup(|app| {
             // Never fail startup over the database: the UI explains the problem instead.
             let db = match app.path().app_data_dir() {
-                Ok(dir) => tauri::async_runtime::block_on(db::connect(&dir)),
+                Ok(dir) => tauri::async_runtime::block_on(db::connect(&db::data_dir(dir))),
                 Err(error) => Err(format!("Couldn't find Zeni's data folder: {error}")),
             };
             if let Err(error) = &db {
