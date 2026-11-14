@@ -49,7 +49,7 @@ Start only after step 3 is green. Spawn `docs-writer` (document the final state,
 1. Run the `council-review` skill with `plans/PRD-V<n>.md`, the round number, the snapshot list, and the approved-dependencies list.
 2. If the council passes, go to step 6.
 3. If it fails, turn each `BLOCKING` finding into a fix task for the owner of the cited file. Decide every `CONFLICT` yourself first. Keep each finding's severity, `file:line`, Problem and Fix verbatim. Build a small task graph for the fixes with the step 1 rules (one task per file set, parallel where files don't overlap), and run it through steps 2 and 3. UI fixes come with fresh snapshots. Run `docs-writer` or `prompt-engineer` only if a finding targets their files or a fix changes what they describe.
-4. Leave `NON-BLOCKING` findings for the PR, unless a fix task already edits that exact code; then include them in it.
+4. Leave `NON-BLOCKING` findings as follow-ups, unless a fix task already edits that exact code; then include them in it. Append every follow-up, with severity, `file:line`, Problem and Fix, to `snapshots/V<n>/council-findings.md`. `snapshots/` is gitignored, so the findings stay on this machine.
 5. Reconvene the full council (a fix can regress another dimension). Pass along the rejected findings and their reasons.
 6. If the same blocking finding survives three rounds, or two members keep contradicting each other, stop and ask the user.
 
@@ -59,13 +59,14 @@ Start only after step 3 is green. Spawn `docs-writer` (document the final state,
 2. Stage only the files listed in the dev reports' `CHANGED`. Check `git status` for anything else and ask the user about it. Never stage `snapshots/`. Commit once as `V<n>: <PRD title>`, push with `-u`, and open the PR against `main` with `gh pr create --base main`. The body has:
    - A summary of what V<n> adds, in a few lines.
    - The requirement checklist from `council-prd-compliance`'s last report.
-   - The final council table.
-   - Every `NON-BLOCKING` finding as a follow-up checklist, with severity and `file:line`.
+   - The final council table: verdicts and counts only.
    - Every `RUNTIME` acceptance criterion as a manual check.
+
+   The repo is public. Never put council findings (blocking or non-blocking, their `file:line`, or what earlier rounds failed on) in the PR, commit messages, issues or any other GitHub text: a listed weakness is a guide to attacking it.
 3. Run `pnpm tauri dev` in the background. Watch its output until the app window is up with no build errors. If it fails, go back to section 2 with the error.
 4. Tell the user:
    - The PR link, and that the app is running.
-   - The final council table and the follow-ups left in the PR.
+   - The final council table, and the path to `snapshots/V<n>/council-findings.md` with the most important follow-ups.
    - The key snapshots: show one per changed page.
    - Every `RUNTIME` acceptance criterion as a step they can check in the window (for example "Open Settings and press Trigger sample error").
 5. Stop here. Don't merge. The next version gets its own chat.

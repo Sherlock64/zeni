@@ -1,7 +1,12 @@
 use tauri::{AppHandle, State};
 
-use crate::db;
-use crate::types::{AppError, AppInfo, AppState, SampleErrorRequest};
+use crate::keyring::SecretService;
+use crate::types::{
+    Account, AccountNumbers, AppError, AppInfo, AppState, RecoverRequest, RecoveryCodes,
+    RevealAccountNumbersRequest, SampleErrorRequest, SecurityStatus, SetupRequest, SetupResponse,
+    UnlockRequest,
+};
+use crate::{accounts, db, security};
 
 const MAX_REASON_CHARS: usize = 200;
 
@@ -42,6 +47,55 @@ pub fn sample_error(request: SampleErrorRequest) -> Result<(), AppError> {
         )));
     }
     Err(AppError::Sample(format!("Sample error: {reason}")))
+}
+
+#[tauri::command]
+pub async fn security_status(state: State<'_, AppState>) -> Result<SecurityStatus, AppError> {
+    security::status(&state, &SecretService).await
+}
+
+#[tauri::command]
+pub async fn complete_setup(
+    state: State<'_, AppState>,
+    request: SetupRequest,
+) -> Result<SetupResponse, AppError> {
+    security::complete_setup(&state, &SecretService, request).await
+}
+
+#[tauri::command]
+pub async fn unlock(state: State<'_, AppState>, request: UnlockRequest) -> Result<(), AppError> {
+    security::unlock(&state, &SecretService, request).await
+}
+
+#[tauri::command]
+pub async fn recover(state: State<'_, AppState>, request: RecoverRequest) -> Result<(), AppError> {
+    security::recover(&state, &SecretService, request).await
+}
+
+#[tauri::command]
+pub async fn reset_security(state: State<'_, AppState>) -> Result<(), AppError> {
+    security::reset(&state, &SecretService).await
+}
+
+#[tauri::command]
+pub async fn regenerate_recovery_codes(
+    state: State<'_, AppState>,
+    request: UnlockRequest,
+) -> Result<RecoveryCodes, AppError> {
+    security::regenerate_recovery_codes(&state, request).await
+}
+
+#[tauri::command]
+pub async fn list_accounts(state: State<'_, AppState>) -> Result<Vec<Account>, AppError> {
+    accounts::list(&state).await
+}
+
+#[tauri::command]
+pub async fn reveal_account_numbers(
+    state: State<'_, AppState>,
+    request: RevealAccountNumbersRequest,
+) -> Result<AccountNumbers, AppError> {
+    accounts::reveal(&state, request).await
 }
 
 #[cfg(test)]
@@ -99,6 +153,7 @@ mod tests {
         let dir = db::temp_dir("app-info");
         let state = AppState {
             db: tauri::async_runtime::block_on(db::connect(&dir)),
+            session: Default::default(),
         };
         let info = app_info_for(&state).unwrap();
         assert_eq!(
@@ -115,6 +170,7 @@ mod tests {
     fn app_info_fails_while_db_unavailable() {
         let state = AppState {
             db: Err("Couldn't open the database at /x/zeni.db: denied".into()),
+            session: Default::default(),
         };
         let error = serde_json::to_value(app_info_for(&state).unwrap_err()).unwrap();
         assert_eq!(
@@ -135,6 +191,7 @@ mod tests {
                 pool,
                 path: "memory".into(),
             }),
+            session: Default::default(),
         };
         assert!(matches!(app_info_for(&state), Err(AppError::Database(_))));
     }

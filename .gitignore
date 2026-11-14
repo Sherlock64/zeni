@@ -32,3 +32,6 @@ src-tauri/gen/
 
 # UI snapshots (scripts/snapshot.sh)
 snapshots/
+
+# Session retrospectives (retrospective skill)
+retros/
