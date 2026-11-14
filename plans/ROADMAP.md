@@ -113,6 +113,17 @@ One major change per version; each version gets its own PRD, written from this r
 - Data preparation for advisor prompts.
 - Forward-looking advice: upcoming issues, investing suggestions, needs.
 
+## V12: Installer and updates
+
+- `.deb` package for Pop!_OS: app icon, desktop entry (Office;Finance) shown in the COSMIC launcher, and declared runtime dependencies (WebKitGTK, Secret Service) so install pulls them in.
+- Release pipeline: GitHub Actions builds the `.deb` on Ubuntu 22.04 when a `v*` tag is pushed and publishes it to a GitHub Release with notes (free for the public repo).
+- Update notice: on launch, at most once a day, check GitHub Releases for a newer version and offer a download link; the user installs the `.deb` by hand. A Settings switch turns the check off; it is the app's only outside network call and sends no user data.
+- Backup before update: the first launch on a new version takes a V4 backup before running migrations.
+- After an update, show that release's notes in the app.
+- Settings > About shows the installed version and whether update checks are on.
+- Uninstall: `apt remove` and `apt purge` never delete user data; purge prints where it lives.
+- `docs/install.md`: install, update, uninstall and data location.
+
 ## Future items to review (not assigned to a version)
 
 - Teller bank connections.
