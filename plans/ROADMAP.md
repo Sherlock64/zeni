@@ -55,6 +55,8 @@ One major change per version; each version gets its own PRD, written from this r
 - Build the `.deb` on every PR to catch packaging breakage.
 - Required status checks on `main` (branch protection), so a PR can't merge with red checks. The user turns this on in the GitHub settings.
 - Release pipeline: pushing a `v*` tag builds the `.deb` on Ubuntu 22.04 and publishes it to a GitHub Release with notes.
+- Workflow: after opening a PR, the organizer waits for the pipeline and confirms it passes; a failing run goes back to the owning devs as fix tasks, like a blocking council finding, until it is green.
+- New `devops` dev agent that owns the CI/CD pipeline (`.github/workflows/**`) and fixes pipeline failures; `build-version`, the dev contract's ownership table and `CLAUDE.md` gain it.
 - Standard GitHub-hosted runners are free for public repositories ([GitHub Actions billing](https://docs.github.com/en/billing/concepts/product-billing/github-actions)).
 
 ## V5: Nicknames
