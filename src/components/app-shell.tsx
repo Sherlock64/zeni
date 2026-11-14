@@ -1,5 +1,5 @@
 import { Link, Outlet, useLocation, useRouterState } from "@tanstack/react-router";
-import { ReceiptTextIcon, SettingsIcon } from "lucide-react";
+import { LandmarkIcon, ReceiptTextIcon, SettingsIcon } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { CommandErrorAlert } from "@/components/command-error-alert";
 import {
@@ -16,15 +16,30 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useAppInfo } from "@/hooks/use-app-info";
+import { useSecurityStatus } from "@/hooks/use-security-status";
+import { SetupPage } from "@/pages/setup";
+import { UnlockPage } from "@/pages/unlock";
+import type { GateScreenProps } from "@/types/ui";
 
 const navItems = [
   { to: "/transactions", label: "Transactions", icon: ReceiptTextIcon },
+  { to: "/accounts", label: "Accounts", icon: LandmarkIcon },
   { to: "/settings", label: "Settings", icon: SettingsIcon },
 ] as const;
 
+// A full-window screen without the sidebar, for when the app itself can't be shown yet.
+function GateScreen({ children }: GateScreenProps) {
+  return <main className="flex min-h-svh flex-col items-center justify-center gap-6 p-8">{children}</main>;
+}
+
 export function AppShell() {
   const info = useAppInfo();
+  const status = useSecurityStatus();
+  const state = status.data?.state;
+  const previousState = useRef(state);
   // The resolved location updates only once the new page has rendered.
   const shownPathname = useRouterState({ select: (state) => state.resolvedLocation?.pathname });
   const previousPathname = useRef(shownPathname);
@@ -35,15 +50,65 @@ export function AppShell() {
     previousPathname.current = shownPathname;
   }, [shownPathname]);
 
+  // Setup, unlock and the app swap the whole window, so move focus to the new screen's heading.
+  useEffect(() => {
+    if (previousState.current && previousState.current !== state) document.querySelector<HTMLElement>("main h1")?.focus();
+    previousState.current = state;
+  }, [state]);
+
   // Without its database Zeni can't do anything, so block the app. Other errors are shown where they happen.
   if (info.error?.kind === "Database") {
     return (
-      <main className="flex min-h-svh flex-col items-center justify-center gap-6 p-8">
+      <GateScreen>
         <h1 className="text-2xl font-semibold tracking-tight">Zeni</h1>
         <div className="w-full max-w-lg">
           <CommandErrorAlert title="Zeni couldn't open its database" error={info.error} />
         </div>
-      </main>
+      </GateScreen>
+    );
+  }
+
+  // A failed background refetch keeps the last good status, so only block when there is none.
+  if (status.isError && !status.data) {
+    return (
+      <GateScreen>
+        <h1 className="text-2xl font-semibold tracking-tight">Zeni</h1>
+        <div className="flex w-full max-w-lg flex-col items-start gap-3">
+          <CommandErrorAlert title="Couldn't check Zeni's security status" error={status.error} />
+          {/* With no status yet, a refetch shows the loading screen, so this button can't be pressed twice. */}
+          <Button variant="outline" onClick={() => status.refetch()}>
+            Try again
+          </Button>
+        </div>
+      </GateScreen>
+    );
+  }
+
+  if (status.isPending) {
+    return (
+      <GateScreen>
+        <h1 className="text-2xl font-semibold tracking-tight">Zeni</h1>
+        <p role="status" className="sr-only">
+          Loading…
+        </p>
+        <Skeleton aria-hidden="true" className="h-40 w-full max-w-md" />
+      </GateScreen>
+    );
+  }
+
+  if (status.data.state === "needsSetup") {
+    return (
+      <GateScreen>
+        <SetupPage defaultOwner={status.data.defaultOwner} />
+      </GateScreen>
+    );
+  }
+
+  if (status.data.state === "locked") {
+    return (
+      <GateScreen>
+        <UnlockPage reason={status.data.reason} />
+      </GateScreen>
     );
   }
 

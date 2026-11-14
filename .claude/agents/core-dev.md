@@ -9,9 +9,10 @@ First read `CLAUDE.md` and `.claude/skills/build-version/dev-contract.md`, and f
 
 ## How this codebase works
 
-- In `setup`, `src-tauri/src/lib.rs` stores the result of `db::connect` in `AppState { db: Result<Database, String> }`. Startup never panics over the database; the UI shows the error instead. Commands are registered in `generate_handler!`.
+- In `setup`, `src-tauri/src/lib.rs` stores the result of `db::connect` in `AppState { db: Result<Database, String>, session: Mutex<Option<Session>> }`. Startup never panics over the database; the UI shows the error instead. `session` holds the data key once Zeni is unlocked. Commands are registered in `generate_handler!`.
 - `src-tauri/src/commands.rs` holds thin `#[tauri::command]` wrappers. Each one passes Tauri-only inputs to a private plain function (`app_info` calls `load_app_info`) that returns `Result<_, AppError>`. Mark an item `pub` only if another module calls it; helpers that only `db::connect` uses stay private. Queries live in `db.rs` or a domain module.
 - The app version lives only in `src-tauri/Cargo.toml`; `tauri.conf.json` has no `version` key.
+- Domain logic lives in its own module: `security.rs` (setup, unlock, recovery, reset, `security_status`) and `accounts.rs`. `crypto.rs` is the only place that encrypts, decrypts or runs Argon2id. `keyring.rs` holds the `Keyring` trait and its thin oo7 `SecretService` impl; tests use a fake.
 - `src-tauri/src/types.rs` holds every serialized type. `AppError` serializes as `{ kind, message }`, so every variant carries exactly one `String`. Reuse `AppError::Validation` for rejected input. Convert `sqlx`, migrate and `std::io` errors with `?` through the existing `From` impls; never write an inline `map_err` for them.
 - To add or change a command, follow `.claude/skills/add-command/SKILL.md`.
 
@@ -24,4 +25,4 @@ First read `CLAUDE.md` and `.claude/skills/build-version/dev-contract.md`, and f
 
 ## Security work
 
-Never log, `Debug`-print, or put into an `AppError` message any key, password, or decrypted account or routing number. Bind every SQL value with `.bind()`; never build SQL with `format!`. Keep `src-tauri/capabilities/` and the CSP in `src-tauri/tauri.conf.json` at the minimum the feature needs. Create any new data directory with `db::create_private_dir` (0700); files holding user data are 0600, as `db::open` does for `zeni.db`. App commands need no capability, so `permissions` in `src-tauri/capabilities/default.json` stays `[]` unless a plugin needs one.
+Never log, `Debug`-print, or put into an `AppError` message any key, password, recovery code, or decrypted account or routing number. Hold secrets in `Zeroizing` buffers, as `DataKey` does. Bind every SQL value with `.bind()`; never build SQL with `format!`. Keep `src-tauri/capabilities/` and the CSP in `src-tauri/tauri.conf.json` at the minimum the feature needs. Create any new data directory with `db::create_private_dir` (0700); files holding user data are 0600, as `db::open` does for `zeni.db`. App commands need no capability, so `permissions` in `src-tauri/capabilities/default.json` stays `[]` unless a plugin needs one.

@@ -6,6 +6,11 @@ import type { CommandErrorAlertProps } from "@/types/ui";
 const nextSteps: Partial<Record<CommandError["kind"], string>> = {
   Database: "Check that the folder exists and is writable, then restart Zeni.",
   Invoke: "The request never reached Zeni's backend. Restart Zeni and try again.",
+  Locked: "Restart Zeni and unlock it with your master password, a recovery code or the system keyring.",
+  WrongPassword: "Check the password and try again. Passwords are case-sensitive.",
+  InvalidRecoveryCode: "Check the code against your saved list. Each code works only once.",
+  NotFound: "It may have been removed. Reload the page and try again.",
+  Crypto: "Zeni couldn't decrypt stored data. The database may be damaged or from another installation.",
 };
 
 // role="alert" is an implicit assertive live region, so the error is announced when it appears.

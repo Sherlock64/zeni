@@ -1,5 +1,9 @@
+mod accounts;
 mod commands;
+mod crypto;
 mod db;
+mod keyring;
+mod security;
 mod types;
 
 use tauri::Manager;
@@ -17,12 +21,23 @@ pub fn run() {
             if let Err(error) = &db {
                 eprintln!("{error}");
             }
-            app.manage(AppState { db });
+            app.manage(AppState {
+                db,
+                session: Default::default(),
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             commands::app_info,
-            commands::sample_error
+            commands::sample_error,
+            commands::security_status,
+            commands::complete_setup,
+            commands::unlock,
+            commands::recover,
+            commands::reset_security,
+            commands::regenerate_recovery_codes,
+            commands::list_accounts,
+            commands::reveal_account_numbers
         ])
         .run(tauri::generate_context!())
         .expect("error while running Zeni");

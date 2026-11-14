@@ -6,11 +6,16 @@ Personal finance desktop app: import bank data, build a budget, analyze spending
 
 - Rust: https://rustup.rs
 - Node.js and pnpm
+- A freedesktop Secret Service provider, such as `gnome-keyring-daemon` (the default on Pop!_OS). Without one, Zeni still works but asks for the master password at every start.
 - System libraries:
 
 ```sh
 sudo apt install libwebkit2gtk-4.1-dev librsvg2-dev libssl-dev build-essential
 ```
+
+## First run
+
+Zeni opens a setup screen on first launch: set a master password, add the checking account, and save the 8 recovery codes it shows. Where the data lives, what is encrypted, and how recovery works: [docs/security.md](docs/security.md).
 
 ## Commands
 
