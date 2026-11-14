@@ -96,6 +96,170 @@ pub enum LockReason {
     KeyMissing,
 }
 
+/// File format of an import, taken from the file extension.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS, sqlx::Type)]
+#[serde(rename_all = "camelCase")]
+#[sqlx(rename_all = "camelCase")]
+#[ts(export)]
+pub enum ImportFormat {
+    Ofx,
+    Qfx,
+}
+
+/// Result of checking a file's `LEDGERBAL` against the prior import.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS, sqlx::Type)]
+#[serde(rename_all = "camelCase")]
+#[sqlx(rename_all = "camelCase")]
+#[ts(export)]
+pub enum BalanceCheck {
+    Passed,
+    Mismatch,
+    /// The first import with a balance; nothing to check against.
+    Baseline,
+    /// The file has no `LEDGERBAL`.
+    NotChecked,
+}
+
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ImportSummary {
+    #[ts(type = "number")]
+    pub import_id: i64,
+    pub file_name: String,
+    pub format: ImportFormat,
+    pub added: u32,
+    pub duplicates: u32,
+    pub balance_check: BalanceCheck,
+    #[ts(type = "number | null")]
+    pub ledger_balance_cents: Option<i64>,
+    #[ts(type = "number | null")]
+    pub expected_balance_cents: Option<i64>,
+}
+
+#[derive(Debug, Serialize, TS, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ImportRecord {
+    #[ts(type = "number")]
+    pub id: i64,
+    pub file_name: String,
+    pub format: ImportFormat,
+    /// SQLite `CURRENT_TIMESTAMP`, UTC "YYYY-MM-DD HH:MM:SS".
+    pub imported_at: String,
+    #[ts(type = "number")]
+    pub account_id: i64,
+    /// Raw rows currently stored for this import.
+    pub row_count: u32,
+    #[ts(type = "number | null")]
+    pub ledger_balance_cents: Option<i64>,
+    /// "YYYY-MM-DD".
+    pub balance_as_of: Option<String>,
+    #[ts(type = "number | null")]
+    pub expected_balance_cents: Option<i64>,
+    pub balance_check: BalanceCheck,
+}
+
+#[derive(Debug, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct RevertImportRequest {
+    #[ts(type = "number")]
+    pub import_id: i64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum TransactionSort {
+    Date,
+    Amount,
+    Description,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum SortDirection {
+    Asc,
+    Desc,
+}
+
+#[derive(Debug, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct TransactionQuery {
+    /// Inclusive "YYYY-MM-DD".
+    pub from: Option<String>,
+    /// Inclusive "YYYY-MM-DD".
+    pub to: Option<String>,
+    /// Case-insensitive substring of description or memo; trimmed, empty means none, at most 200 chars.
+    pub search: Option<String>,
+    pub sort: TransactionSort,
+    pub direction: SortDirection,
+    /// 0-based.
+    pub page: u32,
+    /// 1..=200.
+    pub page_size: u32,
+}
+
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct Transaction {
+    #[ts(type = "number")]
+    pub id: i64,
+    #[ts(type = "number")]
+    pub import_id: i64,
+    /// "YYYY-MM-DD".
+    pub posted_date: String,
+    /// Negative means money out.
+    #[ts(type = "number")]
+    pub amount_cents: i64,
+    /// The raw description.
+    pub description: String,
+    pub memo: Option<String>,
+    pub transaction_type: Option<String>,
+    #[ts(type = "number | null")]
+    pub running_balance_cents: Option<i64>,
+}
+
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct TransactionPage {
+    pub rows: Vec<Transaction>,
+    pub total: u32,
+}
+
+/// A parsed OFX bank statement (Rust only).
+#[derive(Debug, PartialEq, Eq)]
+pub struct ParsedStatement {
+    /// `CURDEF`.
+    pub currency: String,
+    pub ledger_balance_cents: Option<i64>,
+    /// `DTASOF` as "YYYY-MM-DD".
+    pub balance_as_of: Option<String>,
+    pub transactions: Vec<ParsedTransaction>,
+}
+
+/// One `STMTTRN` (Rust only).
+#[derive(Debug, PartialEq, Eq)]
+pub struct ParsedTransaction {
+    pub fitid: Option<String>,
+    /// `DTPOSTED` as "YYYY-MM-DD".
+    pub posted_date: String,
+    /// `TRNAMT` parsed as decimal text into cents, never via float.
+    pub amount_cents: i64,
+    /// `NAME`, else `PAYEE/NAME`, else `MEMO`, else "".
+    pub description: String,
+    pub memo: Option<String>,
+    /// `TRNTYPE`.
+    pub transaction_type: Option<String>,
+    /// The full `<STMTTRN>...</STMTTRN>` block text.
+    pub original: String,
+}
+
 // Secret-holding types below (passwords, codes, account/routing numbers) deliberately don't derive Debug.
 
 #[derive(Deserialize, TS)]
@@ -198,6 +362,9 @@ pub enum AppError {
     /// A stored value failed to decrypt, or a crypto/RNG failure.
     #[error("{0}")]
     Crypto(String),
+    /// An import file that can't be read, isn't a supported OFX/QFX bank statement, or isn't in US dollars.
+    #[error("{0}")]
+    Import(String),
 }
 
 impl From<sqlx::Error> for AppError {
@@ -269,5 +436,137 @@ mod tests {
         .unwrap();
         assert_eq!(request.recovery_code, "ABCDE-FGHJK-MNPQR-STVWX");
         assert_eq!(request.new_master_password, "correct horse battery");
+    }
+
+    #[test]
+    fn import_types_match_contract_json() {
+        assert_eq!(
+            serde_json::to_value(ImportSummary {
+                import_id: 4,
+                file_name: "checking.qfx".into(),
+                format: ImportFormat::Qfx,
+                added: 12,
+                duplicates: 3,
+                balance_check: BalanceCheck::NotChecked,
+                ledger_balance_cents: None,
+                expected_balance_cents: Some(-150),
+            })
+            .unwrap(),
+            serde_json::json!({
+                "importId": 4,
+                "fileName": "checking.qfx",
+                "format": "qfx",
+                "added": 12,
+                "duplicates": 3,
+                "balanceCheck": "notChecked",
+                "ledgerBalanceCents": null,
+                "expectedBalanceCents": -150
+            })
+        );
+        assert_eq!(
+            serde_json::to_value(ImportRecord {
+                id: 2,
+                file_name: "checking.ofx".into(),
+                format: ImportFormat::Ofx,
+                imported_at: "2026-11-01 09:30:00".into(),
+                account_id: 1,
+                row_count: 7,
+                ledger_balance_cents: Some(123_456),
+                balance_as_of: Some("2026-10-31".into()),
+                expected_balance_cents: Some(123_400),
+                balance_check: BalanceCheck::Mismatch,
+            })
+            .unwrap(),
+            serde_json::json!({
+                "id": 2,
+                "fileName": "checking.ofx",
+                "format": "ofx",
+                "importedAt": "2026-11-01 09:30:00",
+                "accountId": 1,
+                "rowCount": 7,
+                "ledgerBalanceCents": 123456,
+                "balanceAsOf": "2026-10-31",
+                "expectedBalanceCents": 123400,
+                "balanceCheck": "mismatch"
+            })
+        );
+        for (check, text) in [
+            (BalanceCheck::Passed, "passed"),
+            (BalanceCheck::Baseline, "baseline"),
+        ] {
+            assert_eq!(serde_json::to_value(check).unwrap(), text);
+        }
+
+        let revert: RevertImportRequest =
+            serde_json::from_value(serde_json::json!({ "importId": 9 })).unwrap();
+        assert_eq!(revert.import_id, 9);
+
+        assert_eq!(
+            serde_json::to_value(AppError::Import("not OFX".into())).unwrap(),
+            serde_json::json!({ "kind": "Import", "message": "not OFX" })
+        );
+    }
+
+    #[test]
+    fn transaction_types_match_contract_json() {
+        let query: TransactionQuery = serde_json::from_value(serde_json::json!({
+            "from": "2026-10-01",
+            "to": null,
+            "search": "coffee",
+            "sort": "amount",
+            "direction": "asc",
+            "page": 2,
+            "pageSize": 50
+        }))
+        .unwrap();
+        assert_eq!(query.from.as_deref(), Some("2026-10-01"));
+        assert_eq!(query.to, None);
+        assert_eq!(query.search.as_deref(), Some("coffee"));
+        assert_eq!(query.sort, TransactionSort::Amount);
+        assert_eq!(query.direction, SortDirection::Asc);
+        assert_eq!((query.page, query.page_size), (2, 50));
+        for (text, sort) in [
+            ("date", TransactionSort::Date),
+            ("description", TransactionSort::Description),
+        ] {
+            assert_eq!(
+                serde_json::from_value::<TransactionSort>(text.into()).unwrap(),
+                sort
+            );
+        }
+        assert_eq!(
+            serde_json::from_value::<SortDirection>("desc".into()).unwrap(),
+            SortDirection::Desc
+        );
+
+        assert_eq!(
+            serde_json::to_value(TransactionPage {
+                rows: vec![Transaction {
+                    id: 5,
+                    import_id: 2,
+                    posted_date: "2026-10-03".into(),
+                    amount_cents: -1299,
+                    description: "CORNER COFFEE".into(),
+                    memo: None,
+                    transaction_type: Some("DEBIT".into()),
+                    running_balance_cents: None,
+                }],
+                total: 57,
+            })
+            .unwrap(),
+            serde_json::json!({
+                "rows": [{
+                    "id": 5,
+                    "importId": 2,
+                    "postedDate": "2026-10-03",
+                    "amountCents": -1299,
+                    "description": "CORNER COFFEE",
+                    "memo": null,
+                    "transactionType": "DEBIT",
+                    "runningBalanceCents": null
+                }],
+                "total": 57
+            })
+        );
     }
 }

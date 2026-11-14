@@ -2,11 +2,15 @@ import { invoke } from "@tauri-apps/api/core";
 import {
   appInfo,
   completeSetup,
+  importFile,
+  listImports,
+  listTransactions,
   listAccounts,
   recover,
   regenerateRecoveryCodes,
   resetSecurity,
   revealAccountNumbers,
+  revertImport,
   sampleError,
   securityStatus,
   unlock,
@@ -90,6 +94,29 @@ test("security and account wrappers invoke their commands with the request", asy
       { request: { accountId: 1 } },
       { accountNumber: "0000", routingNumber: "000000000" },
     ],
+  ];
+  for (const [run, command, args, response] of cases) {
+    mockInvoke.mockResolvedValueOnce(response);
+    await expect(run()).resolves.toEqual(response);
+    expect(mockInvoke).toHaveBeenLastCalledWith(command, args);
+  }
+});
+
+test("import and transaction wrappers invoke their commands with the request", async () => {
+  const query = {
+    from: "2026-10-01",
+    to: null,
+    search: "coffee",
+    sort: "date",
+    direction: "desc",
+    page: 0,
+    pageSize: 50,
+  } as const;
+  const cases: [() => Promise<unknown>, string, unknown, unknown][] = [
+    [importFile, "import_file", undefined, null],
+    [listImports, "list_imports", undefined, []],
+    [() => revertImport({ importId: 3 }), "revert_import", { request: { importId: 3 } }, null],
+    [() => listTransactions(query), "list_transactions", { request: query }, { rows: [], total: 0 }],
   ];
   for (const [run, command, args, response] of cases) {
     mockInvoke.mockResolvedValueOnce(response);

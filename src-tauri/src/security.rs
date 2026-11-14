@@ -326,6 +326,9 @@ pub async fn reset(state: &AppState, keyring: &impl Keyring) -> Result<(), AppEr
     for statement in [
         "DELETE FROM key_wraps",
         "DELETE FROM app_meta WHERE key = 'data_key_id'",
+        // Imports reference accounts, so they go first; the user re-imports after setup.
+        "DELETE FROM raw_transactions",
+        "DELETE FROM imports",
         "DELETE FROM accounts",
     ] {
         sqlx::query(statement).execute(&mut *transaction).await?;
@@ -849,6 +852,38 @@ mod tests {
         // Setting up again works.
         f.setup();
         assert_eq!(f.accounts().len(), 1);
+    }
+
+    #[test]
+    fn reset_also_erases_imports_and_their_raw_rows() {
+        let f = fixture("reset-imports");
+        f.setup();
+        f.relaunch();
+        f.keyring.block(Some(LockReason::KeyringLocked));
+        run(async {
+            let import_id: i64 = sqlx::query_scalar(
+                "INSERT INTO imports (account_id, file_name, format, balance_check)
+                 SELECT id, 'bank.ofx', 'ofx', 'notChecked' FROM accounts RETURNING id",
+            )
+            .fetch_one(f.pool())
+            .await
+            .unwrap();
+            sqlx::query(
+                "INSERT INTO raw_transactions
+                 (import_id, account_id, fitid, posted_date, amount_cents, raw_description, original_row)
+                 SELECT ?, id, 'F1', '2026-01-02', -1250, 'COFFEE', '<STMTTRN>' FROM accounts",
+            )
+            .bind(import_id)
+            .execute(f.pool())
+            .await
+            .unwrap();
+        });
+        assert_eq!(f.count("SELECT COUNT(*) FROM raw_transactions"), 1);
+
+        f.reset().unwrap();
+        assert_eq!(f.count("SELECT COUNT(*) FROM raw_transactions"), 0);
+        assert_eq!(f.count("SELECT COUNT(*) FROM imports"), 0);
+        assert_eq!(f.count("SELECT COUNT(*) FROM accounts"), 0);
     }
 
     #[test]

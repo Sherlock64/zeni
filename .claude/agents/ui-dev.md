@@ -19,7 +19,7 @@ First read `CLAUDE.md` and `.claude/skills/build-version/dev-contract.md`, and f
 - The app is dark-only (`class="dark"` on `<html>`). Use theme tokens (`bg-background`, `text-muted-foreground`, `destructive`, and so on); never use raw colour values.
 - Add shadcn primitives with `pnpm exec shadcn add <component>`, and don't hand-edit files in `src/components/ui/`. When it asks to overwrite an existing file there, answer no: `button.tsx` carries house styles such as `aria-disabled:opacity-50`. If the command wants to install an npm package, stop and report it as a dependency to approve.
 - Icons come from `lucide-react`, with `aria-hidden="true"` when they are decorative.
-- Money arrives as integer cents. Convert to dollars only when formatting for display, with `Intl.NumberFormat`.
+- Money arrives as integer cents. Display it only through `formatCents` in `src/lib/money.ts`.
 - Tests sit next to the file they test as `*.test.tsx`. Mock `@/lib/commands` with `vi.mock`, reset with `beforeEach(() => vi.resetAllMocks())` (define global stubs such as `matchMedia` and `scrollTo` as plain functions, so the reset doesn't wipe them), render inside a fresh `QueryClientProvider` with `retry: false`, give tests that route a fresh router with `createMemoryHistory` (see `src/components/app-shell.test.tsx`), and query by role or text.
 
 If a needed command does not exist yet, code against the contract in your task message and mock it in tests. Report anything the contract is missing.
@@ -30,7 +30,7 @@ Check what you built by looking at it, not by reading the code. Tests prove beha
 
 - `snapshot.html` loads the real app in a plain browser with IPC answered by `src/snapshot.ts` from the fake responses in `src/lib/snapshot-fixtures.ts`, keyed by command name. Add a fixture for every command your pages call, using the contract's response type. Query parameters pick the state:
   - `?status=needsSetup|locked|unlocked` (default `unlocked`), `?reason=<LockReason>` for `locked` (default `keyringLocked`), `?keyringSaved=false`, `?codesLeft=<n>` (default 8).
-  - `?accounts=empty` answers `list_accounts` with no accounts.
+  - `?accounts=empty`, `?imports=empty` and `?transactions=empty` answer `list_accounts`, `list_imports` and `list_transactions` with no rows. `?import=cancel` answers `import_file` with `null` (picker cancelled).
   - `?fail=<command>[:<Kind>]` makes that command reject with that `AppError` kind (default `Sample`). Repeatable.
   - `?fill=<input name>=<value>` and `?click=<button text>` run in URL order after load, to reach states behind a form submit or dialog.
 - The organizer keeps `pnpm dev` running on port 1420. Don't start or stop it; if `scripts/snapshot.sh` says Vite isn't running, report `BLOCKED`.

@@ -2,8 +2,13 @@ mod accounts;
 mod commands;
 mod crypto;
 mod db;
+#[cfg(test)]
+mod import_acceptance_tests;
+mod imports;
 mod keyring;
+mod ofx;
 mod security;
+mod transactions;
 mod types;
 
 use tauri::Manager;
@@ -12,6 +17,7 @@ use types::AppState;
 
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             // Never fail startup over the database: the UI explains the problem instead.
             let db = match app.path().app_data_dir() {
@@ -37,7 +43,11 @@ pub fn run() {
             commands::reset_security,
             commands::regenerate_recovery_codes,
             commands::list_accounts,
-            commands::reveal_account_numbers
+            commands::reveal_account_numbers,
+            commands::import_file,
+            commands::list_imports,
+            commands::revert_import,
+            commands::list_transactions
         ])
         .run(tauri::generate_context!())
         .expect("error while running Zeni");

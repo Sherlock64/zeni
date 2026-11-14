@@ -1,12 +1,14 @@
 use tauri::{AppHandle, State};
+use tauri_plugin_dialog::DialogExt;
 
 use crate::keyring::SecretService;
 use crate::types::{
-    Account, AccountNumbers, AppError, AppInfo, AppState, RecoverRequest, RecoveryCodes,
-    RevealAccountNumbersRequest, SampleErrorRequest, SecurityStatus, SetupRequest, SetupResponse,
-    UnlockRequest,
+    Account, AccountNumbers, AppError, AppInfo, AppState, ImportRecord, ImportSummary,
+    RecoverRequest, RecoveryCodes, RevealAccountNumbersRequest, RevertImportRequest,
+    SampleErrorRequest, SecurityStatus, SetupRequest, SetupResponse, TransactionPage,
+    TransactionQuery, UnlockRequest,
 };
-use crate::{accounts, db, security};
+use crate::{accounts, db, imports, security, transactions};
 
 const MAX_REASON_CHARS: usize = 200;
 
@@ -96,6 +98,53 @@ pub async fn reveal_account_numbers(
     request: RevealAccountNumbersRequest,
 ) -> Result<AccountNumbers, AppError> {
     accounts::reveal(&state, request).await
+}
+
+/// Opens the native file picker and imports the chosen file. `None` when the user cancels.
+#[tauri::command]
+pub async fn import_file(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Option<ImportSummary>, AppError> {
+    // Fails before showing the picker when the database is unavailable.
+    security::pool(&state)?;
+    // The callback form never blocks a thread; the dialog answers through the channel.
+    let (sender, mut receiver) = tauri::async_runtime::channel(1);
+    app.dialog()
+        .file()
+        .add_filter("OFX or QFX files", &["ofx", "qfx"])
+        .pick_file(move |file| {
+            // Fails only when the command was dropped, so nobody is waiting for the answer.
+            let _ = sender.try_send(file);
+        });
+    let Some(file) = receiver.recv().await.flatten() else {
+        return Ok(None);
+    };
+    let path = file
+        .into_path()
+        .map_err(|_| AppError::Import("Couldn't open the selected file.".into()))?;
+    imports::import_path(&state, &path).await.map(Some)
+}
+
+#[tauri::command]
+pub async fn list_imports(state: State<'_, AppState>) -> Result<Vec<ImportRecord>, AppError> {
+    imports::list(&state).await
+}
+
+#[tauri::command]
+pub async fn revert_import(
+    state: State<'_, AppState>,
+    request: RevertImportRequest,
+) -> Result<(), AppError> {
+    imports::revert(&state, request).await
+}
+
+#[tauri::command]
+pub async fn list_transactions(
+    state: State<'_, AppState>,
+    request: TransactionQuery,
+) -> Result<TransactionPage, AppError> {
+    transactions::list(&state, request).await
 }
 
 #[cfg(test)]

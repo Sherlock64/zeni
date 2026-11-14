@@ -1,5 +1,6 @@
-import { CircleAlertIcon } from "lucide-react";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { CircleAlertIcon, XIcon } from "lucide-react";
+import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import type { CommandError } from "@/types/command";
 import type { CommandErrorAlertProps } from "@/types/ui";
 
@@ -11,10 +12,11 @@ const nextSteps: Partial<Record<CommandError["kind"], string>> = {
   InvalidRecoveryCode: "Check the code against your saved list. Each code works only once.",
   NotFound: "It may have been removed. Reload the page and try again.",
   Crypto: "Zeni couldn't decrypt stored data. The database may be damaged or from another installation.",
+  Import: "Nothing was imported. Check the file, or download it from your bank again, then retry.",
 };
 
 // role="alert" is an implicit assertive live region, so the error is announced when it appears.
-export function CommandErrorAlert({ title, error }: CommandErrorAlertProps) {
+export function CommandErrorAlert({ title, error, onDismiss }: CommandErrorAlertProps) {
   return (
     <Alert variant="destructive">
       <CircleAlertIcon aria-hidden="true" />
@@ -28,6 +30,13 @@ export function CommandErrorAlert({ title, error }: CommandErrorAlertProps) {
         </dl>
         {nextSteps[error.kind] && <p className="text-muted-foreground">{nextSteps[error.kind]}</p>}
       </AlertDescription>
+      {onDismiss && (
+        <AlertAction>
+          <Button variant="ghost" size="icon-sm" onClick={onDismiss} aria-label="Dismiss error">
+            <XIcon aria-hidden="true" />
+          </Button>
+        </AlertAction>
+      )}
     </Alert>
   );
 }

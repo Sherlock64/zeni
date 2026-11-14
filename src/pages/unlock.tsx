@@ -215,7 +215,7 @@ function ResetDialog() {
                 Without your master password, a recovery code or the system keyring, Zeni can't decrypt the account
                 and routing numbers it stored. Nobody can recover them.
               </p>
-              <p>This erases Zeni's key and your checking account so you can run setup again. It can't be undone.</p>
+              <p>This erases Zeni's key, your checking account and your imported transactions so you can run setup again. It can't be undone.</p>
             </div>
           </AlertDialogDescription>
         </AlertDialogHeader>

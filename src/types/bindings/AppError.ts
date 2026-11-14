@@ -3,4 +3,4 @@
 /**
  * Every command error. Serialized as `{ kind, message }` for the UI.
  */
-export type AppError = { "kind": "Database", "message": string } | { "kind": "Validation", "message": string } | { "kind": "Sample", "message": string } | { "kind": "Locked", "message": string } | { "kind": "WrongPassword", "message": string } | { "kind": "InvalidRecoveryCode", "message": string } | { "kind": "NotFound", "message": string } | { "kind": "Crypto", "message": string };
+export type AppError = { "kind": "Database", "message": string } | { "kind": "Validation", "message": string } | { "kind": "Sample", "message": string } | { "kind": "Locked", "message": string } | { "kind": "WrongPassword", "message": string } | { "kind": "InvalidRecoveryCode", "message": string } | { "kind": "NotFound", "message": string } | { "kind": "Crypto", "message": string } | { "kind": "Import", "message": string };

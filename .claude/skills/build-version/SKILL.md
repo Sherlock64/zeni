@@ -32,7 +32,7 @@ Flow: plan → code waves (`core-dev` + `ui-dev`, parallel) → verify → docs 
 ## 2. Code waves
 
 1. Before the first wave with a `ui-dev` task, start `pnpm dev` in the background and confirm port 1420 answers. ui-devs need it for snapshots; keep it running until step 6.
-2. For each wave, spawn all its tasks in one message so they run in parallel, one agent per task. Several `core-dev` or `ui-dev` instances in one wave is normal. Each task message contains: the task ID, the task, the requirement IDs, the allowed files, the contracts, the snapshot folder `snapshots/V<n>/` for UI tasks, and "Follow `.claude/skills/build-version/dev-contract.md`."
+2. For each wave, spawn all its tasks in one message so they run in parallel, one agent per task. Several `core-dev` or `ui-dev` instances in one wave is normal. Each task message contains: the task ID, the task, the requirement IDs, the allowed files, the contracts, the snapshot folder `snapshots/V<n>/` for UI tasks, and "Follow `.claude/skills/build-version/dev-contract.md`." Paste the contracts as literal text; the Agent tool expands no shell placeholder such as `$(cat contracts)`.
 3. Handle each report's `NEEDS`. Route a change in someone else's file to that file's task as a follow-up (or a new task if it has finished), and send dependency requests to the user. Start the next wave only when every task it depends on reports `STATUS: DONE`.
 4. Read each UI task's `SNAPSHOTS` PNGs yourself. If one shows something wrong or a state is missing, send it back to that task. Keep the list of PNGs for the council.
 
