@@ -6,7 +6,7 @@ Zeni encrypts your account number and routing number. This page explains how, wh
 
 Only two values are encrypted: the **account number** and the **routing number** of each account.
 
-Everything else is stored as plain text on purpose. That includes the account name, the owner, the bank name, and any data later versions of Zeni add, such as transactions. Plain text keeps the app simple and fast to search. It is protected by:
+Everything else is stored as plain text on purpose. That includes the account name, the owner, the bank name, and your imported transactions. Plain text keeps the app simple and fast to search. When a transaction in an imported file names a transfer target account (with its account and routing number), Zeni removes that block before storing the transaction, so those numbers are never stored. It is protected by:
 
 - **Linux file permissions.** Zeni keeps its database at `~/.local/share/com.sherlock64.zeni/zeni.db`. The folder is readable only by you (mode 0700) and the file too (mode 0600). Zeni resets these permissions every time it starts.
 - **Disk encryption, if you turned it on.** Pop!_OS offers full-disk encryption at install time. Without it, anyone who takes the disk out of your computer can read the plain-text data.
@@ -62,9 +62,10 @@ On the unlock screen, choose **Can't unlock?**, then **Erase and set up again**.
 - every encrypted copy of the data key (password and recovery codes),
 - the data key from your keyring, if the keyring is unlocked,
 - the record of which key Zeni uses,
-- your accounts, including their names and banks.
+- your accounts, including their names and banks,
+- your imported transactions and the import history.
 
-Zeni then returns to first-run setup, where you choose a new master password and enter your account details again. This can't be undone.
+Zeni then returns to first-run setup, where you choose a new master password and enter your account details again, then import your bank files again. This can't be undone.
 
 ## Check it yourself
 

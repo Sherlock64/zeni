@@ -160,7 +160,7 @@ function AppLayout() {
           </SidebarGroup>
         </SidebarContent>
       </Sidebar>
-      <SidebarInset>
+      <SidebarInset className="min-w-0">
         <header className="flex h-12 items-center border-b px-2">
           <SidebarTrigger aria-expanded={isMobile ? openMobile : open} />
         </header>

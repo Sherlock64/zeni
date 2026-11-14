@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<?OFX OFXHEADER="200" VERSION="220" SECURITY="NONE" OLDFILEUID="NONE" NEWFILEUID="NONE"?>
+<OFX>
+  <SIGNONMSGSRSV1>
+    <SONRS>
+      <STATUS>
+        <CODE>0</CODE>
+        <SEVERITY>INFO</SEVERITY>
+      </STATUS>
+      <DTSERVER>20261031180000.000[-5:EST]</DTSERVER>
+      <LANGUAGE>ENG</LANGUAGE>
+      <FI>
+        <ORG>Example Community Bank</ORG>
+        <FID>00000</FID>
+      </FI>
+    </SONRS>
+  </SIGNONMSGSRSV1>
+  <BANKMSGSRSV1>
+    <STMTTRNRS>
+      <TRNUID>0</TRNUID>
+      <STATUS>
+        <CODE>0</CODE>
+        <SEVERITY>INFO</SEVERITY>
+      </STATUS>
+      <STMTRS>
+        <CURDEF>USD</CURDEF>
+        <BANKACCTFROM>
+          <BANKID>000000000</BANKID>
+          <ACCTID>0000000000</ACCTID>
+          <ACCTTYPE>CHECKING</ACCTTYPE>
+        </BANKACCTFROM>
+        <BANKTRANLIST>
+          <DTSTART>20261016</DTSTART>
+          <DTEND>20261031</DTEND>
+        <STMTTRN>
+          <TRNTYPE>POS</TRNTYPE>
+          <DTPOSTED>20261016</DTPOSTED>
+          <TRNAMT>-42.10</TRNAMT>
+          <FITID>ECB20261016001</FITID>
+          <NAME>FRESH MARKET</NAME>
+          <MEMO>Card purchase</MEMO>
+        </STMTTRN>
+        <STMTTRN>
+          <TRNTYPE>DEBIT</TRNTYPE>
+          <DTPOSTED>20261018</DTPOSTED>
+          <TRNAMT>-120.55</TRNAMT>
+          <FITID>ECB20261018001</FITID>
+          <PAYEE>
+            <NAME>WATER &amp; SEWER DEPT</NAME>
+            <ADDR1>1 Example Street</ADDR1>
+            <CITY>Exampleville</CITY>
+            <STATE>XX</STATE>
+            <POSTALCODE>00000</POSTALCODE>
+            <PHONE>000-000-0000</PHONE>
+          </PAYEE>
+          <MEMO>Utility autopay</MEMO>
+        </STMTTRN>
+        <STMTTRN>
+          <TRNTYPE>CHECK</TRNTYPE>
+          <DTPOSTED>20261020</DTPOSTED>
+          <TRNAMT>-300.00</TRNAMT>
+          <FITID>ECB20261020001</FITID>
+          <CHECKNUM>1002</CHECKNUM>
+          <NAME>CHECK 1002</NAME>
+        </STMTTRN>
+        <STMTTRN>
+          <TRNTYPE>POS</TRNTYPE>
+          <DTPOSTED>20261022</DTPOSTED>
+          <TRNAMT>-15.75</TRNAMT>
+          <FITID>ECB20261022001</FITID>
+          <NAME>BOOK NOOK</NAME>
+        </STMTTRN>
+        <STMTTRN>
+          <TRNTYPE>POS</TRNTYPE>
+          <DTPOSTED>20261025</DTPOSTED>
+          <TRNAMT>-67.30</TRNAMT>
+          <FITID>ECB20261025001</FITID>
+          <NAME>GAS N GO</NAME>
+        </STMTTRN>
+        <STMTTRN>
+          <TRNTYPE>INT</TRNTYPE>
+          <DTPOSTED>20261027</DTPOSTED>
+          <TRNAMT>1.23</TRNAMT>
+          <FITID>ECB20261027001</FITID>
+          <NAME>INTEREST PAID</NAME>
+        </STMTTRN>
+        <STMTTRN>
+          <TRNTYPE>DEBIT</TRNTYPE>
+          <DTPOSTED>20261029</DTPOSTED>
+          <TRNAMT>-45.00</TRNAMT>
+          <FITID>ECB20261029001</FITID>
+          <NAME>STREAMFLIX</NAME>
+        </STMTTRN>
+        <STMTTRN>
+          <TRNTYPE>DIRECTDEP</TRNTYPE>
+          <DTPOSTED>20261031</DTPOSTED>
+          <TRNAMT>2100.00</TRNAMT>
+          <FITID>ECB20261031001</FITID>
+          <NAME>ACME PAYROLL</NAME>
+          <MEMO>Direct deposit</MEMO>
+        </STMTTRN>
+        </BANKTRANLIST>
+        <LEDGERBAL>
+          <BALAMT>3960.53</BALAMT>
+          <DTASOF>20261031180000.000[-5:EST]</DTASOF>
+        </LEDGERBAL>
+        <AVAILBAL>
+          <BALAMT>3900.00</BALAMT>
+          <DTASOF>20261031180000.000[-5:EST]</DTASOF>
+        </AVAILBAL>
+      </STMTRS>
+    </STMTTRNRS>
+  </BANKMSGSRSV1>
+</OFX>

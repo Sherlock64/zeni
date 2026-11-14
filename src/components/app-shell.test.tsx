@@ -1,7 +1,7 @@
 import { focusManager, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
-import { appInfo, completeSetup, listAccounts, securityStatus, unlock } from "@/lib/commands";
+import { appInfo, completeSetup, listAccounts, listImports, listTransactions, securityStatus, unlock } from "@/lib/commands";
 import { routeTree } from "@/router";
 
 vi.mock("@/lib/commands", () => ({
@@ -15,11 +15,17 @@ vi.mock("@/lib/commands", () => ({
   regenerateRecoveryCodes: vi.fn(),
   listAccounts: vi.fn(),
   revealAccountNumbers: vi.fn(),
+  importFile: vi.fn(),
+  listImports: vi.fn(),
+  revertImport: vi.fn(),
+  listTransactions: vi.fn(),
 }));
 beforeEach(() => {
   vi.resetAllMocks();
   vi.mocked(appInfo).mockReturnValue(new Promise(() => {}));
   vi.mocked(securityStatus).mockResolvedValue({ state: "unlocked", keyringSaved: true, recoveryCodesLeft: 8 });
+  vi.mocked(listTransactions).mockResolvedValue({ rows: [], total: 0 });
+  vi.mocked(listImports).mockResolvedValue([]);
 });
 
 // jsdom lacks matchMedia (the sidebar's mobile check) and scrollTo (the router's scroll reset).

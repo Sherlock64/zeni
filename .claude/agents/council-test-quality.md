@@ -21,7 +21,7 @@ Every failing, skipped (`#[ignore]`, `.skip`, `.only`) or flaky test is a findin
 2. **Meaningful assertions.** Tests assert behaviour the user or caller can see. Flag tests that only check that a render didn't throw, snapshot whole trees, or assert implementation details.
 3. **Edge cases** from the PRD are tested: duplicates, empty input, malformed files, locked keyring, boundaries in money, dates and percentages.
 4. **Isolation.** Rust tests use their own temp directory from `db::temp_dir`, and remove it afterwards. Keyring tests use the fake `Keyring`, never the real Secret Service. Command tests call the plain function (for example `load_app_info`), not the Tauri wrapper. Frontend tests mock `@/lib/commands`, never `invoke`, except in `src/lib/commands.test.ts`. They reset mocks with `vi.resetAllMocks()` in `beforeEach` (`clearAllMocks` leaks implementations between tests), define global stubs as plain functions, and every test that routes gets a fresh router with memory history. No test depends on another test's order or on wall-clock time.
-5. **Fixtures.** Use fake data only, never real account numbers or names. Bank sample files keep the bank's exact layout, as the PRD requires.
+5. **Fixtures.** Use fake data only, never real account numbers or names. Bank sample files live in `src-tauri/tests/fixtures/`, keep the bank's exact layout, and match the expected results in its `README.md`.
 6. **Queries.** Testing Library queries go by role, label or text before `querySelector`.
 
 Out of your dimension: the code style of the code under test, and whether the requirement itself is met (`council-prd-compliance`).

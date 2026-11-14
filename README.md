@@ -17,6 +17,8 @@ sudo apt install libwebkit2gtk-4.1-dev librsvg2-dev libssl-dev build-essential
 
 Zeni opens a setup screen on first launch: set a master password, add the checking account, and save the 8 recovery codes it shows. Where the data lives, what is encrypted, and how recovery works: [docs/security.md](docs/security.md).
 
+To import bank transactions from OFX or QFX files: [docs/importing.md](docs/importing.md).
+
 ## Commands
 
 ```sh

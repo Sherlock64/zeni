@@ -25,17 +25,23 @@ One major change per version; each version gets its own PRD, written from this r
 
 ## V3: Import and transaction list
 
-- Parsers for CSV (with column mapping), OFX and QFX.
+- Parsers for OFX and QFX (OFX 1.x SGML and 2.x XML).
 - Imports table and raw transactions table; raw rows are never edited.
 - Posted transactions only; US dollars only.
 - Duplicate matching: account + FITID, falling back to date + amount + description.
 - Import summary: rows added and duplicates skipped.
 - Revert a whole import in one step.
-- Running-balance check against the bank's balance.
+- Balance check: each import's ledger balance against the prior import's.
 - Transaction list: sort, filter by date range, search.
-- Sample bank files with fake data, in the bank's exact layouts, as test fixtures.
+- Sample OFX/QFX files with fake data, modelled on public OFX examples, as test fixtures.
 
 **Release cut:** after V3 the app is fully functional (set up, secure, imports and lists transactions) and is pushed to GitHub.
+
+## V3.1: CSV import
+
+- CSV parser (`csv` crate) with column mapping saved per layout.
+- Duplicate matching on date + amount + description.
+- Running-balance check when the CSV has a balance column.
 
 ## V4: Backup and restore
 
