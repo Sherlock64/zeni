@@ -12,7 +12,7 @@ Personal finance desktop app: Tauri 2, Rust + sqlx/SQLite backend, TypeScript + 
 - Never log, `Debug`-print or put in an error message a key, password, recovery code or account/routing number. Types holding them do not derive `Debug`.
 - Prefer mature, well-documented libraries.
 - Stop and ask at marked checkpoints.
-- Start each session on one fresh branch from the latest `origin/main`, and keep all of that session's work on it. Name it `v<version>-<one or two words>`. Work from a PRD takes that PRD's major version (`PRD-V2.md` -> `v2-<words>`); work without a PRD takes the next minor version after the latest one merged to `main` (`v1.1-workflow-fixes`, then `v1.2-...`). PRs target `main`.
+- Start each session on one fresh branch from the latest `origin/main`, and keep all of that session's work on it. Name it `v<version>-<one or two words>`. Versions are semantic (major.minor.hotfix) with trailing zeros dropped: `v3` is 3.0.0, `v3.1` is 3.1.0, `v3.0.1` is a hotfix on `v3`. Major work massively changes how the app works as a whole (backup and restore, nicknames, categorisation) or may modify or remove what users already have (dropping tables, changing or removing UI features, changing settings the user may have set). Minor work only adds, without changing how the app works as a whole (new tables, new features, slow patches). Hotfixes are urgent fixes, very small harmless changes, and documentation changes, including PRDs and the roadmap. Major and minor work needs a PRD and takes its version (`PRD-V3.1.md` -> `v3.1-<words>`); a hotfix needs no PRD and takes the next hotfix number after the latest version merged to `main` (`v3.0.1-...`, then `v3.0.2-...`). PRs target `main`.
 
 ## Layout
 
