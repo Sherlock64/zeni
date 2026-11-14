@@ -12,7 +12,7 @@ Personal finance desktop app: Tauri 2, Rust + sqlx/SQLite backend, TypeScript + 
 - Never log, `Debug`-print or put in an error message a key, password, recovery code or account/routing number. Types holding them do not derive `Debug`.
 - Prefer mature, well-documented libraries.
 - Stop and ask at marked checkpoints.
-- Start every piece of work on a fresh branch from the latest `origin/main`, named `v<version>-<one or two words>`. Work from a PRD takes that PRD's major version (`PRD-V2.md` -> `v2-<words>`); work without a PRD takes the next minor version after the latest one merged to `main` (`v1.1-workflow-fixes`, then `v1.2-...`). PRs target `main`.
+- Start each session on one fresh branch from the latest `origin/main`, and keep all of that session's work on it. Name it `v<version>-<one or two words>`. Work from a PRD takes that PRD's major version (`PRD-V2.md` -> `v2-<words>`); work without a PRD takes the next minor version after the latest one merged to `main` (`v1.1-workflow-fixes`, then `v1.2-...`). PRs target `main`.
 
 ## Layout
 
