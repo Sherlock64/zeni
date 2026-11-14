@@ -49,6 +49,14 @@ One major change per version; each version gets its own PRD, written from this r
 - Restore with confirmation, keeping a safety copy of the replaced database.
 - Encrypted fields stay encrypted; restoring needs the same key.
 
+## V4.1: CI/CD
+
+- GitHub Actions on every PR and push to `main`: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `tsc`, `pnpm test`, and a check that the ts-rs bindings in `src/types/bindings/` are up to date.
+- Build the `.deb` on every PR to catch packaging breakage.
+- Required status checks on `main` (branch protection), so a PR can't merge with red checks. The user turns this on in the GitHub settings.
+- Release pipeline: pushing a `v*` tag builds the `.deb` on Ubuntu 22.04 and publishes it to a GitHub Release with notes.
+- Standard GitHub-hosted runners are free for public repositories ([GitHub Actions billing](https://docs.github.com/en/billing/concepts/product-billing/github-actions)).
+
 ## V5: Nicknames
 
 - Nicknames table.
@@ -116,8 +124,7 @@ One major change per version; each version gets its own PRD, written from this r
 ## V12: Installer and updates
 
 - `.deb` package for Pop!_OS: app icon, desktop entry (Office;Finance) shown in the COSMIC launcher, and declared runtime dependencies (WebKitGTK, Secret Service) so install pulls them in.
-- Release pipeline: GitHub Actions builds the `.deb` on Ubuntu 22.04 when a `v*` tag is pushed and publishes it to a GitHub Release with notes (free for the public repo).
-- Update notice: on launch, at most once a day, check GitHub Releases for a newer version and offer a download link; the user installs the `.deb` by hand. A Settings switch turns the check off; it is the app's only outside network call and sends no user data.
+- Update notice: on launch, at most once a day, check the GitHub Releases published by V4.1's pipeline for a newer version and offer a download link; the user installs the `.deb` by hand. A Settings switch turns the check off; it is the app's only outside network call and sends no user data.
 - Backup before update: the first launch on a new version takes a V4 backup before running migrations.
 - After an update, show that release's notes in the app.
 - Settings > About shows the installed version and whether update checks are on.
