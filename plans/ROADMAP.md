@@ -49,16 +49,6 @@ One major change per version; each version gets its own PRD, written from this r
 - Restore with confirmation, keeping a safety copy of the replaced database.
 - Encrypted fields stay encrypted; restoring needs the same key.
 
-## V4.1: CI/CD
-
-- GitHub Actions on every PR and push to `main`: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `tsc`, `pnpm test`, and a check that the ts-rs bindings in `src/types/bindings/` are up to date.
-- Build the `.deb` on every PR to catch packaging breakage.
-- Required status checks on `main` (branch protection), so a PR can't merge with red checks. The user turns this on in the GitHub settings.
-- Release pipeline: pushing a `v*` tag builds the `.deb` on Ubuntu 22.04 and publishes it to a GitHub Release with notes.
-- Workflow: after opening a PR, the organizer waits for the pipeline and confirms it passes; a failing run goes back to the owning devs as fix tasks, like a blocking council finding, until it is green.
-- New `devops` dev agent that owns the CI/CD pipeline (`.github/workflows/**`) and fixes pipeline failures; `build-version`, the dev contract's ownership table and `CLAUDE.md` gain it.
-- Standard GitHub-hosted runners are free for public repositories ([GitHub Actions billing](https://docs.github.com/en/billing/concepts/product-billing/github-actions)).
-
 ## V5: Nicknames
 
 - Nicknames table.
@@ -82,7 +72,26 @@ One major change per version; each version gets its own PRD, written from this r
 - Rules: savings transfers tagged and excluded from spending; refunds count as negative spending.
 - Pluggable categoriser interface for future backends.
 
-## V7: Dashboard
+## V7: CI/CD, installer and updates
+
+One major version for builds and delivery, so it doesn't collide with the PRDs already written for V3.1 to V6.
+
+- GitHub Actions on every PR and push to `main`: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `tsc`, `pnpm test`, and a check that the ts-rs bindings in `src/types/bindings/` are up to date.
+- Build the `.deb` on every PR to catch packaging breakage.
+- Required status checks on `main` (branch protection), so a PR can't merge with red checks. The user turns this on in the GitHub settings.
+- Release pipeline: pushing a `v*` tag builds the `.deb` on Ubuntu 22.04 and publishes it to a GitHub Release with notes.
+- Workflow: after opening a PR, the organizer waits for the pipeline and confirms it passes; a failing run goes back to the owning devs as fix tasks, like a blocking council finding, until it is green.
+- New `devops` dev agent that owns the CI/CD pipeline (`.github/workflows/**`) and fixes pipeline failures; `build-version`, the dev contract's ownership table and `CLAUDE.md` gain it.
+- Standard GitHub-hosted runners are free for public repositories ([GitHub Actions billing](https://docs.github.com/en/billing/concepts/product-billing/github-actions)).
+- `.deb` package for Pop!_OS: app icon, desktop entry (Office;Finance) shown in the COSMIC launcher, and declared runtime dependencies (WebKitGTK, Secret Service) so install pulls them in.
+- Update notice: on launch, at most once a day, check the GitHub Releases published by the release pipeline for a newer version and offer a download link; the user installs the `.deb` by hand. A Settings switch turns the check off; it is the app's only outside network call and sends no user data.
+- Backup before update: the first launch on a new version takes a V4 backup before running migrations.
+- After an update, show that release's notes in the app.
+- Settings > About shows the installed version and whether update checks are on.
+- Uninstall: `apt remove` and `apt purge` never delete user data; purge prints where it lives.
+- `docs/install.md`: install, update, uninstall and data location.
+
+## V8: Dashboard
 
 - Prototype phase: at least three variants via Podman Compose. Checkpoint: the user picks one before the build continues.
 - Design: Copilot Money style; dark, colourful, clean, limited data per chart.
@@ -91,7 +100,7 @@ One major change per version; each version gets its own PRD, written from this r
 - Secondary pages: top nicknames, running balance, cash-flow Sankey, spending heatmap, biggest transactions, category drill-down.
 - Date range picker driving every view.
 
-## V8: Recurring charges
+## V9: Recurring charges
 
 - Recurring charges table.
 - Detection: 3 or more occurrences at a regular interval, amounts within 10%.
@@ -99,7 +108,7 @@ One major change per version; each version gets its own PRD, written from this r
 - Next expected date.
 - Upcoming recurring charges on the dashboard main page, plus a recurring list page.
 
-## V9: Multiple accounts and people
+## V10: Multiple accounts and people
 
 - People table; accounts linked to owners.
 - Multiple checking and savings accounts; choose the account on import.
@@ -107,7 +116,7 @@ One major change per version; each version gets its own PRD, written from this r
 - Person filter on every chart (one or several people).
 - Per-account views.
 
-## V10: Budget
+## V11: Budget
 
 - One-time import of the Monthly Tracker tab by an AI agent, producing a seed file (see appendix).
 - Budget items and income tables, types and 50/30/20 buckets.
@@ -116,22 +125,12 @@ One major change per version; each version gets its own PRD, written from this r
 - Over/under comparison, 50/30/20 goals, rollups by type and person.
 - Loan estimator and savings calculator.
 
-## V11: Advisor
+## V12: Advisor
 
 - Claude API integration, with the API key stored via Secret Service.
 - Research financial-certification study material to shape the prompts.
 - Data preparation for advisor prompts.
 - Forward-looking advice: upcoming issues, investing suggestions, needs.
-
-## V12: Installer and updates
-
-- `.deb` package for Pop!_OS: app icon, desktop entry (Office;Finance) shown in the COSMIC launcher, and declared runtime dependencies (WebKitGTK, Secret Service) so install pulls them in.
-- Update notice: on launch, at most once a day, check the GitHub Releases published by V4.1's pipeline for a newer version and offer a download link; the user installs the `.deb` by hand. A Settings switch turns the check off; it is the app's only outside network call and sends no user data.
-- Backup before update: the first launch on a new version takes a V4 backup before running migrations.
-- After an update, show that release's notes in the app.
-- Settings > About shows the installed version and whether update checks are on.
-- Uninstall: `apt remove` and `apt purge` never delete user data; purge prints where it lives.
-- `docs/install.md`: install, update, uninstall and data location.
 
 ## Future items to review (not assigned to a version)
 
@@ -141,7 +140,7 @@ One major change per version; each version gets its own PRD, written from this r
 - GPUI or Dioxus UI rewrite.
 - Split transactions.
 
-## Appendix: Budget Details (V10)
+## Appendix: Budget Details (V11)
 
 **Source:** the app replaces the Household Budget Google Sheet. Only the Monthly Tracker tab is imported, once, by an AI agent with Sheets access (other tabs are outdated). The agent produces a seed file the app loads; the app needs no Google sign-in. After that, budgets are edited in the app.
 

@@ -16,7 +16,7 @@ V2 adds the accounts table and protects sensitive account details with field-lev
 ## Out of Scope
 
 - Importing transactions (V3).
-- Multiple accounts (V9).
+- Multiple accounts (V10).
 
 ## Edge Cases
 

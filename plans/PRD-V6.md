@@ -13,13 +13,13 @@ V6 categorises transactions with a local Ollama model constrained to the user's 
 - **V6-R7:** Users can set a row's category and note from the list (right-click or a cell control); this sets set by `user` and reviewed.
 - **V6-R8:** Batch review screen: unreviewed model-set rows grouped by category; change any row's category; "Looks good" marks a whole group reviewed.
 - **V6-R9:** Model builds: a builds table (ID, name, base model, created date, example count, active). A build generates a Modelfile with a system prompt holding the category list and up to N reviewed examples per category as `MESSAGE` pairs (N in Settings, default 5; newest first, preferring distinct nicknames or descriptions), stored in the builds table, and created through Ollama's `/api/create` using the equivalent `from`, `system` and `messages` fields (the raw `modelfile` field is deprecated). One build is active; with none, the base model is used.
-- **V6-R10:** Spending rules: rows in `transfer` categories are excluded from spending; a positive amount in a `spending` category counts as negative spending (a refund). Exposed as one SQL view or query helper that V7 will use.
+- **V6-R10:** Spending rules: rows in `transfer` categories are excluded from spending; a positive amount in a `spending` category counts as negative spending (a refund). Exposed as one SQL view or query helper that V8 (Dashboard) will use.
 - **V6-R11:** Pluggable categoriser: a Rust `Categoriser` trait (categorise a batch against a category list) with an Ollama implementation; tests use a fake.
 - **V6-R12:** Transaction list shows the category and lets the user filter by category, including uncategorised.
 
 ## Out of Scope
 
-- Dashboards and charts (V7); budget links (V10).
+- Dashboards and charts (V8); budget links (V11).
 - Other categoriser backends (Jev, Unsloth fine-tuning).
 - Split transactions; nested categories.
 - Remote Ollama hosts.

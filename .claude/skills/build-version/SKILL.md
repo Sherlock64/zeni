@@ -1,6 +1,6 @@
 ---
 name: build-version
-description: Organizer playbook for building one Zeni version (V1..V11) from its PRD. Maps the PRD into a task graph, runs parallel core-dev and ui-dev agents wave by wave with strict file ownership, then docs-writer and prompt-engineer, then loops the council until nothing critical, high or blocking medium remains, then opens a PR and runs the app for the user. Use when the user says "build V<n>", "implement PRD-V<n>", "/build-version V<n>", or asks to run the version workflow.
+description: Organizer playbook for building one Zeni version (V1..V12) from its PRD. Maps the PRD into a task graph, runs parallel core-dev and ui-dev agents wave by wave with strict file ownership, then docs-writer and prompt-engineer, then loops the council until nothing critical, high or blocking medium remains, then opens a PR and runs the app for the user. Use when the user says "build V<n>", "implement PRD-V<n>", "/build-version V<n>", or asks to run the version workflow.
 argument-hint: V<n>
 ---
 
