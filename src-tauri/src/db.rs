@@ -1,11 +1,20 @@
 use std::fs::{self, DirBuilder, OpenOptions, Permissions};
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use sqlx::SqlitePool;
 use sqlx::sqlite::SqliteConnectOptions;
 
 use crate::types::{AppError, Database};
+
+/// Debug builds (`pnpm tauri dev`) keep their own database in `dev/`, so they never touch real data.
+pub fn data_dir(app_data_dir: PathBuf) -> PathBuf {
+    if cfg!(debug_assertions) {
+        app_data_dir.join("dev")
+    } else {
+        app_data_dir
+    }
+}
 
 /// Startup: opens `zeni.db` inside `data_dir`, describing any failure for the UI.
 pub async fn connect(data_dir: &Path) -> Result<Database, String> {
@@ -61,6 +70,13 @@ mod tests {
 
     fn mode(path: &Path) -> u32 {
         fs::metadata(path).unwrap().permissions().mode() & 0o777
+    }
+
+    #[test]
+    fn debug_builds_use_a_separate_dev_folder() {
+        // Tests are debug builds, so this is what `pnpm tauri dev` opens.
+        let base = PathBuf::from("/data/com.sherlock64.zeni");
+        assert_eq!(data_dir(base.clone()), base.join("dev"));
     }
 
     #[test]

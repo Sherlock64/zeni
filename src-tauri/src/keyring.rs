@@ -21,10 +21,23 @@ pub trait Keyring {
 pub struct SecretService;
 
 const TIMEOUT: Duration = Duration::from_secs(5);
-const LABEL: &str = "Zeni data key";
+// Debug builds tag their items apart, so a dev run never reads or deletes the real data key.
+const APPLICATION: &str = if cfg!(debug_assertions) {
+    "zeni-dev"
+} else {
+    "zeni"
+};
+const LABEL: &str = if cfg!(debug_assertions) {
+    "Zeni data key (dev)"
+} else {
+    "Zeni data key"
+};
 
 fn attributes(key_id: &str) -> [(&'static str, String); 2] {
-    [("application", "zeni".into()), ("key_id", key_id.into())]
+    [
+        ("application", APPLICATION.into()),
+        ("key_id", key_id.into()),
+    ]
 }
 
 /// The default collection if it exists and is unlocked. Never creates or unlocks one, so never prompts.
@@ -124,6 +137,11 @@ mod tests {
 
     fn run<T>(future: impl Future<Output = T>) -> T {
         tauri::async_runtime::block_on(future)
+    }
+
+    #[test]
+    fn debug_builds_tag_keyring_items_apart() {
+        assert_eq!(attributes("k")[0], ("application", "zeni-dev".to_string()));
     }
 
     #[test]
