@@ -40,7 +40,7 @@ One major change per version; each version gets its own PRD, written from this r
 ## V3.1: CSV import
 
 - CSV parser (`csv` crate) with column mapping saved per layout.
-- Duplicate matching on date + amount + description.
+- Duplicate matching on a mapped transaction ID, falling back to date + amount + description; cross-format overlap review.
 - Running-balance check when the CSV has a balance column.
 
 ## V4: Backup and restore
@@ -53,8 +53,8 @@ One major change per version; each version gets its own PRD, written from this r
 
 - Nicknames table.
 - Right-click "Rename it" with a "What's its nickname?" pop-up.
-- Match modes: exact, pattern, regex; match on description or memo.
-- Precedence: exact, then pattern, then regex.
+- Match modes: exact, contains, regex; match on description or memo.
+- Precedence: exact, then contains, then regex.
 - Applies to all past and future matching transactions; unmapped items show raw text.
 - Match count, last matched date, stale flag, stale-flag exempt option, on/off switch.
 - Nicknames management page.
