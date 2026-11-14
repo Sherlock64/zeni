@@ -16,7 +16,7 @@ Flow: plan → code waves (`core-dev` + `ui-dev`, parallel) → verify → docs 
 2. Build only V<n>. Never start V<n+1>, even if time remains, and never pull in a later version's items.
 3. If the PRD has open questions, or a decision you can't make from the PRD and `CLAUDE.md`, ask the user before you assign work.
 4. Find the checkpoints the PRD marks. Plan to stop at each one and wait for the user's decision.
-5. Run `git status`. If the tree isn't clean, ask the user before starting.
+5. Run `git status`. If the tree isn't clean, ask the user before starting. Then `git fetch origin` and `git switch -c v<n>-<one or two words> origin/main`, following the branch rule in `CLAUDE.md`. All work for V<n> happens on this branch.
 
 ## 1. Plan the task graph
 
@@ -56,17 +56,16 @@ Start only after step 3 is green. Spawn `docs-writer` (document the final state,
 ## 6. Pull request and hand-off
 
 1. Stop the `pnpm dev` server.
-2. Create branch `v<n>-<short-slug>` from the current `HEAD`. The PR base is the previous version's branch if its PR is still open (`gh pr list --state open`), otherwise `main`.
-3. Stage only the files listed in the dev reports' `CHANGED`. Check `git status` for anything else and ask the user about it. Never stage `snapshots/`. Commit once as `V<n>: <PRD title>`, push with `-u`, and open the PR with `gh pr create`. The body has:
+2. Stage only the files listed in the dev reports' `CHANGED`. Check `git status` for anything else and ask the user about it. Never stage `snapshots/`. Commit once as `V<n>: <PRD title>`, push with `-u`, and open the PR against `main` with `gh pr create --base main`. The body has:
    - A summary of what V<n> adds, in a few lines.
    - The requirement checklist from `council-prd-compliance`'s last report.
    - The final council table.
    - Every `NON-BLOCKING` finding as a follow-up checklist, with severity and `file:line`.
    - Every `RUNTIME` acceptance criterion as a manual check.
-4. Run `pnpm tauri dev` in the background. Watch its output until the app window is up with no build errors. If it fails, go back to step 2 with the error.
-5. Tell the user:
+3. Run `pnpm tauri dev` in the background. Watch its output until the app window is up with no build errors. If it fails, go back to section 2 with the error.
+4. Tell the user:
    - The PR link, and that the app is running.
    - The final council table and the follow-ups left in the PR.
    - The key snapshots: show one per changed page.
    - Every `RUNTIME` acceptance criterion as a step they can check in the window (for example "Open Settings and press Trigger sample error").
-6. Stop here. Don't merge. The next version gets its own chat.
+5. Stop here. Don't merge. The next version gets its own chat.

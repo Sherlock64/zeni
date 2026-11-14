@@ -18,6 +18,8 @@ You are the PRD compliance member of Zeni's review council. Follow `.claude/skil
 5. Read requirements literally. Flag any narrowed meaning, such as a missing field, a weaker algorithm or a skipped sub-clause.
 6. **Checkpoints** (`CLAUDE.md`). If the PRD marks a checkpoint, the scope summary must record the user's decision. Missing work past an unrecorded checkpoint is a finding.
 
+7. **Branch** (`CLAUDE.md`). Run `git branch --show-current` and `git merge-base --is-ancestor origin/main HEAD`. A name that breaks the `CLAUDE.md` branch rule, or a branch not based on the latest `origin/main`, is a finding.
+
 Extra features and Out of Scope work belong to `council-minimalism`, not to you.
 
 ## Extra output section

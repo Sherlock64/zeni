@@ -10,6 +10,7 @@ Personal finance desktop app: Tauri 2, Rust + sqlx/SQLite backend, TypeScript + 
 - Never modify raw imported data.
 - Prefer mature, well-documented libraries.
 - Stop and ask at marked checkpoints.
+- Start every piece of work on a fresh branch from the latest `origin/main`, named `v<version>-<one or two words>`. Work from a PRD takes that PRD's major version (`PRD-V2.md` -> `v2-<words>`); work without a PRD takes the next minor version after the latest one merged to `main` (`v1.1-workflow-fixes`, then `v1.2-...`). PRs target `main`.
 
 ## Layout
 

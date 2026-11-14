@@ -18,7 +18,7 @@ Each member owns one dimension. Every `CLAUDE.md` rule has exactly one owner.
 | `council-ux-design` | Flows, states, feedback, copy | - |
 | `council-accessibility` | WCAG 2.1 AA: semantics, keyboard, focus, names, contrast | - |
 | `council-test-quality` | Tests run and pass, cover the change, and are meaningful; bindings are fresh | - |
-| `council-prd-compliance` | Every PRD requirement and acceptance criterion, one by one | Stop and ask at marked checkpoints |
+| `council-prd-compliance` | Every PRD requirement and acceptance criterion, one by one | Stop and ask at marked checkpoints; branch from `main` with the version naming rule |
 
 ## Steps
 
