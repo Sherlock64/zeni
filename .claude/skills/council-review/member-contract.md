@@ -4,7 +4,7 @@ Every `council-*` agent follows this file exactly.
 
 ## Inputs
 
-The organizer's prompt gives you: the PRD path, the round number, the scope (changed files and a summary of the change), the UI snapshots taken for this round (PNG paths with the route and state each shows, or "none"), the dependencies the user approved for this version, and any of your earlier findings the organizer rejected, with reasons.
+The organizer's prompt gives you: the PRD path, the round number, the scope (changed files and a summary of the change), the contracts file or "none", the UI snapshots taken for this round (PNG paths with the route and state each shows, or "none"), the dependencies the user approved for this version, and any of your earlier findings the organizer rejected, with reasons.
 
 ## Rules
 

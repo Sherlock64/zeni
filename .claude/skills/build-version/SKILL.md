@@ -20,10 +20,10 @@ Flow: plan → code waves (`core-dev` + `ui-dev`, parallel) → verify → docs 
 
 ## 1. Plan the task graph
 
-1. Break the PRD into small tasks, each doable by one agent. Give each task an ID (`T1`...), its owner role, the requirement IDs and acceptance criteria it covers, the exact files it may create or edit, and `deps`: the task IDs it needs finished first.
+1. Break the PRD into small tasks, each doable by one agent. Give each task an ID (`T1`...), its owner role, the requirement IDs and acceptance criteria it covers, the exact files it may create or edit, and `deps`: the task IDs it needs finished first. A task that edits any `.tsx` under `src/pages/` or `src/components/` lists at least one snapshot, copy-only edits included.
 2. Give every file exactly one task. Two tasks that must edit the same file either merge into one task or run in sequence (one depends on the other). Watch the hub files every feature touches: `src-tauri/src/types.rs`, `src-tauri/src/commands.rs`, `src-tauri/src/lib.rs` (`generate_handler!`), `src/lib/commands.ts`, `src/router.tsx`, `src/components/app-shell.tsx` (`navItems`), `src/lib/snapshot-fixtures.ts`.
 3. Split along files, not along layers: put each backend feature in its own domain module (for example `src-tauri/src/imports.rs`) and each page in its own files, so tasks can run side by side.
-4. Write the cross-boundary contracts before anyone starts: each new command's name, its request and response types with field names and Rust types, and any new `AppError` variants. Every task on either side of a contract gets the same text.
+4. Write the cross-boundary contracts to `snapshots/V<n>/contracts.md` before anyone starts: each new command's name, its request and response types with field names and Rust types, and any new `AppError` variants. Quote every PRD formula or rule verbatim and add one worked example per edge it names (same date, re-import, empty). Every task on either side of a contract reads the same file.
 5. Add a dependency only where a task truly needs another's output. A contract is enough for UI work to proceed against a command that doesn't exist yet, but the UI can't type-check without the generated bindings. So when a version adds commands, the first wave is usually one `core-dev` contract task that adds the types to `types.rs`, regenerates `src/types/bindings/`, and adds the `src/lib/commands.ts` wrappers and their tests; the UI tasks and the backend logic tasks depend on it and run together after it.
 6. Group tasks into waves: wave 1 is every task with no deps; each later wave is every task whose deps are all in earlier waves. Run at most five agents in one wave; split a larger wave in two.
 7. If the plan needs a dependency the PRD doesn't name, ask the user before you assign it. Record their answer; it becomes the approved-dependencies list.
@@ -32,9 +32,9 @@ Flow: plan → code waves (`core-dev` + `ui-dev`, parallel) → verify → docs 
 ## 2. Code waves
 
 1. Before the first wave with a `ui-dev` task, start `pnpm dev` in the background and confirm port 1420 answers. ui-devs need it for snapshots; keep it running until step 6.
-2. For each wave, spawn all its tasks in one message so they run in parallel, one agent per task. Several `core-dev` or `ui-dev` instances in one wave is normal. Each task message contains: the task ID, the task, the requirement IDs, the allowed files, the contracts, the snapshot folder `snapshots/V<n>/` for UI tasks, and "Follow `.claude/skills/build-version/dev-contract.md`." Paste the contracts as literal text; the Agent tool expands no shell placeholder such as `$(cat contracts)`.
+2. For each wave, spawn all its tasks in one message so they run in parallel, one agent per task. Several `core-dev` or `ui-dev` instances in one wave is normal. Each task message contains: the task ID, the task, the requirement IDs, the allowed files, the contracts, the snapshot folder `snapshots/V<n>/` for UI tasks, and "Follow `.claude/skills/build-version/dev-contract.md`." Pass the contracts path `snapshots/V<n>/contracts.md`; the Agent tool expands no shell placeholder such as `$(cat contracts)`. Never call code "untested" or "thin, no tests" in a task message.
 3. Handle each report's `NEEDS`. Route a change in someone else's file to that file's task as a follow-up (or a new task if it has finished), and send dependency requests to the user. Start the next wave only when every task it depends on reports `STATUS: DONE`.
-4. Read each UI task's `SNAPSHOTS` PNGs yourself. If one shows something wrong or a state is missing, send it back to that task. Keep the list of PNGs for the council.
+4. Open one `SNAPSHOTS` PNG per changed page yourself; leave the rest to the UI council members. If one shows something wrong or a state is missing, send it back to that task. Keep the list of PNGs for the council.
 
 ## 3. Verify
 
@@ -46,16 +46,16 @@ Start only after step 3 is green. Spawn `docs-writer` (document the final state,
 
 ## 5. Council loop
 
-1. Run the `council-review` skill with `plans/PRD-V<n>.md`, the round number, the snapshot list, and the approved-dependencies list.
+1. Spawn one `general-purpose` agent that runs the `council-review` skill and returns only its step-8 report. Give it `plans/PRD-V<n>.md`, the round number, the contracts path, the snapshot list (one PNG per distinct state), and the approved-dependencies list.
 2. If the council passes, go to step 6.
-3. If it fails, turn each `BLOCKING` finding into a fix task for the owner of the cited file. Decide every `CONFLICT` yourself first. Keep each finding's severity, `file:line`, Problem and Fix verbatim. Build a small task graph for the fixes with the step 1 rules (one task per file set, parallel where files don't overlap), and run it through steps 2 and 3. UI fixes come with fresh snapshots. Run `docs-writer` or `prompt-engineer` only if a finding targets their files or a fix changes what they describe.
+3. If it fails, turn each `BLOCKING` finding into a fix task for the owner of the cited file. Decide every `CONFLICT` yourself first. Keep each finding's severity, `file:line`, Problem and Fix verbatim. Send each fix task with SendMessage to the agent that built the cited files, when it still owns them; spawn a fresh agent only when the files span owners or the original agent is gone. Build a small task graph for the fixes with the step 1 rules (one task per file set, parallel where files don't overlap), and run it through steps 2 and 3. UI fixes come with fresh snapshots. Run `docs-writer` or `prompt-engineer` only if a finding targets their files or a fix changes what they describe.
 4. Leave `NON-BLOCKING` findings as follow-ups, unless a fix task already edits that exact code; then include them in it. Append every follow-up, with severity, `file:line`, Problem and Fix, to `snapshots/V<n>/council-findings.md`. `snapshots/` is gitignored, so the findings stay on this machine.
 5. Reconvene the full council (a fix can regress another dimension). Pass along the rejected findings and their reasons.
 6. If the same blocking finding survives three rounds, or two members keep contradicting each other, stop and ask the user.
 
 ## 6. Pull request and hand-off
 
-1. Stop the `pnpm dev` server.
+1. Stop the `pnpm dev` server with TaskStop on its background task, never `pkill -f`.
 2. Stage only the files listed in the dev reports' `CHANGED`. Check `git status` for anything else and ask the user about it. Never stage `snapshots/`. Commit once as `V<n>: <PRD title>`, push with `-u`, and open the PR against `main` with `gh pr create --base main`. The body has:
    - A summary of what V<n> adds, in a few lines.
    - The requirement checklist from `council-prd-compliance`'s last report.

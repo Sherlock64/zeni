@@ -11,7 +11,7 @@ Every dev agent (`core-dev`, `ui-dev`, `docs-writer`, `prompt-engineer`) follows
 | `docs-writer` | `CLAUDE.md`, `README.md`, `docs/**` |
 | `prompt-engineer` | `.claude/agents/**`, `.claude/skills/**` |
 
-Nobody edits `plans/`; the user writes PRDs. Several instances of `core-dev` or `ui-dev` may run at once, so your task message names the exact files you may touch. That list overrides this table for the task.
+Nobody edits `plans/`; the user writes PRDs, or the organizer does with the user through the `write-prd` skill. Several instances of `core-dev` or `ui-dev` may run at once, so your task message names the exact files you may touch. That list overrides this table for the task.
 
 ## Rules
 
@@ -19,10 +19,10 @@ Nobody edits `plans/`; the user writes PRDs. Several instances of `core-dev` or 
 2. Follow `CLAUDE.md`. It is the single source of coding rules; this contract does not restate them.
 3. Never add a Cargo or npm dependency. If one is needed, report the crate or package, version and reason; the organizer asks the user.
 4. Build only what the task asks for. No features, options or abstractions beyond it.
-5. Other devs edit the same working tree at the same time. A build or test failure in a file you do not own is reported, not fixed. A `cargo` "waiting for file lock" message means another dev is building; wait, don't kill it.
+5. Other devs edit the same working tree at the same time. A build or test failure in a file you do not own is reported, not fixed. A `cargo` "waiting for file lock" message means another dev is building; wait, don't kill it. If you edit a hub file (`build-version` step 1.2), retake every earlier snapshot of the states it changes.
 6. Do not commit, push or touch git state.
 7. Before reporting done, run the checks for the files you changed and make them pass:
-   - Rust: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test` (all in `src-tauri/`)
+   - Rust: format only your own files with `rustfmt --edition 2024 <file>`, never plain `cargo fmt`; then `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test` (all in `src-tauri/`)
    - TypeScript: `pnpm exec tsc`, `pnpm test`
    - UI: the snapshots in `ui-dev`'s agent file, viewed and fixed until they look right.
 8. Report in this format:
@@ -32,4 +32,6 @@ Nobody edits `plans/`; the user writes PRDs. Several instances of `core-dev` or 
    CHECKS: <each command run and its result>
    SNAPSHOTS: <each PNG path - route, state, what you checked; or "none" for non-UI tasks>
    NEEDS: <changes needed in files you don't own, deps to approve, questions; or "none">
+   NOTES: <at most five one-line items, or "none">
    ```
+   Nothing outside these six fields.
