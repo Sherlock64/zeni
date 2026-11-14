@@ -1,11 +1,14 @@
 ---
 name: build-version
-description: Organizer playbook for building one Zeni version (V1..V11) from its PRD. Splits the work across dev agents with strict file ownership, runs them, loops the council-review until every member passes, then runs the app for the user. Use when the user says "build V<n>", "implement PRD-V<n>", or asks to run the version workflow.
+description: Organizer playbook for building one Zeni version (V1..V11) from its PRD. Maps the PRD into a task graph, runs parallel core-dev and ui-dev agents wave by wave with strict file ownership, then docs-writer and prompt-engineer, then loops the council until nothing critical, high or blocking medium remains, then opens a PR and runs the app for the user. Use when the user says "build V<n>", "implement PRD-V<n>", "/build-version V<n>", or asks to run the version workflow.
+argument-hint: V<n>
 ---
 
 # Build version
 
 You are the organizer. You plan, delegate, verify and decide. Leave all code and docs edits to the dev agents.
+
+Flow: plan → code waves (`core-dev` + `ui-dev`, parallel) → verify → docs and agents (`docs-writer` + `prompt-engineer`) → council → blocking findings go back to the code waves; otherwise PR and hand-off.
 
 ## 0. Scope
 
@@ -13,37 +16,57 @@ You are the organizer. You plan, delegate, verify and decide. Leave all code and
 2. Build only V<n>. Never start V<n+1>, even if time remains, and never pull in a later version's items.
 3. If the PRD has open questions, or a decision you can't make from the PRD and `CLAUDE.md`, ask the user before you assign work.
 4. Find the checkpoints the PRD marks. Plan to stop at each one and wait for the user's decision.
+5. Run `git status`. If the tree isn't clean, ask the user before starting.
 
-## 1. Plan
+## 1. Plan the task graph
 
-1. Break the PRD into tasks. Give each task the requirement IDs it covers, its acceptance criteria, and its owner, using the ownership table in `.claude/skills/build-version/dev-contract.md`.
-2. Give every file exactly one owner. Name the files each task may touch.
-3. Write the cross-boundary contracts before anyone starts: each new command's name, its request and response types with field names and Rust types, and any new `AppError` variants. Put the same contract in both the `core-dev` and the `ui-dev` task.
-4. If the plan needs a dependency the PRD doesn't name, ask the user before you assign it. Record their answer; it becomes the approved-dependencies list.
-5. Show the user the plan (tasks, owners, contracts) in a few lines, then start. Don't wait for approval unless step 0 or 1.4 left a question open.
+1. Break the PRD into small tasks, each doable by one agent. Give each task an ID (`T1`...), its owner role, the requirement IDs and acceptance criteria it covers, the exact files it may create or edit, and `deps`: the task IDs it needs finished first.
+2. Give every file exactly one task. Two tasks that must edit the same file either merge into one task or run in sequence (one depends on the other). Watch the hub files every feature touches: `src-tauri/src/types.rs`, `src-tauri/src/commands.rs`, `src-tauri/src/lib.rs` (`generate_handler!`), `src/lib/commands.ts`, `src/router.tsx`, `src/components/app-shell.tsx` (`navItems`), `src/lib/snapshot-fixtures.ts`.
+3. Split along files, not along layers: put each backend feature in its own domain module (for example `src-tauri/src/imports.rs`) and each page in its own files, so tasks can run side by side.
+4. Write the cross-boundary contracts before anyone starts: each new command's name, its request and response types with field names and Rust types, and any new `AppError` variants. Every task on either side of a contract gets the same text.
+5. Add a dependency only where a task truly needs another's output. A contract is enough for UI work to proceed against a command that doesn't exist yet, but the UI can't type-check without the generated bindings. So when a version adds commands, the first wave is usually one `core-dev` contract task that adds the types to `types.rs`, regenerates `src/types/bindings/`, and adds the `src/lib/commands.ts` wrappers and their tests; the UI tasks and the backend logic tasks depend on it and run together after it.
+6. Group tasks into waves: wave 1 is every task with no deps; each later wave is every task whose deps are all in earlier waves. Run at most five agents in one wave; split a larger wave in two.
+7. If the plan needs a dependency the PRD doesn't name, ask the user before you assign it. Record their answer; it becomes the approved-dependencies list.
+8. Show the user the graph as one table (ID, owner, covers, files, deps, wave) plus the contracts, then start. Don't wait for approval unless step 0 or 1.7 left a question open.
 
-## 2. Build
+## 2. Code waves
 
-Run the phases in this order. Within a phase, spawn the agents in one message so they run in parallel.
+1. Before the first wave with a `ui-dev` task, start `pnpm dev` in the background and confirm port 1420 answers. ui-devs need it for snapshots; keep it running until step 6.
+2. For each wave, spawn all its tasks in one message so they run in parallel, one agent per task. Several `core-dev` or `ui-dev` instances in one wave is normal. Each task message contains: the task ID, the task, the requirement IDs, the allowed files, the contracts, the snapshot folder `snapshots/V<n>/` for UI tasks, and "Follow `.claude/skills/build-version/dev-contract.md`."
+3. Handle each report's `NEEDS`. Route a change in someone else's file to that file's task as a follow-up (or a new task if it has finished), and send dependency requests to the user. Start the next wave only when every task it depends on reports `STATUS: DONE`.
+4. Read each UI task's `SNAPSHOTS` PNGs yourself. If one shows something wrong or a state is missing, send it back to that task. Keep the list of PNGs for the council.
 
-1. **Code:** `core-dev` and `ui-dev` together, since their files don't overlap. Run a second task for the same agent in parallel only if its files don't overlap either. Each task message contains: the task, the requirement IDs, the allowed files, the contracts, and "Follow `.claude/skills/build-version/dev-contract.md`."
-2. Handle each report's `NEEDS`. Route each requested change to the file's owner, and send dependency requests to the user. Repeat phase 1 until both report `STATUS: DONE`.
-3. **Docs and agents:** start only after both code devs report done. Run `docs-writer` (document the final state, running every command it documents) and `prompt-engineer` (update agents and skills if the stack, conventions or workflow changed) in parallel.
-4. **Verify:** run `pnpm exec tsc`, `pnpm test`, and in `src-tauri/` `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` and `cargo test`. Route each failure to the owner of the failing file and repeat until everything is green.
+## 3. Verify
 
-## 3. Council loop
+Run `pnpm exec tsc`, `pnpm test`, and in `src-tauri/` `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` and `cargo test`. Route each failure to the task that owns the failing file and repeat until everything is green.
 
-1. Run the `council-review` skill with `plans/PRD-V<n>.md`, the round number, and the approved-dependencies list.
-2. If the council fails, turn each deduped finding into a task for the owner of the cited file. Group findings by owner, keep each finding's `file:line`, Problem and Fix verbatim, and decide every `CONFLICT` yourself before sending. Run the code fixes through steps 2.1 and 2.2 for the affected code devs only. Then run `docs-writer` or `prompt-engineer` only if a finding targets their files or a fix changes what they describe. Finish with step 2.4.
-3. Reconvene the full council (a fix can regress another dimension). Pass along the rejected findings and their reasons.
-4. Repeat until all eight members return `PASS`. If the same finding survives three rounds, or two members keep contradicting each other, stop and ask the user.
+## 4. Docs and agents
 
-## 4. Hand-off
+Start only after step 3 is green. Spawn `docs-writer` (document the final state, running every command it documents) and `prompt-engineer` (update agents and skills if the stack, conventions or workflow changed) in one message.
 
-1. Run `pnpm tauri dev` in the background. Watch its output until the app window is up with no build errors. If it fails, go back to step 2 with the error.
-2. Tell the user:
-   - That the app is running.
-   - The council table from the last round.
-   - The files that changed.
+## 5. Council loop
+
+1. Run the `council-review` skill with `plans/PRD-V<n>.md`, the round number, the snapshot list, and the approved-dependencies list.
+2. If the council passes, go to step 6.
+3. If it fails, turn each `BLOCKING` finding into a fix task for the owner of the cited file. Decide every `CONFLICT` yourself first. Keep each finding's severity, `file:line`, Problem and Fix verbatim. Build a small task graph for the fixes with the step 1 rules (one task per file set, parallel where files don't overlap), and run it through steps 2 and 3. UI fixes come with fresh snapshots. Run `docs-writer` or `prompt-engineer` only if a finding targets their files or a fix changes what they describe.
+4. Leave `NON-BLOCKING` findings for the PR, unless a fix task already edits that exact code; then include them in it.
+5. Reconvene the full council (a fix can regress another dimension). Pass along the rejected findings and their reasons.
+6. If the same blocking finding survives three rounds, or two members keep contradicting each other, stop and ask the user.
+
+## 6. Pull request and hand-off
+
+1. Stop the `pnpm dev` server.
+2. Create branch `v<n>-<short-slug>` from the current `HEAD`. The PR base is the previous version's branch if its PR is still open (`gh pr list --state open`), otherwise `main`.
+3. Stage only the files listed in the dev reports' `CHANGED`. Check `git status` for anything else and ask the user about it. Never stage `snapshots/`. Commit once as `V<n>: <PRD title>`, push with `-u`, and open the PR with `gh pr create`. The body has:
+   - A summary of what V<n> adds, in a few lines.
+   - The requirement checklist from `council-prd-compliance`'s last report.
+   - The final council table.
+   - Every `NON-BLOCKING` finding as a follow-up checklist, with severity and `file:line`.
+   - Every `RUNTIME` acceptance criterion as a manual check.
+4. Run `pnpm tauri dev` in the background. Watch its output until the app window is up with no build errors. If it fails, go back to step 2 with the error.
+5. Tell the user:
+   - The PR link, and that the app is running.
+   - The final council table and the follow-ups left in the PR.
+   - The key snapshots: show one per changed page.
    - Every `RUNTIME` acceptance criterion as a step they can check in the window (for example "Open Settings and press Trigger sample error").
-3. Don't commit or push unless the user asks. Stop here; the next version gets its own chat.
+6. Stop here. Don't merge. The next version gets its own chat.

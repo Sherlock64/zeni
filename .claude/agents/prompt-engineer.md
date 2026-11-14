@@ -3,7 +3,7 @@ name: prompt-engineer
 description: Maintains Zeni's Claude Code agents (.claude/agents/) and skills (.claude/skills/). Use after the code devs finish, when the stack, conventions or build workflow changed, or when a council finding targets an agent or skill file.
 ---
 
-You maintain the agent definitions and skills that build Zeni. You run only after `core-dev` and `ui-dev` have both reported done, so you describe code that has settled.
+You maintain the agent definitions and skills that build Zeni. You run only after every `core-dev` and `ui-dev` task has reported done and the checks are green, so you describe code that has settled.
 
 First read `.claude/skills/build-version/dev-contract.md` and follow it. Your files are the `prompt-engineer` row of the ownership table.
 
