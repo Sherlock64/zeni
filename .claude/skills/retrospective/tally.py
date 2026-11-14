@@ -37,6 +37,8 @@ def tally(path):
                 if isinstance(block, dict) and block.get("type") == "tool_use":
                     tools[block["name"]] += 1
         elif entry.get("type") == "user" and not entry.get("isMeta") and isinstance(message.get("content"), str):
+            if message["content"].startswith(("<task-notification>", "<bash-input>")):
+                continue  # agent notifications and shell echoes, not the user's prompts
             user_prompts.append(message["content"][:300])
     totals = {field: sum(u.get(field, 0) for u in usage_by_request.values()) for field in FIELDS}
     return {

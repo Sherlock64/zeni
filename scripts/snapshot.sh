@@ -8,8 +8,12 @@ chrome=$(ls -d ~/.cache/ms-playwright/chromium_headless_shell-*/*/chrome-headles
 [[ -x $chrome ]] || { echo "chrome-headless-shell not found under ~/.cache/ms-playwright; ask the user to install it" >&2; exit 1; }
 curl -sf -o /dev/null http://localhost:1420/ || { echo "Vite is not running on :1420; start it with 'pnpm dev'" >&2; exit 1; }
 mkdir -p "$(dirname "$out")"
+# A throwaway profile with no disk cache, so a capture never shows a stale build.
+profile=$(mktemp -d)
+trap 'rm -rf "$profile"' EXIT
 # Virtual time lets queries settle before the capture; without it the page is blank.
 "$chrome" --screenshot="$out" --window-size="${size/x/,}" --virtual-time-budget=5000 --hide-scrollbars \
+  --user-data-dir="$profile" --disk-cache-size=1 \
   "http://localhost:1420/$page" 2>/dev/null >/dev/null
 [[ -s $out ]] || { echo "No screenshot written" >&2; exit 1; }
 echo "$out"

@@ -25,7 +25,8 @@ Each member owns one dimension. Every `CLAUDE.md` rule has exactly one owner.
 1. Build the scope:
    - The changed files: `git status --porcelain`, plus `git diff --stat <base>` when a base commit exists.
    - A summary of the change in a few lines.
-   - The UI snapshots from this round: each PNG path with the route and state it shows, or "none" if no UI changed.
+   - The contracts path `snapshots/V<n>/contracts.md`, or "none".
+   - The UI snapshots from this round: one PNG per distinct state, with the route and state it shows, or "none" if no UI changed. Only `council-ui-design`, `council-ux-design` and `council-accessibility` get them; the other members get "none".
    - The dependencies the user approved for this version, or "none".
    - For each member, the findings you rejected in earlier rounds, with reasons.
 2. Spawn all eight members in one message so they run in parallel. Give each this prompt, filled in:
@@ -35,6 +36,7 @@ Each member owns one dimension. Every `CLAUDE.md` rule has exactly one owner.
    Scope:
    <changed files>
    Summary: <summary>
+   Contracts: <path or "none">
    Snapshots:
    <path - route, state; or "none">
    Approved dependencies: <list or "none">
@@ -43,10 +45,10 @@ Each member owns one dimension. Every `CLAUDE.md` rule has exactly one owner.
    ```
 3. If a reply breaks the output format in `member-contract.md`, send it back to that member once to reformat. A member that still gives no valid verdict counts as `FAIL`.
 4. Recompute each member's verdict from its findings with the rule in `member-contract.md`, whatever its verdict line says.
-5. Check each severity against the scale in `member-contract.md`. Change a rating only when it plainly contradicts the scale, and record the old rating and the reason. Never lower a rating because fixing it is inconvenient.
+5. Verify each surprising finding in the cited code before rating it. Check each severity against the scale in `member-contract.md`. Change a rating only when it plainly contradicts the scale, and record the old rating and the reason. Never lower a rating because fixing it is inconvenient.
 6. Dedupe the findings. Merge any that name the same `file:line` and the same fix, keep the highest severity, and credit every member that raised it. When two findings conflict, keep both and mark them `CONFLICT` for the organizer to decide.
 7. Reject a finding only if it contradicts the PRD or `CLAUDE.md`, or cites code that doesn't exist. Record the reason. Never reject a finding because fixing it is inconvenient.
-8. The council passes when no finding left after steps 5-7 is `CRITICAL`, `HIGH` or blocking `MEDIUM`. Report:
+8. Return only this report. The council passes when no finding left after steps 5-7 is `CRITICAL`, `HIGH` or blocking `MEDIUM`. Report:
    ```
    COUNCIL: PASS | FAIL (round <k>)
    | Member | Verdict | Critical | High | Medium (blocking) | Medium | Low |

@@ -18,4 +18,4 @@ First read `.claude/skills/build-version/dev-contract.md` and follow it. Your fi
 1. Verify everything you write. Run every command you document from a clean shell and confirm it works; read the code behind every path, name and behaviour you describe. Never copy a claim from another doc without checking it.
 2. Document what exists. Never describe planned or future-version behaviour.
 3. Use short imperative sentences and no marketing language. State each fact in one file only, and link to it from the others.
-4. Do not run `pnpm tauri dev` or `pnpm tauri build` and leave them running. If one is needed to verify a step, run it, confirm it, then stop it.
+4. Do not run `pnpm tauri dev` or `pnpm tauri build` and leave them running. If one is needed to verify a step, run it, confirm it, then stop it. Run `pnpm tauri build` only when setup or build docs change.
