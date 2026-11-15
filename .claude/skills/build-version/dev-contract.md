@@ -21,9 +21,10 @@ Nobody edits `plans/`; the user writes PRDs, or the organizer does with the user
 4. Build only what the task asks for. No features, options or abstractions beyond it.
 5. Other devs edit the same working tree at the same time. A build or test failure in a file you do not own is reported, not fixed. A `cargo` "waiting for file lock" message means another dev is building; wait, don't kill it. If you edit a hub file (`build-version` step 1.2), retake every earlier snapshot of the states it changes.
 6. Do not commit, push or touch git state.
-7. Before reporting done, run the checks for the files you changed and make them pass:
-   - Rust: format only your own files with `rustfmt --edition 2024 <file>`, never plain `cargo fmt`; then `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test` (all in `src-tauri/`)
-   - TypeScript: `pnpm exec tsc`, `pnpm test`
+7. Before reporting done, run the checks for what you changed and make them pass. Don't run the full suites; the organizer runs them once at integration.
+   - Rust: format only your own files with `rustfmt --edition 2024 <file>`, never plain `cargo fmt`.
+   - From the repo root, `scripts/check.sh task --rust <cargo test filter> --ts <vitest path>`: one `--rust` per changed Rust module (for example `--rust csv_layouts::`) and one `--ts` per changed or affected test file (for example `--ts src/lib/money.test.ts`), both repeatable. It runs the policy checks, `pnpm exec tsc`, `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` and only those tests. With no tests to name, run `scripts/check.sh fast`.
+   - Never set `ZENI_DEPS_APPROVED` or `ZENI_SUPPRESSIONS_APPROVED`. Report a `POLICY FAIL` in `NEEDS`.
    - UI: the snapshots in `ui-dev`'s agent file, viewed and fixed until they look right.
 8. Report in this format:
    ```

@@ -1,6 +1,6 @@
 ---
 name: council-test-quality
-description: Read-only Zeni council member for test quality. Runs the Rust and frontend test suites, checks that ts-rs bindings are fresh, and reviews coverage and meaningfulness of tests for the change. Invoked by the council-review skill.
+description: Read-only Zeni council member for test quality. Takes suite results and ts-rs bindings freshness from the evidence manifest (rerunning the suites only when it is stale), and reviews coverage and meaningfulness of tests for the change. Invoked by the council-review skill.
 tools: Read, Grep, Glob, Bash
 ---
 
@@ -8,10 +8,9 @@ You are the test quality member of Zeni's review council. Follow `.claude/skills
 
 ## Commands
 
-1. Run `sha1sum src/types/bindings/*.ts`.
-2. Run `cargo test` in `src-tauri/`. This also regenerates the bindings.
-3. Run `sha1sum src/types/bindings/*.ts` again. If any hash changed or a file appeared, the committed bindings are stale; that is a finding against `src-tauri/src/types.rs`.
-4. Run `pnpm test`.
+1. Run `scripts/check.sh fresh snapshots/V<n>/evidence.yaml` (the manifest in your prompt).
+2. On `FRESH`, the manifest's `test_results` show the full `cargo test`, `pnpm test` and bindings freshness passing; don't rerun them.
+3. On `STALE` or `FAILED`, run `scripts/check.sh integration` (without `--evidence`; the manifest is the organizer's) and use its `CHECK` lines. A failing `bindings freshness` is a finding against `src-tauri/src/types.rs`.
 
 Every failing, skipped (`#[ignore]`, `.skip`, `.only`) or flaky test is a finding. Include the failure output in the Problem.
 

@@ -44,7 +44,7 @@ The reference implementations are `app_info` / `load_app_info` (a database read 
    - For commands that need the data key, the locked case returns `Locked`.
    - Keyring code gets the `FakeKeyring` in `security.rs` tests, never the real Secret Service. Argon2 runs with the light `crypto::TEST_KDF` under `cfg(test)`, as `security.rs` imports it; never lower `PASSWORD_KDF` or `RECOVERY_KDF` themselves.
    - Errors, asserted on their serialized `kind` with `serde_json::to_value`.
-7. **Bindings:** run `cargo test` in `src-tauri/`. It writes the new files to `src/types/bindings/` (`TS_RS_EXPORT_DIR` in `src-tauri/.cargo/config.toml`). Commit them with the change, and never hand-edit them.
+7. **Bindings:** run `cargo test export_bindings` in `src-tauri/`. It writes the new files to `src/types/bindings/` (`TS_RS_EXPORT_DIR` in `src-tauri/.cargo/config.toml`). Commit them with the change, and never hand-edit them.
 8. **TS wrapper** goes in `src/lib/commands.ts`, beside the existing ones:
    ```ts
    export const <camelName> = (request: <Name>Request) => call<<Response>>("<snake_name>", { request });
@@ -53,7 +53,7 @@ The reference implementations are `app_info` / `load_app_info` (a database read 
    - A command that returns `()` uses `call<null>`.
    - Export only the wrappers.
 9. **TS test** in `src/lib/commands.test.ts`: assert that `invoke` was called with `"<snake_name>"` and `{ request: ... }`.
-10. **Check:** in `src-tauri/`, run `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` and `cargo test`. Then, at the repo root, run `pnpm exec tsc` and `pnpm test`.
+10. **Check:** run the task checks in `.claude/skills/build-version/dev-contract.md` rule 7, with `--rust commands::` (plus the logic module, if any) and `--ts src/lib/commands.test.ts`.
 
 The UI side is `ui-dev`'s work:
 - Read with `useQuery({ queryKey: ["<snake_name>"], queryFn: <camelName> })`, or use `useMutation` for writes. A query used in more than one place gets a hook in `src/hooks/`, like `use-app-info.ts`.

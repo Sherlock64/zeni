@@ -1,6 +1,6 @@
 ---
 name: build-version
-description: Organizer playbook for building one Zeni version (V1..V12) from its PRD. Maps the PRD into a task graph, runs parallel core-dev and ui-dev agents wave by wave with strict file ownership, then docs-writer and prompt-engineer, then loops the council until nothing critical, high or blocking medium remains, then opens a PR and runs the app for the user. Use when the user says "build V<n>", "implement PRD-V<n>", "/build-version V<n>", or asks to run the version workflow.
+description: Organizer playbook for building one Zeni version (V1..V12) from its PRD. Maps the PRD into a task graph, runs parallel core-dev and ui-dev agents wave by wave with strict file ownership, then docs-writer and prompt-engineer where needed, then loops a risk-selected council until nothing critical, high or blocking medium remains, then opens a PR and runs the app for the user. Use when the user says "build V<n>", "implement PRD-V<n>", "/build-version V<n>", or asks to run the version workflow.
 argument-hint: V<n>
 ---
 
@@ -8,9 +8,9 @@ argument-hint: V<n>
 
 You are the organizer. You plan, delegate, verify and decide. Leave all code and docs edits to the dev agents.
 
-Flow: plan → code waves (`core-dev` + `ui-dev`, parallel) → verify → docs and agents (`docs-writer` + `prompt-engineer`) → council → blocking findings go back to the code waves; otherwise PR and hand-off.
+Flow: plan → code waves (`core-dev` + `ui-dev`, parallel) → integration → docs and agents (only where needed) → council (risk-selected) → blocking findings go back to the code waves; otherwise PR, metrics and hand-off.
 
-Usage gate: before every phase (each code wave, verify, docs and agents, each council round, each fix wave, PR), call `mcp__ccd_session_mgmt__get_usage`. If the weekly window is at about 90% or more, start no new agents: let in-flight ones finish, tell the user, and stop with no wakeups until the user prompts you to continue. If the 5-hour window is at about 80% or more, do the same but keep the prompt cache warm with a background Bash `sleep 3300` (55 minutes, under the 1-hour cache TTL) that wakes you; repeat until the window resets, then start the phase. Resume an agent cut off by a limit with SendMessage; never respawn it. Stop the wakeups once the PR is open.
+Usage gate: before every phase (each code wave, integration, docs and agents, each council round, each fix wave, PR), call `mcp__ccd_session_mgmt__get_usage`. If the 5-hour window is at about 80% or more, or the weekly window at about 90% or more, start no new agents: let in-flight ones finish, notify the user with PushNotification and a message naming the window and its reset time so they can reset the limit, and wait for their prompt. Run no sleep or cache-warm loops unless the user asks for them. Resume an agent cut off by a limit with SendMessage; never respawn it.
 
 ## 0. Scope
 
@@ -38,22 +38,22 @@ Usage gate: before every phase (each code wave, verify, docs and agents, each co
 3. Handle each report's `NEEDS`. Route a change in someone else's file to that file's task as a follow-up (or a new task if it has finished), and send dependency requests to the user. Start the next wave only when every task it depends on reports `STATUS: DONE`.
 4. Open one `SNAPSHOTS` PNG per changed page yourself; leave the rest to the UI council members. If one shows something wrong or a state is missing, send it back to that task. Keep the list of PNGs for the council.
 
-## 3. Verify
+## 3. Integration
 
-Run `pnpm exec tsc`, `pnpm test`, and in `src-tauri/` `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` and `cargo test`. Route each failure to the task that owns the failing file and repeat until everything is green.
+Run `scripts/check.sh integration --evidence snapshots/V<n>/evidence.yaml` once per unchanged tree. It runs the policy checks, type-check, lint, the full `cargo test` and `pnpm test` and the bindings freshness check, and writes the evidence manifest. Prefix `ZENI_DEPS_APPROVED=1` only when every dependency change is one the user approved, and `ZENI_SUPPRESSIONS_APPROVED=1` only for suppressions the user approved. Route each `CHECK ...: fail` and `POLICY FAIL` to the task that owns the file, and rerun only after a fix changed the tree. Never rerun while `scripts/check.sh fresh snapshots/V<n>/evidence.yaml` prints `FRESH`.
 
 ## 4. Docs and agents
 
-Start only after step 3 is green. Spawn `docs-writer` (document the final state, running every command it documents) and `prompt-engineer` (update agents and skills if the stack, conventions or workflow changed) in one message.
+Start only after step 3 is green. Spawn `docs-writer` only if user-facing behaviour, commands, layout or facts `CLAUDE.md` describes changed (it documents the final state, running every command it documents), and `prompt-engineer` only if the stack, conventions or workflow changed (it updates agents and skills). Spawn the needed ones in one message. Record each skipped one and why in `snapshots/V<n>/metrics.md`.
 
 ## 5. Council loop
 
-1. Spawn one `general-purpose` agent that runs the `council-review` skill and returns only its step-8 report. Give it `plans/PRD-V<n>.md`, the round number, the contracts path, the snapshot list (one PNG per distinct state), and the approved-dependencies list.
+1. Run the `council-review` skill yourself; don't delegate it to a coordinator agent. Give it `plans/PRD-V<n>.md` (or, for a hotfix, the task brief), the round number, the contracts path, the evidence manifest `snapshots/V<n>/evidence.yaml`, the snapshot list, and the approved-dependencies list. First `scripts/check.sh fresh snapshots/V<n>/evidence.yaml` must print `FRESH`; otherwise rerun step 3.
 2. If the council passes, go to step 6.
-3. If it fails, turn each `BLOCKING` finding into a fix task for the owner of the cited file. Decide every `CONFLICT` yourself first. Keep each finding's severity, `file:line`, Problem and Fix verbatim. Send each fix task with SendMessage to the agent that built the cited files, when it still owns them; spawn a fresh agent only when the files span owners or the original agent is gone. Build a small task graph for the fixes with the step 1 rules (one task per file set, parallel where files don't overlap), and run it through steps 2 and 3. UI fixes come with fresh snapshots. Run `docs-writer` or `prompt-engineer` only if a finding targets their files or a fix changes what they describe.
-4. Leave `NON-BLOCKING` findings as follow-ups, unless a fix task already edits that exact code; then include them in it. Append every follow-up, with severity, `file:line`, Problem and Fix, to `snapshots/V<n>/council-findings.md`. `snapshots/` is gitignored, so the findings stay on this machine.
-5. Reconvene the full council (a fix can regress another dimension). Pass along the rejected findings and their reasons.
-6. If the same blocking finding survives three rounds, or two members keep contradicting each other, stop and ask the user.
+3. If it fails, turn each `BLOCKING` finding into a fix task for the owner of the cited file. Decide every `CONFLICT` yourself first. Keep each finding's severity, `file:line`, Problem and Fix verbatim. Send each fix task with SendMessage to the agent that built the cited files, when it still owns them; spawn a fresh agent only when the files span owners or the original agent is gone. Build a small task graph for the fixes with the step 1 rules (one task per file set, parallel where files don't overlap), and run it through steps 2 and 3. Each UI fix task names the exact snapshots to retake (path, route, state); the next round gets only those PNGs. Run `docs-writer` or `prompt-engineer` only if a finding targets their files or a fix changes what they describe.
+4. Leave `NON-BLOCKING` findings as follow-ups, unless a fix task already edits that exact code; then include them in it. They are already in `snapshots/V<n>/council-findings.md` (`council-review` step 10). `snapshots/` is gitignored, so the findings stay on this machine.
+5. Re-review only what the fixes can affect. If a fix changed a contract, a migration, auth or secrets handling, a sensitive path (`council-review` step 2) or semantics other code shares, rerun step 3 and let `council-review` select members from scratch. Otherwise rerun step 3, then convene only the members with a blocking finding, plus each member whose dimension the fixes' files touch, plus `council-prd-compliance` in every round. Pass along the rejected findings and their reasons.
+6. If the same blocking finding survives three rounds, or two members still contradict each other after a full-eight round, stop and ask the user.
 
 ## 6. Pull request and hand-off
 
@@ -71,4 +71,5 @@ Start only after step 3 is green. Spawn `docs-writer` (document the final state,
    - The final council table, and the path to `snapshots/V<n>/council-findings.md` with the most important follow-ups.
    - The key snapshots: show one per changed page.
    - Every `RUNTIME` acceptance criterion as a step they can check in the window (for example "Open Settings and press Trigger sample error").
-5. Stop here. Don't merge. The next version gets its own chat.
+5. Run the retrospective tally on this session (`retrospective` skill, step 1.1 and 1.2) and append to `snapshots/V<n>/metrics.md`: weighted tokens per phase (plan, code waves, integration, docs and agents, each council round, each fix wave), agent launches, council member launches, full integration runs, and fix and review rounds, each beside the V3.1 baseline in `retros/2026-11-15-v3.1-csv-import.html`.
+6. Stop here. Don't merge. The next version gets its own chat.
