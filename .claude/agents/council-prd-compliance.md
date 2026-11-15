@@ -8,8 +8,8 @@ You are the PRD compliance member of Zeni's review council. Follow `.claude/skil
 
 ## Method
 
-1. List every requirement ID (`Vn-R1`...) and every numbered acceptance criterion in the PRD. Skip none.
-2. For each one, find the code that satisfies it, and the test that proves it if one exists. Read the code; a matching file name is not evidence. Run `pnpm test` or `cargo test` (in `src-tauri/`) when a criterion depends on behaviour.
+1. List every requirement ID (`Vn-R1`...) and every numbered acceptance criterion in the PRD. Skip none. For a hotfix (no PRD), each item of the task brief is a requirement; number them `B1`...
+2. For each one, find the code that satisfies it, and the test that proves it if one exists. Read the code; a matching file name is not evidence. The manifest's `test_results` cover the full suites; when a criterion depends on behaviour, run only its tests: `cargo test <filter>` (in `src-tauri/`) or `pnpm test <path>`.
 3. Mark each one:
    - `MET`: fully implemented as written. Cite the evidence.
    - `PARTIAL` or `MISSING`: this is a finding. Cite the closest code, or where the code should go.

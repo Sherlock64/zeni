@@ -1,0 +1,169 @@
+#!/usr/bin/env bash
+# Zeni verification gate. Spec: snapshots/V3.1.1/contracts.md ("scripts/check.sh").
+# Usage: scripts/check.sh fast
+#        scripts/check.sh task [--rust <cargo test filter>]... [--ts <vitest path or pattern>]...
+#        scripts/check.sh integration [--evidence snapshots/V<n>/evidence.yaml]
+#        scripts/check.sh fresh snapshots/V<n>/evidence.yaml
+# Overrides: ZENI_DEPS_APPROVED=1, ZENI_SUPPRESSIONS_APPROVED=1 (only for what the user approved).
+set -uo pipefail
+export LC_ALL=C # stable sort order for comm and the diff hash
+cd "$(git rev-parse --show-toplevel)" || exit 2
+base=$(git merge-base HEAD origin/main) || { echo "no merge base with origin/main" >&2; exit 2; }
+
+failed=0
+results=() # "outcome<TAB>command" per step, for the evidence manifest
+
+step() { # step <label> <command...>: run, print CHECK line, record outcome
+  local label=$1 outcome=pass
+  shift
+  "$@" || { outcome=fail; failed=1; }
+  echo "CHECK $label: $outcome"
+  results+=("$outcome"$'\t'"$label")
+}
+
+untracked() { git ls-files -z --others --exclude-standard -- "$@" | sort -z; }
+
+# sha256 of the change vs base: tracked diff (working tree), then each untracked file's path and contents.
+tree_sha() {
+  {
+    git diff --binary --no-color --no-ext-diff "$base" -- "$@"
+    untracked "$@" | while IFS= read -r -d '' f; do printf '%s\0' "$f"; cat -- "$f"; done
+  } | sha256sum | cut -d' ' -f1
+}
+
+# Dependency lines of a manifest, each prefixed with its section, one per line.
+dep_lines() { # dep_lines cargo|npm < file
+  if [[ $1 == cargo ]]; then
+    awk '/^[[:space:]]*\[/ { sec = ($0 ~ /dependencies/) ? $0 : ""; next }
+         sec != "" && /^[[:space:]]*[^#[:space:]]/ { print sec "\t" $0 }'
+  else
+    # A section opened and closed on one line ("devDependencies": {}) is itself the record.
+    awk '/^  "(dependencies|devDependencies)"[[:space:]]*:/ { if ($0 ~ /}/) print $0; else sec = $1; next }
+         sec != "" && /^  [}\]]/ { sec = ""; next }
+         sec != "" { sub(/,[[:space:]]*$/, ""); print sec "\t" $0 }'
+  fi
+}
+
+policy() {
+  local ok=0 f kind
+  # 1. Applied migrations are immutable: no tracked file at base may be modified, deleted or renamed.
+  while IFS= read -r -d '' f; do
+    echo "POLICY FAIL: applied migration changed $f"; ok=1
+  done < <(git diff -z --no-renames --name-only --diff-filter=DMT "$base" -- src-tauri/migrations/)
+
+  # 2. Dependency lines added or removed vs base.
+  if [[ ${ZENI_DEPS_APPROVED:-} != 1 ]]; then
+    for f in src-tauri/Cargo.toml package.json; do
+      kind=npm; [[ $f == *.toml ]] && kind=cargo
+      if [[ -n $(comm -3 <(git show "$base:$f" 2>/dev/null | dep_lines $kind | sort) \
+                         <(cat -- "$f" 2>/dev/null | dep_lines $kind | sort)) ]]; then
+        echo "POLICY FAIL: dependency change $f"; ok=1
+      fi
+    done
+  fi
+
+  # 3. New lint/test suppressions in added lines (tracked diff) or untracked files, per language.
+  if [[ ${ZENI_SUPPRESSIONS_APPROVED:-} != 1 ]]; then
+    while IFS= read -r f; do
+      echo "POLICY FAIL: new suppression $f"; ok=1
+    done < <({
+      suppressions 'src-tauri/*.rs' -- '#[allow(' '#![allow(' '#[ignore'
+      suppressions 'src/*.ts' 'src/*.tsx' ':!src/components/ui/' ':!src/types/bindings/' -- \
+        'eslint-disable' '@ts-ignore' '@ts-expect-error' '@ts-nocheck' '.skip(' '.only(' 'it.todo('
+    } | sort -u)
+  fi
+  return $ok
+}
+
+# suppressions <pathspec>... -- <pattern>...: print each file with an added line containing a pattern.
+# shortcut: paths with tabs or newlines are not supported; fine for this repo.
+suppressions() {
+  local spec=() pats=() p
+  while [[ $1 != -- ]]; do spec+=("$1"); shift; done
+  shift
+  for p; do pats+=(-e "$p"); done
+  git diff -U0 --no-color --no-ext-diff --src-prefix=a/ --dst-prefix=b/ "$base" -- "${spec[@]}" | awk '
+    /^\+\+\+ / { f = substr($0, 7); next }
+    /^\+/ { print f "\t" substr($0, 2) }' | grep -F "${pats[@]}" | cut -f1
+  untracked "${spec[@]}" | xargs -0 -r grep -lF "${pats[@]}" --
+}
+
+fast() {
+  step policy policy
+  step "pnpm exec tsc" pnpm exec tsc
+  step "cargo fmt --check" bash -c 'cd src-tauri && cargo fmt --check'
+  step "cargo clippy --all-targets -- -D warnings" bash -c 'cd src-tauri && cargo clippy --all-targets -- -D warnings'
+}
+
+usage() { sed -n '/^# Usage:/,/^# Overrides:/p' "$0" >&2; exit 2; }
+
+q() { local s=${1//\'/\'\'}; printf "'%s'" "$s"; } # YAML single-quoted scalar
+
+write_evidence() {
+  local path=$1 tmp r f
+  mkdir -p "$(dirname "$path")"
+  tmp=$(mktemp "$path.XXXXXX") # same directory, so mv is atomic
+  {
+    echo "version: $(basename "$(dirname "$path")")"
+    echo "base_ref: $base"
+    echo "head_ref: $(git rev-parse HEAD)"
+    echo "diff_sha256: $(tree_sha)"
+    echo "generated_at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "changed_files:"
+    { git diff -z --no-renames --name-only "$base"; untracked; } | sort -zu |
+      while IFS= read -r -d '' f; do echo "  - $(q "$f")"; done
+    echo "test_results:"
+    for r in "${results[@]}"; do
+      echo "  - command: $(q "${r#*$'\t'}")"
+      echo "    outcome: ${r%%$'\t'*}"
+    done
+    [[ -f $path ]] && sed -n '/^review:/,$p' "$path"
+  } >"$tmp"
+  mv "$tmp" "$path"
+  echo "evidence written: $path"
+}
+
+mode=${1:-}
+shift || true
+case $mode in
+  fast) fast ;;
+  task)
+    rust=() ts=()
+    while (($#)); do
+      case $1 in
+        --rust) [[ -n ${2:-} ]] || usage; rust+=("$2"); shift 2 ;;
+        --ts) [[ -n ${2:-} ]] || usage; ts+=("$2"); shift 2 ;;
+        *) usage ;;
+      esac
+    done
+    fast
+    for r in "${rust[@]}"; do step "cargo test $r" bash -c 'cd src-tauri && cargo test "$1"' _ "$r"; done
+    ((${#ts[@]})) && step "pnpm test ${ts[*]}" pnpm test "${ts[@]}"
+    ((${#rust[@]} + ${#ts[@]})) || echo "no --rust or --ts filters given: ran fast checks only"
+    ;;
+  integration)
+    evidence=
+    if (($#)); then
+      [[ $1 == --evidence && -n ${2:-} ]] || usage
+      evidence=$2
+    fi
+    fast
+    before=$(tree_sha src/types/bindings)
+    step "cargo test" bash -c 'cd src-tauri && cargo test'
+    step "pnpm test" pnpm test
+    step "bindings freshness" test "$(tree_sha src/types/bindings)" = "$before"
+    [[ -n $evidence ]] && write_evidence "$evidence"
+    ;;
+  fresh)
+    [[ -n ${1:-} ]] || usage
+    path=$1
+    [[ -f $path ]] || { echo "STALE (no manifest at $path)"; exit 1; }
+    want=$(sed -n 's/^diff_sha256: *//p' "$path")
+    [[ $want == "$(tree_sha)" ]] || { echo STALE; exit 1; }
+    outcomes=$(sed -n '/^test_results:/,/^[^ ]/s/^ *outcome: *//p' "$path")
+    [[ -n $outcomes && -z $(grep -vx pass <<<"$outcomes") ]] || { echo FAILED; exit 1; }
+    echo FRESH
+    ;;
+  *) usage ;;
+esac
+exit $failed
