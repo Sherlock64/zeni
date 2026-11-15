@@ -5,7 +5,7 @@
 //! processing instructions sit before `<OFX>` and are skipped.
 
 use crate::transactions::is_date;
-use crate::types::{AppError, ParsedStatement, ParsedTransaction};
+use crate::types::{AppError, FileBalanceCheck, ParsedStatement, ParsedTransaction};
 
 /// Parses one OFX/QFX bank statement.
 pub fn parse(text: &str) -> Result<ParsedStatement, AppError> {
@@ -50,6 +50,8 @@ pub fn parse(text: &str) -> Result<ParsedStatement, AppError> {
                 .unwrap_or_default(),
             memo,
             transaction_type: leaf(block, "TRNTYPE"),
+            running_balance_cents: None,
+            bank_category: None,
             original: without_transfer_accounts(block)?,
         });
     }
@@ -59,6 +61,8 @@ pub fn parse(text: &str) -> Result<ParsedStatement, AppError> {
         ledger_balance_cents,
         balance_as_of,
         transactions,
+        not_posted: 0,
+        file_balance_check: FileBalanceCheck::NotChecked,
     })
 }
 

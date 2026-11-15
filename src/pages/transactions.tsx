@@ -11,6 +11,7 @@ import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTi
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { listTransactions } from "@/lib/commands";
+import { formatDate } from "@/lib/dates";
 import { formatCents } from "@/lib/money";
 import type { TransactionQuery } from "@/types/bindings/TransactionQuery";
 import type { TransactionSort } from "@/types/bindings/TransactionSort";
@@ -26,9 +27,6 @@ const initialQuery: TransactionQuery = {
   page: 0,
   pageSize: PAGE_SIZE,
 };
-
-const dateFormat = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeZone: "UTC" });
-const formatDate = (date: string) => dateFormat.format(new Date(`${date}T00:00:00Z`));
 
 export function TransactionsPage() {
   const [query, setQuery] = useState(initialQuery);
@@ -128,7 +126,7 @@ export function TransactionsPage() {
             <EmptyTitle>
               <h2>No transactions yet</h2>
             </EmptyTitle>
-            <EmptyDescription>Import an OFX or QFX file to get started.</EmptyDescription>
+            <EmptyDescription>Import an OFX, QFX or CSV file to get started.</EmptyDescription>
           </EmptyHeader>
         </Empty>
       );

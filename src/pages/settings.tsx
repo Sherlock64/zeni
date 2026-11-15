@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { TriangleAlertIcon } from "lucide-react";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { CommandErrorAlert } from "@/components/command-error-alert";
+import { CsvLayoutsCard } from "@/components/csv-layouts-card";
 import { Page } from "@/components/page";
 import { RecoveryCodes } from "@/components/recovery-codes";
 import { TextField } from "@/components/text-field";
@@ -59,8 +60,10 @@ export function SettingsPage() {
   }
 
   return (
-    <Page title="Settings" description="Security and details of this installation of Zeni.">
+    <Page title="Settings" description="Security, saved CSV layouts and details of this installation of Zeni.">
       <SecurityCard />
+
+      <CsvLayoutsCard />
 
       <Card>
         <CardHeader>

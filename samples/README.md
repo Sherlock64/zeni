@@ -15,9 +15,10 @@ balance before August 1 is 321540.
 | `checking-2026-10.csv` | CSV in a bank export layout, newest first | 27 posted + 1 pending, Oct 1-31 | 1029791 (2026-10-30) |
 
 Import them in that order. August is the balance baseline; September passes the balance check.
-The CSV imports once CSV support exists (V3.1): map Description to description and Extended
-Description to memo, Transaction ID as the ID column, and Posting Status as the status column.
-Its running balance is consistent and continues from September.
+The CSV needs a mapping the first time (V3.1): map Description to description, Extended
+Description to memo, Transaction ID as the ID column, Posting Status as the status column and
+Balance as the running balance. Its running balance is consistent and continues from September;
+the pending row is skipped.
 
 The data is shaped for later versions:
 
@@ -29,5 +30,6 @@ The data is shaped for later versions:
   withdrawal, for categorisation and spending rules. The CSV's Transaction Category column gives
   bank category hints.
 
-`src-tauri/src/import_acceptance_tests.rs` (`samples_import_as_consecutive_months`) imports the
-OFX and QFX files, so a parser change that breaks them fails the tests.
+`src-tauri/src/import_acceptance_tests.rs` (`samples_import_as_consecutive_months`) imports all
+three files (the CSV with that mapping: 27 added, 1 not posted, balance check passed at 1029791),
+so a parser change that breaks them fails the tests.

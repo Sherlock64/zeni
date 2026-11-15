@@ -3,12 +3,13 @@ use tauri_plugin_dialog::DialogExt;
 
 use crate::keyring::SecretService;
 use crate::types::{
-    Account, AccountNumbers, AppError, AppInfo, AppState, ImportRecord, ImportSummary,
+    Account, AccountNumbers, AppError, AppInfo, AppState, CommitImportRequest, CsvLayout,
+    CsvMapping, CsvPreviewRow, DeleteCsvLayoutRequest, ImportRecord, ImportStep, ImportSummary,
     RecoverRequest, RecoveryCodes, RevealAccountNumbersRequest, RevertImportRequest,
-    SampleErrorRequest, SecurityStatus, SetupRequest, SetupResponse, TransactionPage,
-    TransactionQuery, UnlockRequest,
+    SampleErrorRequest, SaveCsvLayoutRequest, SecurityStatus, SetupRequest, SetupResponse,
+    TransactionPage, TransactionQuery, UnlockRequest, UpdateCsvLayoutRequest,
 };
-use crate::{accounts, db, imports, security, transactions};
+use crate::{accounts, csv_layouts, db, imports, security, transactions};
 
 const MAX_REASON_CHARS: usize = 200;
 
@@ -105,14 +106,14 @@ pub async fn reveal_account_numbers(
 pub async fn import_file(
     app: AppHandle,
     state: State<'_, AppState>,
-) -> Result<Option<ImportSummary>, AppError> {
+) -> Result<Option<ImportStep>, AppError> {
     // Fails before showing the picker when the database is unavailable.
     security::pool(&state)?;
     // The callback form never blocks a thread; the dialog answers through the channel.
     let (sender, mut receiver) = tauri::async_runtime::channel(1);
     app.dialog()
         .file()
-        .add_filter("OFX or QFX files", &["ofx", "qfx"])
+        .add_filter("OFX, QFX or CSV files", &["ofx", "qfx", "csv"])
         .pick_file(move |file| {
             // Fails only when the command was dropped, so nobody is waiting for the answer.
             let _ = sender.try_send(file);
@@ -124,6 +125,56 @@ pub async fn import_file(
         .into_path()
         .map_err(|_| AppError::Import("Couldn't open the selected file.".into()))?;
     imports::import_path(&state, &path).await.map(Some)
+}
+
+#[tauri::command]
+pub async fn preview_csv_mapping(
+    state: State<'_, AppState>,
+    request: CsvMapping,
+) -> Result<Vec<CsvPreviewRow>, AppError> {
+    imports::preview_csv_mapping(&state, request)
+}
+
+#[tauri::command]
+pub async fn save_csv_layout(
+    state: State<'_, AppState>,
+    request: SaveCsvLayoutRequest,
+) -> Result<ImportStep, AppError> {
+    imports::save_csv_layout(&state, request).await
+}
+
+#[tauri::command]
+pub async fn commit_import(
+    state: State<'_, AppState>,
+    request: CommitImportRequest,
+) -> Result<ImportSummary, AppError> {
+    imports::commit_import(&state, request).await
+}
+
+#[tauri::command]
+pub fn cancel_import(state: State<'_, AppState>) {
+    imports::cancel_import(&state);
+}
+
+#[tauri::command]
+pub async fn list_csv_layouts(state: State<'_, AppState>) -> Result<Vec<CsvLayout>, AppError> {
+    csv_layouts::list(&state).await
+}
+
+#[tauri::command]
+pub async fn update_csv_layout(
+    state: State<'_, AppState>,
+    request: UpdateCsvLayoutRequest,
+) -> Result<CsvLayout, AppError> {
+    csv_layouts::update(&state, request).await
+}
+
+#[tauri::command]
+pub async fn delete_csv_layout(
+    state: State<'_, AppState>,
+    request: DeleteCsvLayoutRequest,
+) -> Result<(), AppError> {
+    csv_layouts::delete(&state, request).await
 }
 
 #[tauri::command]
@@ -203,6 +254,7 @@ mod tests {
         let state = AppState {
             db: tauri::async_runtime::block_on(db::connect(&dir)),
             session: Default::default(),
+            pending_import: Default::default(),
         };
         let info = app_info_for(&state).unwrap();
         assert_eq!(
@@ -220,6 +272,7 @@ mod tests {
         let state = AppState {
             db: Err("Couldn't open the database at /x/zeni.db: denied".into()),
             session: Default::default(),
+            pending_import: Default::default(),
         };
         let error = serde_json::to_value(app_info_for(&state).unwrap_err()).unwrap();
         assert_eq!(
@@ -241,6 +294,7 @@ mod tests {
                 path: "memory".into(),
             }),
             session: Default::default(),
+            pending_import: Default::default(),
         };
         assert!(matches!(app_info_for(&state), Err(AppError::Database(_))));
     }

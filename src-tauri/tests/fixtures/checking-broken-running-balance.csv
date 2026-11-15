@@ -1,0 +1,4 @@
+"Transaction ID","Posting Date","Effective Date","Transaction Type","Posting Status","Amount","Check Number","Reference Number","Description","Transaction Category","Type","Balance","Memo","Extended Description"
+"20261212 ECB 00203","12/12/2026","12/12/2026","Debit","Posted","-10.00000","","300000203","Book Nook","Shopping","POS","1465.01000","","BOOK NOOK"
+"20261211 ECB 00202","12/11/2026","12/11/2026","Debit","Posted","-25.00000","","300000202","Gas N Go","Gas/Fuel","POS","1475.00000","","GAS N GO"
+"20261210 ECB 00201","12/10/2026","12/10/2026","Credit","Posted","500.00000","","300000201","Transfer From Savings","Transfer","Transfer","1500.00000","","TRANSFER FROM SAVINGS"

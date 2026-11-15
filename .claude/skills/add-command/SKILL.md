@@ -40,7 +40,7 @@ The reference implementations are `app_info` / `load_app_info` (a database read 
 6. **Rust tests** go in `#[cfg(test)] mod tests` of `commands.rs`. Call the plain function, not the wrapper. Cover:
    - The success path, with state from `db::connect(&db::temp_dir("<name>"))`. Remove the directory at the end.
    - Each validation rule, on both sides of every limit (for example 200 accepted, 201 rejected), and after trimming.
-   - For database commands, the unavailable case: `AppState { db: Err("...".into()), session: Default::default() }` returns `Database`.
+   - For database commands, the unavailable case: `AppState { db: Err("...".into()), session: Default::default(), pending_import: Default::default() }` returns `Database`.
    - For commands that need the data key, the locked case returns `Locked`.
    - Keyring code gets the `FakeKeyring` in `security.rs` tests, never the real Secret Service. Argon2 runs with the light `crypto::TEST_KDF` under `cfg(test)`, as `security.rs` imports it; never lower `PASSWORD_KDF` or `RECOVERY_KDF` themselves.
    - Errors, asserted on their serialized `kind` with `serde_json::to_value`.

@@ -1,0 +1,8 @@
+"Transaction ID","Posting Date","Effective Date","Transaction Type","Posting Status","Amount","Check Number","Reference Number","Description","Transaction Category","Type","Balance","Memo","Extended Description"
+"","12/01/2026","12/01/2026","Debit","Pending","-18.40000","","","Bean There Cafe","Restaurants/Dining","POS","","","BEAN THERE CAFE PENDING"
+"20261130 ECB 00106","11/30/2026","11/30/2026","Debit","Posted","-38.50000","","300000106","Gas N Go","Gas/Fuel","POS","6304.01000","","GAS N GO"
+"20261127 ECB 00105","11/27/2026","11/27/2026","Debit","Posted","-4.25000","","300000105","Bean There Cafe","Restaurants/Dining","POS","6342.51000","","BEAN THERE CAFE"
+"20261126 ECB 00104","11/26/2026","11/26/2026","Debit","Posted","-45.00000","","300000104","Streamflix","Entertainment","ACH","6346.76000","","STREAMFLIX MONTHLY"
+"20261125 ECB 00103","11/25/2026","11/25/2026","Credit","Posted","2100.00000","","300000103","Acme Payroll","Paychecks","ACH","6391.76000","","ACME PAYROLL, DIRECT DEP"
+"20261124 ECB 00102","11/24/2026","11/24/2026","Debit","Posted","-60.00000","1004","300000102","Check 1004","Uncategorized","Check","4291.76000","","CHECK 1004"
+"20261123 ECB 00101","11/23/2026","11/23/2026","Debit","Posted","-12.34000","","300000101","Fresh Market","Groceries","POS","4351.76000","","FRESH MARKET"

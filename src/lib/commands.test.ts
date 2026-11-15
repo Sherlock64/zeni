@@ -1,19 +1,26 @@
 import { invoke } from "@tauri-apps/api/core";
 import {
   appInfo,
+  cancelImport,
+  commitImport,
   completeSetup,
+  deleteCsvLayout,
   importFile,
+  listCsvLayouts,
   listImports,
   listTransactions,
   listAccounts,
+  previewCsvMapping,
   recover,
   regenerateRecoveryCodes,
   resetSecurity,
   revealAccountNumbers,
   revertImport,
   sampleError,
+  saveCsvLayout,
   securityStatus,
   unlock,
+  updateCsvLayout,
 } from "@/lib/commands";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -117,6 +124,48 @@ test("import and transaction wrappers invoke their commands with the request", a
     [listImports, "list_imports", undefined, []],
     [() => revertImport({ importId: 3 }), "revert_import", { request: { importId: 3 } }, null],
     [() => listTransactions(query), "list_transactions", { request: query }, { rows: [], total: 0 }],
+  ];
+  for (const [run, command, args, response] of cases) {
+    mockInvoke.mockResolvedValueOnce(response);
+    await expect(run()).resolves.toEqual(response);
+    expect(mockInvoke).toHaveBeenLastCalledWith(command, args);
+  }
+});
+
+test("CSV import and layout wrappers invoke their commands with the request", async () => {
+  const mapping = {
+    dateFormat: "MM/DD/YYYY",
+    postedDate: 0,
+    description: 1,
+    amount: { kind: "signed", column: 2 },
+    transactionId: null,
+    memo: null,
+    transactionType: null,
+    runningBalance: null,
+    postingStatus: null,
+    bankCategory: null,
+  } as const;
+  const layout = { id: 4, name: "Bank", headers: ["posting date", "description", "amount"], mapping };
+  const needsMapping = { step: "needsMapping", data: { fileName: "a.csv", headers: [], rows: [] } };
+  const cases: [() => Promise<unknown>, string, unknown, unknown][] = [
+    [importFile, "import_file", undefined, needsMapping],
+    [() => previewCsvMapping(mapping), "preview_csv_mapping", { request: mapping }, []],
+    [
+      () => saveCsvLayout({ name: "Bank", mapping }),
+      "save_csv_layout",
+      { request: { name: "Bank", mapping } },
+      { step: "review", data: { fileName: "a.csv", format: "csv", pairs: [] } },
+    ],
+    [() => commitImport({ skipRows: [1] }), "commit_import", { request: { skipRows: [1] } }, { importId: 2 }],
+    [cancelImport, "cancel_import", undefined, null],
+    [listCsvLayouts, "list_csv_layouts", undefined, [layout]],
+    [
+      () => updateCsvLayout({ layoutId: 4, name: "Bank", mapping }),
+      "update_csv_layout",
+      { request: { layoutId: 4, name: "Bank", mapping } },
+      layout,
+    ],
+    [() => deleteCsvLayout({ layoutId: 4 }), "delete_csv_layout", { request: { layoutId: 4 } }, null],
   ];
   for (const [run, command, args, response] of cases) {
     mockInvoke.mockResolvedValueOnce(response);

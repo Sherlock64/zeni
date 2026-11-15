@@ -2,6 +2,8 @@ import { type QueryClient, useMutation, useQuery, useQueryClient } from "@tansta
 import { CircleCheckIcon, CircleDotIcon, CircleMinusIcon, FileCheckIcon, HistoryIcon, TriangleAlertIcon, UploadIcon, XIcon } from "lucide-react";
 import { useRef, useState } from "react";
 import { CommandErrorAlert } from "@/components/command-error-alert";
+import { CsvMappingDialog } from "@/components/csv-mapping-dialog";
+import { DuplicateReviewDialog } from "@/components/duplicate-review-dialog";
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -16,11 +18,12 @@ import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
-import { importFile, listImports, revertImport } from "@/lib/commands";
+import { cancelImport, importFile, listImports, revertImport } from "@/lib/commands";
 import { formatCents } from "@/lib/money";
 import type { ImportRecord } from "@/types/bindings/ImportRecord";
+import type { ImportStep } from "@/types/bindings/ImportStep";
 import type { ImportSummary } from "@/types/bindings/ImportSummary";
-import type { BalanceFlagProps, ImportListProps, ImportSummaryAlertProps } from "@/types/ui";
+import type { BalanceFlagProps, ImportCancelledProps, ImportListProps, ImportSummaryAlertProps, PendingImportStep } from "@/types/ui";
 
 const money = (cents: number | null) => (cents === null ? "an unknown amount" : formatCents(cents));
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
@@ -36,26 +39,54 @@ function invalidateImports(queryClient: QueryClient) {
 export function ImportControls() {
   const queryClient = useQueryClient();
   const [summary, setSummary] = useState<ImportSummary | null>(null);
+  const [pending, setPending] = useState<PendingImportStep | null>(null);
+  // The file name of the import the user just cancelled, for the notice.
+  const [cancelled, setCancelled] = useState<string | null>(null);
   const importButton = useRef<HTMLButtonElement>(null);
+
+  function handleStep(step: ImportStep) {
+    if (step.step === "imported") {
+      setPending(null);
+      setSummary(step.data);
+      invalidateImports(queryClient);
+    } else setPending(step);
+  }
+
   const mutation = useMutation({
     mutationFn: importFile,
+    onMutate: () => setCancelled(null),
     onSuccess: (result) => {
       // null means the picker was cancelled: leave everything as it was.
-      if (!result) return;
-      setSummary(result);
-      invalidateImports(queryClient);
+      if (result) handleStep(result);
     },
     // A stale summary would reappear once this error is dismissed.
     onError: () => setSummary(null),
   });
+  const cancel = useMutation({
+    mutationFn: cancelImport,
+    onSuccess: () => {
+      setSummary(null);
+      setCancelled(pending?.data.fileName ?? null);
+      setPending(null);
+    },
+    // The dialog can't help with this; the next import replaces the waiting one anyway.
+    onError: () => setPending(null),
+  });
 
   function dismiss() {
     setSummary(null);
+    setCancelled(null);
+    importButton.current?.focus();
+  }
+
+  function returnFocus(event: Event) {
+    event.preventDefault();
     importButton.current?.focus();
   }
 
   function dismissError() {
     mutation.reset();
+    cancel.reset();
     importButton.current?.focus();
   }
 
@@ -74,9 +105,44 @@ export function ImportControls() {
       {/* Always mounted, so screen readers announce the summary when it appears. */}
       <div role="status" className="w-full empty:hidden">
         {summary && <ImportSummaryAlert summary={summary} onDismiss={dismiss} />}
+        {cancelled && <ImportCancelled fileName={cancelled} onDismiss={dismiss} />}
       </div>
       {mutation.isError && <CommandErrorAlert title="Couldn't import the file" error={mutation.error} onDismiss={dismissError} />}
+      {cancel.isError && <CommandErrorAlert title="Couldn't cancel the import" error={cancel.error} onDismiss={dismissError} />}
+      {pending?.step === "needsMapping" && (
+        <CsvMappingDialog
+          needed={pending.data}
+          onStep={handleStep}
+          onCancel={() => cancel.mutate()}
+          cancelling={cancel.isPending}
+          onCloseAutoFocus={returnFocus}
+        />
+      )}
+      {pending?.step === "review" && (
+        <DuplicateReviewDialog
+          review={pending.data}
+          onStep={handleStep}
+          onCancel={() => cancel.mutate()}
+          cancelling={cancel.isPending}
+          onCloseAutoFocus={returnFocus}
+        />
+      )}
     </div>
+  );
+}
+
+function ImportCancelled({ fileName, onDismiss }: ImportCancelledProps) {
+  return (
+    <Alert role={undefined}>
+      <CircleMinusIcon aria-hidden="true" />
+      <AlertTitle className="break-all">Cancelled importing {fileName}</AlertTitle>
+      <AlertDescription>Nothing was stored.</AlertDescription>
+      <AlertAction>
+        <Button variant="ghost" size="icon-sm" onClick={onDismiss} aria-label="Dismiss notice">
+          <XIcon aria-hidden="true" />
+        </Button>
+      </AlertAction>
+    </Alert>
   );
 }
 
@@ -91,11 +157,20 @@ function ImportSummaryAlert({ summary, onDismiss }: ImportSummaryAlertProps) {
     baseline: ["First balance recorded.", `The bank reports ${ledger}. Later imports are checked against it.`],
     notChecked: ["Balance not checked.", "This file has no balance to check against."],
   }[summary.balanceCheck];
-  const mismatch = summary.balanceCheck === "mismatch";
+  const fileBalance = {
+    passed: ["Running balance check passed.", "Every row's balance in the file adds up."],
+    mismatch: [
+      "Running balances don't add up.",
+      "A row's balance in the file doesn't equal the previous balance plus its amount. Some rows may be missing or changed.",
+    ],
+    notChecked: null,
+  }[summary.fileBalanceCheck];
+  const fileMismatch = summary.fileBalanceCheck === "mismatch";
+  const mismatch = summary.balanceCheck === "mismatch" || fileMismatch;
 
   return (
     // role="status" on the wrapper announces it politely; drop the Alert's assertive role.
-    <Alert role={undefined}>
+    <Alert role={undefined} className={mismatch ? "*:[svg]:text-destructive" : undefined}>
       {mismatch ? <TriangleAlertIcon aria-hidden="true" className="text-destructive" /> : <FileCheckIcon aria-hidden="true" />}
       <AlertTitle className="break-all">Imported {summary.fileName}</AlertTitle>
       <AlertDescription className="flex flex-col gap-1">
@@ -103,7 +178,16 @@ function ImportSummaryAlert({ summary, onDismiss }: ImportSummaryAlertProps) {
           {plural(summary.added, "transaction", "transactions")} added, {plural(summary.duplicates, "duplicate", "duplicates")}{" "}
           skipped.
         </div>
-        <div className={mismatch ? "text-destructive" : undefined}>
+        {summary.notPosted > 0 && <div>{plural(summary.notPosted, "row", "rows")} not posted, skipped.</div>}
+        {summary.reviewSkipped > 0 && (
+          <div>{plural(summary.reviewSkipped, "possible duplicate", "possible duplicates")} skipped in review.</div>
+        )}
+        {fileBalance && (
+          <div className={fileMismatch ? "text-destructive" : undefined}>
+            <strong className="font-medium">{fileBalance[0]}</strong> {fileBalance[1]}
+          </div>
+        )}
+        <div className={summary.balanceCheck === "mismatch" ? "text-destructive" : undefined}>
           <strong className="font-medium">{balance[0]}</strong> {balance[1]}
         </div>
       </AlertDescription>
@@ -214,6 +298,12 @@ function ImportList({ onReverted }: ImportListProps) {
                     {plural(record.rowCount, "transaction", "transactions")}
                   </span>
                   <BalanceFlag record={record} />
+                  {record.fileBalanceCheck === "mismatch" && (
+                    <span className="flex items-start gap-1.5 text-xs text-destructive">
+                      <TriangleAlertIcon aria-hidden="true" className="mt-px size-3.5 shrink-0" />
+                      <strong className="font-medium">Running balances in this file don't add up</strong>
+                    </span>
+                  )}
                 </div>
                 <Button variant="outline" size="sm" onClick={() => confirm(record)} aria-label={`Revert ${record.fileName}`}>
                   Revert

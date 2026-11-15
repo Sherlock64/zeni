@@ -12,11 +12,12 @@ const nextSteps: Partial<Record<CommandError["kind"], string>> = {
   InvalidRecoveryCode: "Check the code against your saved list. Each code works only once.",
   NotFound: "It may have been removed. Reload the page and try again.",
   Crypto: "Zeni couldn't decrypt stored data. The database may be damaged or from another installation.",
+  Validation: "Check your entries, then try again.",
   Import: "Nothing was imported. Check the file, or download it from your bank again, then retry.",
 };
 
 // role="alert" is an implicit assertive live region, so the error is announced when it appears.
-export function CommandErrorAlert({ title, error, onDismiss }: CommandErrorAlertProps) {
+export function CommandErrorAlert({ title, error, onDismiss, nextStep = nextSteps[error.kind] }: CommandErrorAlertProps) {
   return (
     <Alert variant="destructive">
       <CircleAlertIcon aria-hidden="true" />
@@ -28,7 +29,7 @@ export function CommandErrorAlert({ title, error, onDismiss }: CommandErrorAlert
           <dt className="text-muted-foreground">Message</dt>
           <dd className="break-words">{error.message}</dd>
         </dl>
-        {nextSteps[error.kind] && <p className="text-muted-foreground">{nextSteps[error.kind]}</p>}
+        {nextStep && <p className="text-muted-foreground">{nextStep}</p>}
       </AlertDescription>
       {onDismiss && (
         <AlertAction>
