@@ -1,0 +1,3 @@
+"Transaction ID","Posting Date","Effective Date","Transaction Type","Posting Status","Amount","Check Number","Reference Number","Description","Transaction Category","Type","Balance","Memo","Extended Description"
+"20261215 ECB 00301","12/15/2026","12/15/2026","Debit","Posted","-12.00000","","300000301","Fresh Market","Groceries","POS","988.00000","","FRESH MARKET"
+"20261214 ECB 00300","12/14/2026","12/14/2026","Credit","Posted","0.00500","","300000300","Interest Paid","Interest","Interest","1000.00000","","INTEREST PAID"

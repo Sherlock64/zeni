@@ -4,6 +4,8 @@ import { appInfo, regenerateRecoveryCodes, sampleError, securityStatus } from "@
 import { SettingsPage } from "@/pages/settings";
 import type { AppInfo } from "@/types/bindings/AppInfo";
 
+// The layouts card has its own tests and its own status region.
+vi.mock("@/components/csv-layouts-card", () => ({ CsvLayoutsCard: () => null }));
 vi.mock("@/lib/commands", () => ({
   appInfo: vi.fn(),
   sampleError: vi.fn(),

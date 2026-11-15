@@ -194,7 +194,7 @@ test("shows the empty state with no transactions at all", async () => {
   vi.mocked(listTransactions).mockResolvedValue({ rows: [], total: 0 });
   renderPage();
   expect(await screen.findByRole("heading", { level: 2, name: "No transactions yet" })).toBeTruthy();
-  expect(screen.getByText("Import an OFX or QFX file to get started.")).toBeTruthy();
+  expect(screen.getByText("Import an OFX, QFX or CSV file to get started.")).toBeTruthy();
   expect(screen.queryByLabelText("Search")).toBeNull();
 });
 

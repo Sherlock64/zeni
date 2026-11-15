@@ -1,22 +1,53 @@
-//! OFX/QFX import into `imports` and `raw_transactions`, import history and revert.
+//! OFX/QFX/CSV import into `imports` and `raw_transactions` (preview, review, commit), import
+//! history and revert.
 
+use std::collections::HashSet;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
+use std::sync::{MutexGuard, PoisonError};
 
-use sqlx::SqlitePool;
+use sqlx::{SqliteExecutor, SqlitePool};
 
-use crate::security;
 use crate::types::{
-    AppError, AppState, BalanceCheck, ImportFormat, ImportRecord, ImportSummary, ParsedStatement,
-    RevertImportRequest,
+    AppError, AppState, BalanceCheck, CommitImportRequest, CsvMapping, CsvMappingNeeded,
+    CsvPreviewRow, ImportFormat, ImportRecord, ImportReview, ImportStep, ImportSummary,
+    ParsedStatement, ParsedTransaction, PendingImport, PendingStep, RevertImportRequest, ReviewRow,
+    SaveCsvLayoutRequest, SuspectedDuplicate,
 };
+use crate::{csv_import, csv_layouts, ofx, security};
 
 const MAX_FILE_BYTES: u64 = 10 * 1024 * 1024;
+/// Data rows shown while mapping a CSV.
+const PREVIEW_ROWS: usize = 5;
 
-/// Reads, parses and imports the file at `path` into the checking account.
-pub async fn import_path(state: &AppState, path: &Path) -> Result<ImportSummary, AppError> {
+fn pending(state: &AppState) -> MutexGuard<'_, Option<PendingImport>> {
+    state
+        .pending_import
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+}
+
+fn nothing_pending() -> AppError {
+    AppError::NotFound("There is no import waiting. Choose the file again.".into())
+}
+
+/// The pending CSV's file name and text, while it waits for a mapping.
+fn mapping_file(pending: &Option<PendingImport>) -> Result<(&str, &str), AppError> {
+    match pending {
+        Some(PendingImport {
+            file_name,
+            step: PendingStep::Mapping { text },
+            ..
+        }) => Ok((file_name, text)),
+        _ => Err(nothing_pending()),
+    }
+}
+
+/// Reads and parses the file at `path`, then previews it. A CSV with an unknown header waits for a mapping.
+pub async fn import_path(state: &AppState, path: &Path) -> Result<ImportStep, AppError> {
     let pool = security::pool(state)?;
+    *pending(state) = None;
     let format = match path
         .extension()
         .and_then(|extension| extension.to_str())
@@ -25,9 +56,10 @@ pub async fn import_path(state: &AppState, path: &Path) -> Result<ImportSummary,
     {
         Some("ofx") => ImportFormat::Ofx,
         Some("qfx") => ImportFormat::Qfx,
+        Some("csv") => ImportFormat::Csv,
         _ => {
             return Err(AppError::Import(
-                "Zeni imports .ofx and .qfx files only.".into(),
+                "Zeni imports .ofx, .qfx and .csv files only.".into(),
             ));
         }
     };
@@ -42,36 +74,286 @@ pub async fn import_path(state: &AppState, path: &Path) -> Result<ImportSummary,
     // Not UTF-8: mapping each byte to a char decodes the file as Latin-1.
     let text = String::from_utf8(bytes)
         .unwrap_or_else(|error| error.into_bytes().into_iter().map(char::from).collect());
-    let statement = crate::ofx::parse(&text)?;
     let file_name = path
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_default();
-    import_statement(pool, &file_name, format, &statement).await
+    if format != ImportFormat::Csv {
+        let statement = ofx::parse(&text)?;
+        return import_or_review(state, file_name, format, None, statement).await;
+    }
+    let headers = csv_import::read_header(&text)?;
+    if let Some(layout) = csv_layouts::find(pool, &csv_import::fingerprint(&headers)).await? {
+        let statement = csv_import::parse(&text, &layout.mapping).map_err(|error| match error {
+            AppError::Import(message) => AppError::Import(format!(
+                "{message} If the saved layout is wrong, edit it in Settings > CSV layouts."
+            )),
+            other => other,
+        })?;
+        return import_or_review(state, file_name, format, Some(layout.id), statement).await;
+    }
+    // Fails before the mapping dialog, so no layout is saved for a file that can't be imported.
+    checking_account(pool).await?;
+    let rows = csv_import::sample_rows(&text, PREVIEW_ROWS)?;
+    *pending(state) = Some(PendingImport {
+        file_name: file_name.clone(),
+        step: PendingStep::Mapping { text },
+    });
+    Ok(ImportStep::NeedsMapping(CsvMappingNeeded {
+        file_name,
+        headers,
+        rows,
+    }))
 }
 
-/// Imports an already parsed statement, skipping duplicates, and runs the balance check.
-async fn import_statement(
-    pool: &SqlitePool,
-    file_name: &str,
-    format: ImportFormat,
-    statement: &ParsedStatement,
+/// The pending CSV's first rows parsed with a draft mapping.
+pub fn preview_csv_mapping(
+    state: &AppState,
+    mapping: CsvMapping,
+) -> Result<Vec<CsvPreviewRow>, AppError> {
+    let pending = pending(state);
+    let (_, text) = mapping_file(&pending)?;
+    csv_layouts::validate_mapping(csv_import::read_header(text)?.len(), &mapping)?;
+    csv_import::preview(text, &mapping, PREVIEW_ROWS)
+}
+
+/// Parses the whole pending CSV with the mapping, saves the layout and previews the file.
+/// A file rejection saves nothing and keeps the file pending, so the mapping can be fixed.
+pub async fn save_csv_layout(
+    state: &AppState,
+    request: SaveCsvLayoutRequest,
+) -> Result<ImportStep, AppError> {
+    let pool = security::pool(state)?;
+    let (file_name, fingerprint, statement) = {
+        let pending = pending(state);
+        let (file_name, text) = mapping_file(&pending)?;
+        let headers = csv_import::read_header(text)?;
+        csv_layouts::validate_mapping(headers.len(), &request.mapping)?;
+        let statement = csv_import::parse(text, &request.mapping)?;
+        (
+            file_name.to_owned(),
+            csv_import::fingerprint(&headers),
+            statement,
+        )
+    };
+    let layout = csv_layouts::insert(pool, &request.name, &fingerprint, &request.mapping).await?;
+    import_or_review(
+        state,
+        file_name,
+        ImportFormat::Csv,
+        Some(layout.id),
+        statement,
+    )
+    .await
+}
+
+/// Stores the file under review, without the rows answered "Yes, duplicate".
+pub async fn commit_import(
+    state: &AppState,
+    request: CommitImportRequest,
 ) -> Result<ImportSummary, AppError> {
+    let pool = security::pool(state)?;
+    let taken = {
+        let mut pending = pending(state);
+        let Some(PendingImport {
+            step: PendingStep::Review { suspect_rows, .. },
+            ..
+        }) = pending.as_ref()
+        else {
+            *pending = None;
+            return Err(nothing_pending());
+        };
+        // A rejected list keeps the review pending, so it can be answered again.
+        let mut seen = HashSet::new();
+        for row in &request.skip_rows {
+            if !suspect_rows.contains(row) {
+                return Err(AppError::Validation(format!(
+                    "Row {row} isn't a suspected duplicate in this review."
+                )));
+            }
+            if !seen.insert(row) {
+                return Err(AppError::Validation(format!(
+                    "Row {row} is listed more than once."
+                )));
+            }
+        }
+        pending.take()
+    };
+    let Some(PendingImport {
+        file_name,
+        step:
+            PendingStep::Review {
+                format,
+                csv_layout_id,
+                statement,
+                ..
+            },
+    }) = taken
+    else {
+        return Err(nothing_pending());
+    };
+    import_statement(
+        pool,
+        &file_name,
+        format,
+        csv_layout_id,
+        &statement,
+        &request.skip_rows,
+    )
+    .await
+}
+
+/// Drops the pending import; nothing is stored.
+pub fn cancel_import(state: &AppState) {
+    *pending(state) = None;
+}
+
+/// Finds suspected cross-format duplicates. None: imports straight away; some: holds the file for review.
+async fn import_or_review(
+    state: &AppState,
+    file_name: String,
+    format: ImportFormat,
+    csv_layout_id: Option<i64>,
+    statement: ParsedStatement,
+) -> Result<ImportStep, AppError> {
+    *pending(state) = None;
+    let pool = security::pool(state)?;
     if !statement.currency.eq_ignore_ascii_case("USD") {
         return Err(AppError::Import(format!(
             "Zeni only imports US dollar statements; this file is in {}.",
             statement.currency
         )));
     }
-    let mut tx = pool.begin().await?;
+    let account_id = checking_account(pool).await?;
+    let pairs = suspects(pool, account_id, format, &statement).await?;
+    if pairs.is_empty() {
+        let summary =
+            import_statement(pool, &file_name, format, csv_layout_id, &statement, &[]).await?;
+        return Ok(ImportStep::Imported(summary));
+    }
+    let review = ImportReview {
+        file_name: file_name.clone(),
+        format,
+        pairs,
+    };
+    let suspect_rows = review.pairs.iter().map(|pair| pair.row_index).collect();
+    *pending(state) = Some(PendingImport {
+        file_name,
+        step: PendingStep::Review {
+            format,
+            csv_layout_id,
+            statement,
+            suspect_rows,
+        },
+    });
+    Ok(ImportStep::Review(review))
+}
+
+/// The checking account every import goes into.
+async fn checking_account(executor: impl SqliteExecutor<'_>) -> Result<i64, AppError> {
     let (account_id,): (Option<i64>,) = sqlx::query_as("SELECT MIN(id) FROM accounts")
-        .fetch_one(&mut *tx)
+        .fetch_one(executor)
         .await?;
-    let account_id = account_id
-        .ok_or_else(|| AppError::NotFound("Add a checking account before importing.".into()))?;
+    account_id.ok_or_else(|| AppError::NotFound("Add a checking account before importing.".into()))
+}
+
+/// V3 exact dedupe against stored rows: the same FITID for the account, or, without one, the same
+/// date + amount + description in an import other than `import_id`.
+async fn is_stored(
+    executor: impl SqliteExecutor<'_>,
+    account_id: i64,
+    import_id: i64,
+    row: &ParsedTransaction,
+) -> Result<bool, AppError> {
+    let query = match &row.fitid {
+        Some(fitid) => {
+            sqlx::query("SELECT 1 FROM raw_transactions WHERE account_id = ? AND fitid = ?")
+                .bind(account_id)
+                .bind(fitid)
+        }
+        None => sqlx::query(
+            "SELECT 1 FROM raw_transactions WHERE account_id = ? AND import_id <> ? \
+             AND posted_date = ? AND amount_cents = ? AND raw_description = ?",
+        )
+        .bind(account_id)
+        .bind(import_id)
+        .bind(&row.posted_date)
+        .bind(row.amount_cents)
+        .bind(&row.description),
+    };
+    Ok(query.fetch_optional(executor).await?.is_some())
+}
+
+/// R8: for each row that passes exact dedupe, the closest stored row (then lowest id) from the other
+/// format family with the same amount, posted within 2 days.
+async fn suspects(
+    pool: &SqlitePool,
+    account_id: i64,
+    format: ImportFormat,
+    statement: &ParsedStatement,
+) -> Result<Vec<SuspectedDuplicate>, AppError> {
+    let mut fitids = HashSet::new();
+    let mut pairs = Vec::new();
+    for (row_index, row) in (0u32..).zip(&statement.transactions) {
+        let repeated_in_file = row
+            .fitid
+            .as_ref()
+            .is_some_and(|fitid| !fitids.insert(fitid));
+        // No import exists yet, so 0 matches no stored row's import.
+        if repeated_in_file || is_stored(pool, account_id, 0, row).await? {
+            continue;
+        }
+        let existing: Option<(String, i64, String, String, ImportFormat)> = sqlx::query_as(
+            "SELECT r.posted_date, r.amount_cents, r.raw_description, i.file_name, i.format \
+             FROM raw_transactions r JOIN imports i ON i.id = r.import_id \
+             WHERE r.account_id = ? AND r.amount_cents = ? AND (i.format = 'csv') = ? \
+             AND abs(julianday(r.posted_date) - julianday(?)) <= 2 \
+             ORDER BY abs(julianday(r.posted_date) - julianday(?)), r.id LIMIT 1",
+        )
+        .bind(account_id)
+        .bind(row.amount_cents)
+        .bind(format != ImportFormat::Csv)
+        .bind(&row.posted_date)
+        .bind(&row.posted_date)
+        .fetch_optional(pool)
+        .await?;
+        if let Some((posted_date, amount_cents, description, existing_file_name, existing_format)) =
+            existing
+        {
+            pairs.push(SuspectedDuplicate {
+                row_index,
+                new_row: ReviewRow {
+                    posted_date: row.posted_date.clone(),
+                    amount_cents: row.amount_cents,
+                    description: row.description.clone(),
+                },
+                existing: ReviewRow {
+                    posted_date,
+                    amount_cents,
+                    description,
+                },
+                existing_file_name,
+                existing_format,
+            });
+        }
+    }
+    Ok(pairs)
+}
+
+/// Stores a parsed statement, skipping `skip_rows` and duplicates, and runs the balance check.
+async fn import_statement(
+    pool: &SqlitePool,
+    file_name: &str,
+    format: ImportFormat,
+    csv_layout_id: Option<i64>,
+    statement: &ParsedStatement,
+    skip_rows: &[u32],
+) -> Result<ImportSummary, AppError> {
+    let mut tx = pool.begin().await?;
+    let account_id = checking_account(&mut *tx).await?;
     let import_id = sqlx::query(
-        "INSERT INTO imports (account_id, file_name, format, ledger_balance_cents, balance_as_of, balance_check) \
-         VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO imports (account_id, file_name, format, ledger_balance_cents, balance_as_of, balance_check, \
+         csv_layout_id, file_balance_check) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(account_id)
     .bind(file_name)
@@ -79,29 +361,26 @@ async fn import_statement(
     .bind(statement.ledger_balance_cents)
     .bind(&statement.balance_as_of)
     .bind(BalanceCheck::NotChecked)
+    .bind(csv_layout_id)
+    .bind(statement.file_balance_check)
     .execute(&mut *tx)
     .await?
     .last_insert_rowid();
-    let (mut added, mut duplicates) = (0, 0);
-    for row in &statement.transactions {
+    let skip_rows: HashSet<u32> = skip_rows.iter().copied().collect();
+    let (mut added, mut duplicates, mut review_skipped) = (0, 0, 0);
+    for (row_index, row) in (0u32..).zip(&statement.transactions) {
+        if skip_rows.contains(&row_index) {
+            review_skipped += 1;
+            continue;
+        }
         // Without a FITID, only rows from earlier imports count, so two equal rows in one file both stay.
-        let duplicate_without_fitid = row.fitid.is_none()
-            && sqlx::query(
-                "SELECT 1 FROM raw_transactions WHERE account_id = ? AND import_id <> ? \
-                 AND posted_date = ? AND amount_cents = ? AND raw_description = ?",
-            )
-            .bind(account_id)
-            .bind(import_id)
-            .bind(&row.posted_date)
-            .bind(row.amount_cents)
-            .bind(&row.description)
-            .fetch_optional(&mut *tx)
-            .await?
-            .is_some();
+        let duplicate_without_fitid =
+            row.fitid.is_none() && is_stored(&mut *tx, account_id, import_id, row).await?;
         let inserted = !duplicate_without_fitid
             && sqlx::query(
                 "INSERT INTO raw_transactions (import_id, account_id, fitid, posted_date, amount_cents, \
-                 raw_description, memo, transaction_type, original_row) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) \
+                 raw_description, memo, transaction_type, running_balance_cents, bank_category, original_row) \
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) \
                  ON CONFLICT DO NOTHING",
             )
             .bind(import_id)
@@ -112,6 +391,8 @@ async fn import_statement(
             .bind(&row.description)
             .bind(&row.memo)
             .bind(&row.transaction_type)
+            .bind(row.running_balance_cents)
+            .bind(&row.bank_category)
             .bind(&row.original)
             .execute(&mut *tx)
             .await?
@@ -143,6 +424,9 @@ async fn import_statement(
         balance_check,
         ledger_balance_cents: statement.ledger_balance_cents,
         expected_balance_cents,
+        not_posted: statement.not_posted,
+        review_skipped,
+        file_balance_check: statement.file_balance_check,
     })
 }
 
@@ -196,7 +480,7 @@ pub async fn list(state: &AppState) -> Result<Vec<ImportRecord>, AppError> {
     Ok(sqlx::query_as(
         "SELECT id, file_name, format, imported_at, account_id, \
          (SELECT COUNT(*) FROM raw_transactions r WHERE r.import_id = imports.id) AS row_count, \
-         ledger_balance_cents, balance_as_of, expected_balance_cents, balance_check \
+         ledger_balance_cents, balance_as_of, expected_balance_cents, balance_check, file_balance_check \
          FROM imports ORDER BY id DESC",
     )
     .fetch_all(security::pool(state)?)
@@ -228,7 +512,7 @@ mod tests {
 
     use super::*;
     use crate::db;
-    use crate::types::ParsedTransaction;
+    use crate::types::{FileBalanceCheck, ParsedTransaction};
 
     fn row(
         fitid: Option<&str>,
@@ -243,6 +527,8 @@ mod tests {
             description: description.into(),
             memo: None,
             transaction_type: None,
+            running_balance_cents: None,
+            bank_category: None,
             original: "<STMTTRN></STMTTRN>".into(),
         }
     }
@@ -256,6 +542,8 @@ mod tests {
             ledger_balance_cents: ledger.map(|(cents, _)| cents),
             balance_as_of: ledger.map(|(_, date)| date.into()),
             transactions,
+            not_posted: 0,
+            file_balance_check: FileBalanceCheck::NotChecked,
         }
     }
 
@@ -266,6 +554,7 @@ mod tests {
         let state = AppState {
             db: tauri::async_runtime::block_on(db::connect(&dir)),
             session: Default::default(),
+            pending_import: Default::default(),
         };
         if with_account {
             tauri::async_runtime::block_on(
@@ -280,15 +569,26 @@ mod tests {
         (dir, state)
     }
 
-    async fn import(state: &AppState, statement: &ParsedStatement) -> ImportSummary {
-        import_statement(
-            security::pool(state).unwrap(),
-            "a.ofx",
+    /// Previews `statement` as an OFX file named "a.ofx".
+    async fn try_import(
+        state: &AppState,
+        statement: &ParsedStatement,
+    ) -> Result<ImportStep, AppError> {
+        import_or_review(
+            state,
+            "a.ofx".into(),
             ImportFormat::Ofx,
-            statement,
+            None,
+            statement.clone(),
         )
         .await
-        .unwrap()
+    }
+
+    async fn import(state: &AppState, statement: &ParsedStatement) -> ImportSummary {
+        match try_import(state, statement).await.unwrap() {
+            ImportStep::Imported(summary) => summary,
+            other => panic!("expected Imported, got {other:?}"),
+        }
     }
 
     fn counts(summary: &ImportSummary) -> (u32, u32) {
@@ -491,7 +791,7 @@ mod tests {
         tauri::async_runtime::block_on(async {
             let pool = security::pool(&state).unwrap();
             let usd = statement(None, vec![row(Some("A"), "2026-10-01", 1, "X")]);
-            let error = import_statement(pool, "a.ofx", ImportFormat::Ofx, &usd).await;
+            let error = try_import(&state, &usd).await;
             assert!(matches!(error, Err(AppError::NotFound(_))));
 
             sqlx::query(
@@ -505,7 +805,7 @@ mod tests {
                 currency: "EUR".into(),
                 ..usd
             };
-            match import_statement(pool, "a.ofx", ImportFormat::Ofx, &euro).await {
+            match try_import(&state, &euro).await {
                 Err(AppError::Import(message)) => assert_eq!(
                     message,
                     "Zeni only imports US dollar statements; this file is in EUR."
@@ -521,16 +821,16 @@ mod tests {
     fn import_path_checks_extension_size_and_readability() {
         let (dir, state) = state("imports-path", true);
         tauri::async_runtime::block_on(async {
-            let message = |result: Result<ImportSummary, AppError>| match result {
+            let message = |result: Result<ImportStep, AppError>| match result {
                 Err(AppError::Import(message)) => message,
                 other => panic!("expected an import error, got {other:?}"),
             };
-            for name in ["a.csv", "a", "a.ofx.txt"] {
+            for name in ["a.txt", "a", "a.ofx.txt", "a.csv.xls"] {
                 let path = dir.join(name);
                 std::fs::write(&path, "OFXHEADER:100").unwrap();
                 assert_eq!(
                     message(import_path(&state, &path).await),
-                    "Zeni imports .ofx and .qfx files only."
+                    "Zeni imports .ofx, .qfx and .csv files only."
                 );
             }
             // An upper-case extension passes, so the size check is what rejects it.
@@ -584,8 +884,7 @@ mod tests {
                 Some((0, "2026-10-31")),
                 vec![row(Some("A"), "2026-10-05", 1, "PAY")],
             );
-            let pool = security::pool(&state).unwrap();
-            match import_statement(pool, "a.ofx", ImportFormat::Ofx, &next).await {
+            match try_import(&state, &next).await {
                 Err(AppError::Import(message)) => {
                     assert_eq!(message, "The statement amounts are too large.")
                 }
@@ -601,6 +900,7 @@ mod tests {
         let state = AppState {
             db: Err("no database".into()),
             session: Default::default(),
+            pending_import: Default::default(),
         };
         tauri::async_runtime::block_on(async {
             assert!(matches!(list(&state).await, Err(AppError::Database(_))));
@@ -614,10 +914,248 @@ mod tests {
                 import_path(&state, path).await,
                 Err(AppError::Database(_))
             ));
+            let commit = CommitImportRequest { skip_rows: vec![] };
+            assert!(matches!(
+                commit_import(&state, commit).await,
+                Err(AppError::Database(_))
+            ));
+            let save = SaveCsvLayoutRequest {
+                name: "Bank".into(),
+                mapping: CsvMapping {
+                    date_format: crate::types::DateFormat::YyyyMmDd,
+                    posted_date: 0,
+                    description: 1,
+                    amount: crate::types::AmountColumns::Signed { column: 2 },
+                    transaction_id: None,
+                    memo: None,
+                    transaction_type: None,
+                    running_balance: None,
+                    posting_status: None,
+                    bank_category: None,
+                },
+            };
+            assert!(matches!(
+                save_csv_layout(&state, save).await,
+                Err(AppError::Database(_))
+            ));
         });
     }
 
-    /// Migration 0003: raw rows and imported file values can't be updated, FITIDs are unique per account, and enums are checked.
+    /// The suspected pairs' (row index, existing description) for a new file of `format`, without storing it.
+    async fn suspected(
+        state: &AppState,
+        format: ImportFormat,
+        transactions: Vec<ParsedTransaction>,
+    ) -> Vec<(u32, String)> {
+        let pool = security::pool(state).unwrap();
+        suspects(pool, 1, format, &statement(None, transactions))
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|pair| (pair.row_index, pair.existing.description))
+            .collect()
+    }
+
+    async fn store(state: &AppState, format: ImportFormat, transactions: Vec<ParsedTransaction>) {
+        let pool = security::pool(state).unwrap();
+        import_statement(
+            pool,
+            "old",
+            format,
+            None,
+            &statement(None, transactions),
+            &[],
+        )
+        .await
+        .unwrap();
+    }
+
+    /// R8's worked examples: other format family, same amount, within 2 days, closest then lowest id.
+    #[test]
+    fn suspects_follow_the_cross_format_rule() {
+        let (dir, state) = state("imports-suspects", true);
+        tauri::async_runtime::block_on(async {
+            use ImportFormat::*;
+            store(
+                &state,
+                Ofx,
+                vec![row(Some("O1"), "2026-10-03", -4500, "GYM")],
+            )
+            .await;
+            let csv = |date, amount| row(None, date, amount, "Gym");
+            assert_eq!(
+                suspected(&state, Csv, vec![csv("2026-10-05", -4500)]).await,
+                [(0, "GYM".to_string())]
+            );
+            assert!(
+                suspected(&state, Csv, vec![csv("2026-10-06", -4500)])
+                    .await
+                    .is_empty()
+            );
+            assert!(
+                suspected(&state, Csv, vec![csv("2026-10-05", -4501)])
+                    .await
+                    .is_empty()
+            );
+            // OFX and QFX are one family: exact dedupe only.
+            assert!(
+                suspected(
+                    &state,
+                    Qfx,
+                    vec![row(Some("Q1"), "2026-10-03", -4500, "GYM")]
+                )
+                .await
+                .is_empty()
+            );
+
+            // Closest date wins, then the lowest id; a row repeating a FITID in the file is a duplicate.
+            store(
+                &state,
+                Qfx,
+                vec![row(Some("O2"), "2026-10-04", -4500, "FIRST")],
+            )
+            .await;
+            store(
+                &state,
+                Ofx,
+                vec![row(Some("O3"), "2026-10-04", -4500, "SECOND")],
+            )
+            .await;
+            let pairs = suspected(
+                &state,
+                Csv,
+                vec![
+                    row(Some("C1"), "2026-10-05", -4500, "Gym"),
+                    row(Some("C1"), "2026-10-05", -4500, "Gym"),
+                    row(Some("C2"), "2026-10-02", -4500, "Gym"),
+                    // Exact duplicates of a stored row are never suspects.
+                    row(Some("O1"), "2026-10-03", -4500, "GYM"),
+                ],
+            )
+            .await;
+            assert_eq!(pairs, [(0, "FIRST".to_string()), (2, "GYM".to_string())]);
+
+            // The other way round: a stored CSV row makes a new OFX row a suspect.
+            store(&state, Csv, vec![csv("2026-11-01", -999)]).await;
+            assert_eq!(
+                suspected(&state, Ofx, vec![row(Some("O4"), "2026-11-01", -999, "X")]).await,
+                [(0, "Gym".to_string())]
+            );
+        });
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Without an account a new CSV header fails before the mapping dialog, so no layout is saved.
+    #[test]
+    fn csv_without_an_account_fails_before_mapping() {
+        let (dir, state) = state("imports-csv-no-account", false);
+        tauri::async_runtime::block_on(async {
+            let csv = dir.join("simple.csv");
+            std::fs::write(&csv, "Date,Description,Amount\n2026-10-01,Coffee,-5.00\n").unwrap();
+            assert!(matches!(
+                import_path(&state, &csv).await,
+                Err(AppError::NotFound(_))
+            ));
+            assert!(pending(&state).is_none());
+            let (layouts,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM csv_layouts")
+                .fetch_one(security::pool(&state).unwrap())
+                .await
+                .unwrap();
+            assert_eq!(layouts, 0);
+        });
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn pending_steps_without_a_pending_import_are_not_found() {
+        let (dir, state) = state("imports-pending", true);
+        tauri::async_runtime::block_on(async {
+            let message = |error: AppError| match error {
+                AppError::NotFound(message) => message,
+                other => panic!("expected NotFound, got {other:?}"),
+            };
+            let expected = "There is no import waiting. Choose the file again.";
+            let mapping = || CsvMapping {
+                date_format: crate::types::DateFormat::YyyyMmDd,
+                posted_date: 0,
+                description: 1,
+                amount: crate::types::AmountColumns::Signed { column: 2 },
+                transaction_id: None,
+                memo: None,
+                transaction_type: None,
+                running_balance: None,
+                posting_status: None,
+                bank_category: None,
+            };
+            let save = || SaveCsvLayoutRequest {
+                name: "Simple".into(),
+                mapping: mapping(),
+            };
+            let commit = || CommitImportRequest { skip_rows: vec![] };
+            cancel_import(&state);
+            assert_eq!(
+                message(preview_csv_mapping(&state, mapping()).unwrap_err()),
+                expected
+            );
+            assert_eq!(
+                message(save_csv_layout(&state, save()).await.unwrap_err()),
+                expected
+            );
+            assert_eq!(
+                message(commit_import(&state, commit()).await.unwrap_err()),
+                expected
+            );
+
+            // A CSV waiting for a mapping can't be committed, and committing clears it.
+            let csv = dir.join("simple.csv");
+            std::fs::write(&csv, "Date,Description,Amount\n2026-10-01,Coffee,-5.00\n").unwrap();
+            assert!(matches!(
+                import_path(&state, &csv).await.unwrap(),
+                ImportStep::NeedsMapping(_)
+            ));
+            assert_eq!(
+                message(commit_import(&state, commit()).await.unwrap_err()),
+                expected
+            );
+            assert!(preview_csv_mapping(&state, mapping()).is_err());
+
+            // A bad mapping is a validation error and keeps the file pending.
+            import_path(&state, &csv).await.unwrap();
+            let bad = CsvMapping {
+                description: 0,
+                ..mapping()
+            };
+            assert!(matches!(
+                preview_csv_mapping(&state, bad.clone()),
+                Err(AppError::Validation(_))
+            ));
+            let request = SaveCsvLayoutRequest {
+                name: "Simple".into(),
+                mapping: bad,
+            };
+            assert!(matches!(
+                save_csv_layout(&state, request).await,
+                Err(AppError::Validation(_))
+            ));
+            assert_eq!(preview_csv_mapping(&state, mapping()).unwrap().len(), 1);
+
+            // A new import replaces the pending one.
+            let ofx =
+                Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/checking-no-fitid.ofx");
+            import_path(&state, &ofx).await.unwrap();
+            assert!(preview_csv_mapping(&state, mapping()).is_err());
+
+            // Saving imports the file and clears the slot.
+            import_path(&state, &csv).await.unwrap();
+            let step = save_csv_layout(&state, save()).await.unwrap();
+            assert!(matches!(step, ImportStep::Imported(ref summary) if summary.added == 1));
+            assert!(preview_csv_mapping(&state, mapping()).is_err());
+            assert_eq!(list(&state).await.unwrap()[0].format, ImportFormat::Csv);
+        });
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Migrations 0003/0004: raw rows and imported file values can't be updated, FITIDs are unique per account, and enums are checked.
     #[test]
     fn imports_schema_protects_raw_rows() {
         let dir = db::temp_dir("imports-schema");
@@ -639,7 +1177,7 @@ mod tests {
             assert!(
                 run(
                     "INSERT INTO imports (account_id, file_name, format, balance_check) \
-                         VALUES (1, 'a.csv', 'csv', 'notChecked')"
+                         VALUES (1, 'a.xls', 'xls', 'notChecked')"
                 )
                 .await
                 .is_err()

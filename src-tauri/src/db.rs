@@ -149,6 +149,143 @@ mod tests {
     }
 
     #[test]
+    fn csv_migration_keeps_v3_rows_and_constraints() {
+        let dir = temp_dir("migrate-0004");
+        let _ = fs::remove_dir_all(&dir);
+        let path = dir.join("zeni.db");
+        create_private_dir(&dir).unwrap();
+        let exec = |pool: &SqlitePool, sql: &'static str| {
+            let pool = pool.clone();
+            async move { sqlx::query(sql).execute(&pool).await }
+        };
+        tauri::async_runtime::block_on(async {
+            // A V3 database: migrations up to 0003, with two imports and their rows.
+            let mut v3 = sqlx::migrate!("./migrations");
+            v3.migrations = v3
+                .migrations
+                .iter()
+                .filter(|m| m.version <= 3)
+                .cloned()
+                .collect();
+            let options = SqliteConnectOptions::new()
+                .filename(&path)
+                .create_if_missing(true);
+            let pool = SqlitePool::connect_with(options).await.unwrap();
+            v3.run(&pool).await.unwrap();
+            for sql in [
+                "INSERT INTO accounts (id, name, owner, bank_name, account_number, routing_number) \
+                 VALUES (1, 'Checking', 'Sam', 'Bank', x'00', x'00')",
+                "INSERT INTO imports (id, account_id, file_name, format, ledger_balance_cents, balance_as_of, \
+                 expected_balance_cents, balance_check) VALUES \
+                 (1, 1, 'a.ofx', 'ofx', 1000, '2026-10-01', NULL, 'baseline'), \
+                 (2, 1, 'b.qfx', 'qfx', 1500, '2026-10-31', 1500, 'passed')",
+                "INSERT INTO raw_transactions (import_id, account_id, fitid, posted_date, amount_cents, \
+                 raw_description, original_row) VALUES \
+                 (1, 1, 'A1', '2026-09-30', -100, 'x', 'o'), (1, 1, 'A2', '2026-10-01', 200, 'y', 'o'), \
+                 (2, 1, 'B1', '2026-10-15', 500, 'z', 'o')",
+            ] {
+                exec(&pool, sql).await.unwrap();
+            }
+            let snapshot = |pool: SqlitePool| async move {
+                sqlx::query_as::<_, (i64, String, String, String, Option<i64>, Option<String>, Option<i64>, String)>(
+                    "SELECT id, file_name, format, imported_at, ledger_balance_cents, balance_as_of, \
+                     expected_balance_cents, balance_check FROM imports ORDER BY id",
+                )
+                .fetch_all(&pool)
+                .await
+                .unwrap()
+            };
+            let raw_count = |pool: SqlitePool| async move {
+                sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM raw_transactions")
+                    .fetch_one(&pool)
+                    .await
+                    .unwrap()
+            };
+            let before = snapshot(pool.clone()).await;
+            pool.close().await;
+
+            let pool = open(&path).await.unwrap();
+            assert_eq!(snapshot(pool.clone()).await, before);
+            assert_eq!(raw_count(pool.clone()).await, 3);
+            let checks: Vec<String> = sqlx::query_scalar("SELECT file_balance_check FROM imports")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
+            assert_eq!(checks, ["notChecked", "notChecked"]);
+            let foreign_keys: i64 = sqlx::query_scalar("PRAGMA foreign_keys")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+            assert_eq!(foreign_keys, 1);
+            assert!(
+                sqlx::query("PRAGMA foreign_key_check")
+                    .fetch_all(&pool)
+                    .await
+                    .unwrap()
+                    .is_empty()
+            );
+
+            // Deleting an import still cascades to its raw rows.
+            exec(&pool, "DELETE FROM imports WHERE id = 1")
+                .await
+                .unwrap();
+            assert_eq!(raw_count(pool.clone()).await, 1);
+
+            // A CSV import with a layout and a bank category; deleting the layout only clears the link.
+            for sql in [
+                "INSERT INTO csv_layouts (id, name, header_fingerprint, date_format, posted_date_column, \
+                 description_column, amount_column) VALUES (7, 'Bank', 'posting date\namount', 'MM/DD/YYYY', 0, 1, 2)",
+                "INSERT INTO imports (id, account_id, file_name, format, balance_check, csv_layout_id, \
+                 file_balance_check) VALUES (3, 1, 'c.csv', 'csv', 'notChecked', 7, 'mismatch')",
+                "INSERT INTO raw_transactions (import_id, account_id, posted_date, amount_cents, \
+                 raw_description, bank_category, original_row) VALUES (3, 1, '2026-11-01', -5, 'w', 'Food', 'o')",
+                "DELETE FROM csv_layouts WHERE id = 7",
+            ] {
+                exec(&pool, sql).await.unwrap();
+            }
+            let row: (Option<i64>, String) = sqlx::query_as(
+                "SELECT csv_layout_id, file_balance_check FROM imports WHERE id = 3",
+            )
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+            assert_eq!(row, (None, "mismatch".into()));
+
+            // File data stays immutable; the derived V3 check columns stay writable.
+            for sql in [
+                "UPDATE imports SET file_name = 'x' WHERE id = 2",
+                "UPDATE imports SET format = 'csv' WHERE id = 2",
+                "UPDATE imports SET file_balance_check = 'passed' WHERE id = 3",
+            ] {
+                let error = exec(&pool, sql).await.unwrap_err().to_string();
+                assert!(
+                    error.contains("imported file data is never modified"),
+                    "{error}"
+                );
+            }
+            exec(
+                &pool,
+                "UPDATE imports SET balance_check = 'mismatch' WHERE id = 2",
+            )
+            .await
+            .unwrap();
+            // The layout CHECK needs one signed amount or a debit/credit pair.
+            assert!(
+                exec(
+                    &pool,
+                    "INSERT INTO csv_layouts (name, header_fingerprint, date_format, posted_date_column, \
+                     description_column, amount_column, debit_column, credit_column) \
+                     VALUES ('Both', 'x', 'M/D/YYYY', 0, 1, 2, 3, 4)"
+                )
+                .await
+                .is_err()
+            );
+            pool.close().await;
+        });
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
     fn connect_describes_failure_with_path() {
         // A regular file where the data folder should be makes the folder impossible to create.
         let blocker = temp_dir("blocker");

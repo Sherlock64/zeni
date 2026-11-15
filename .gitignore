@@ -33,5 +33,8 @@ src-tauri/gen/
 # UI snapshots (scripts/snapshot.sh)
 snapshots/
 
+# Real bank exports next to the PRDs must never be committed
+plans/*.csv
+
 # Session retrospectives (retrospective skill)
 retros/

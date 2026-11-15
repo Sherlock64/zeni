@@ -190,6 +190,7 @@ mod tests {
         let state = AppState {
             db: run(db::connect(&dir)),
             session: Default::default(),
+            pending_import: Default::default(),
         };
         let pool = security::pool(&state).unwrap();
         run(async {
@@ -438,6 +439,7 @@ mod tests {
         let state = AppState {
             db: Err("no database".into()),
             session: Default::default(),
+            pending_import: Default::default(),
         };
         assert!(matches!(
             run(list(&state, query())),

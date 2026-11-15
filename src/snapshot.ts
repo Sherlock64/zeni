@@ -1,12 +1,13 @@
 // Dev-only entry for UI snapshots in a plain browser: answers IPC from fixtures instead of Rust.
 // `?accounts=empty` answers list_accounts with no accounts, `?imports=empty` list_imports with no imports,
-// `?transactions=empty` list_transactions with an empty page, `?balances=1` list_transactions with running balances, and `?import=cancel` import_file with null (picker cancelled).
+// `?layouts=empty` list_csv_layouts with no layouts, `?transactions=empty` list_transactions with an empty page, `?balances=1` list_transactions with running balances, `?import=cancel` import_file with null (picker cancelled),
+// and `?import=mapping|review|csv|mismatch` import_file with the mapping dialog, the review dialog, or a CSV summary (running balance passed or mismatch).
 // `?fail=<command>[:<kind>]` (repeatable) makes that command reject, to show error states (kind defaults to Sample).
 // Steps run in URL order once the app has loaded, to reach states behind a click:
 // `?fill=<input name>=<value>` types into the input with that name, `?click=<text>` clicks the button with that text.
 import { mockIPC } from "@tauri-apps/api/mocks";
 import type { TransactionPage } from "@/types/bindings/TransactionPage";
-import { errorMessages, fixtures, securityStatus } from "@/lib/snapshot-fixtures";
+import { errorMessages, fixtures, importSteps, securityStatus } from "@/lib/snapshot-fixtures";
 
 const params = new URLSearchParams(location.search);
 const failing = new Map(params.getAll("fail").map((entry) => entry.split(":") as [string, string | undefined]));
@@ -15,6 +16,7 @@ if (params.get("keyringSaved") === "false") responses.complete_setup = { ...(fix
 
 if (params.get("accounts") === "empty") responses.list_accounts = [];
 if (params.get("imports") === "empty") responses.list_imports = [];
+if (params.get("layouts") === "empty") responses.list_csv_layouts = [];
 if (params.get("transactions") === "empty") responses.list_transactions = { rows: [], total: 0 };
 if (params.get("balances") === "1") {
   // Rows are newest first, so each older balance is the newer one minus the newer row's amount.
@@ -29,7 +31,9 @@ if (params.get("balances") === "1") {
     }),
   };
 }
-if (params.get("import") === "cancel") responses.import_file = null;
+const importParam = params.get("import");
+if (importParam === "cancel") responses.import_file = null;
+else if (importParam && importParam in importSteps) responses.import_file = importSteps[importParam];
 
 mockIPC((command) => {
   if (failing.has(command)) {

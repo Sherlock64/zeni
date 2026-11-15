@@ -441,6 +441,7 @@ mod tests {
             state: AppState {
                 db: run(db::connect(&dir)),
                 session: Default::default(),
+                pending_import: Default::default(),
             },
             keyring: FakeKeyring::default(),
             dir,
@@ -629,6 +630,7 @@ mod tests {
         let state = AppState {
             db: Err("no database".into()),
             session: Default::default(),
+            pending_import: Default::default(),
         };
         let keyring = FakeKeyring::default();
         let setup = |password: &str, account: NewAccount| {
@@ -655,6 +657,7 @@ mod tests {
         let state = AppState {
             db: Err("no database".into()),
             session: Default::default(),
+            pending_import: Default::default(),
         };
         let keyring = FakeKeyring::default();
         let password = || UnlockRequest {

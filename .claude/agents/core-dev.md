@@ -9,10 +9,10 @@ First read `CLAUDE.md` and `.claude/skills/build-version/dev-contract.md`, and f
 
 ## How this codebase works
 
-- In `setup`, `src-tauri/src/lib.rs` stores the result of `db::connect` in `AppState { db: Result<Database, String>, session: Mutex<Option<Session>> }`. Startup never panics over the database; the UI shows the error instead. `session` holds the data key once Zeni is unlocked. Commands are registered in `generate_handler!`.
+- In `setup`, `src-tauri/src/lib.rs` stores the result of `db::connect` in `AppState { db: Result<Database, String>, session: Mutex<Option<Session>>, pending_import: Mutex<Option<PendingImport>> }`. Startup never panics over the database; the UI shows the error instead. `session` holds the data key once Zeni is unlocked. Import is two-step: `import_file` reads the file into `pending_import`, then `commit_import` stores it or `cancel_import` drops it. Commands are registered in `generate_handler!`.
 - `src-tauri/src/commands.rs` holds thin `#[tauri::command]` wrappers. Each one passes Tauri-only inputs to a private plain function (`app_info` calls `load_app_info`) that returns `Result<_, AppError>`. Mark an item `pub` only if another module calls it; helpers that only `db::connect` uses stay private. Queries live in `db.rs` or a domain module.
 - The app version lives only in `src-tauri/Cargo.toml`; `tauri.conf.json` has no `version` key.
-- Domain logic lives in its own module: `security.rs` (setup, unlock, recovery, reset, `security_status`), `accounts.rs`, `ofx.rs` (OFX/QFX parser), `imports.rs` (import, list, revert) and `transactions.rs` (list query). `crypto.rs` is the only place that encrypts, decrypts or runs Argon2id. `keyring.rs` holds the `Keyring` trait and its thin oo7 `SecretService` impl; tests use a fake.
+- Domain logic lives in its own module: `security.rs` (setup, unlock, recovery, reset, `security_status`), `accounts.rs`, `ofx.rs` (OFX/QFX parser), `csv_import.rs` (CSV header fingerprint, preview, parse), `csv_layouts.rs` (saved column mappings), `imports.rs` (import, preview, commit, cancel, list, revert) and `transactions.rs` (list query). `crypto.rs` is the only place that encrypts, decrypts or runs Argon2id. `keyring.rs` holds the `Keyring` trait and its thin oo7 `SecretService` impl; tests use a fake.
 - `src-tauri/src/types.rs` holds every serialized type. `AppError` serializes as `{ kind, message }`, so every variant carries exactly one `String`. Reuse `AppError::Validation` for rejected input. Convert `sqlx`, migrate and `std::io` errors with `?` through the existing `From` impls; never write an inline `map_err` for them.
 - To add or change a command, follow `.claude/skills/add-command/SKILL.md`. Its tests cover every case in step 6 (Database unavailable, `Locked`), plus each keyring failure and timeout path through `FakeKeyring`.
 
@@ -22,6 +22,7 @@ First read `CLAUDE.md` and `.claude/skills/build-version/dev-contract.md`, and f
 - `sqlx::migrate!` embeds migrations at compile time; `src-tauri/build.rs` already reruns the build when `migrations/` changes.
 - `open_creates_private_db_and_applies_migrations_once` in `db.rs` counts the migrations itself, so it needs no update. Add a test for each migration's schema or data behaviour.
 - When a migration adds `REFERENCES` to an existing table, grep every `DELETE`/`UPDATE` on that table and add a test for each; sqlx enables foreign keys.
+- To rebuild a table another table references (SQLite can't alter a `CHECK`), never drop it with foreign keys on: an `ON DELETE CASCADE` child loses every row. Start the file with `-- no-transaction`, then `PRAGMA foreign_keys = OFF; BEGIN;` ... `PRAGMA foreign_key_check; COMMIT; PRAGMA foreign_keys = ON;`, as `0004_csv_import.sql` does. Recreate the rebuilt table's triggers and indexes.
 - Store money as `INTEGER` cents. Tables holding raw imported data get no update path in code and a `BEFORE UPDATE` trigger that aborts, like `raw_transactions_no_update` in `0003_imports.sql`.
 
 ## Security work

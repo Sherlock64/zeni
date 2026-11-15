@@ -3,4 +3,4 @@
 /**
  * File format of an import, taken from the file extension.
  */
-export type ImportFormat = "ofx" | "qfx";
+export type ImportFormat = "ofx" | "qfx" | "csv";

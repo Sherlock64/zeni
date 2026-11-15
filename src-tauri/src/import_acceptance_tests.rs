@@ -1,12 +1,14 @@
-//! V3 acceptance tests over the fixture files (expected values: `tests/fixtures/README.md`).
+//! V3 and V3.1 acceptance tests over the fixture files (expected values: `tests/fixtures/README.md`).
 
 use std::path::{Path, PathBuf};
 
 use crate::types::{
-    AppError, AppState, BalanceCheck, ImportFormat, ImportSummary, RevertImportRequest,
-    SortDirection, TransactionQuery, TransactionSort,
+    AmountColumns, AppError, AppState, BalanceCheck, CommitImportRequest, CsvMapping, DateFormat,
+    DeleteCsvLayoutRequest, FileBalanceCheck, ImportFormat, ImportReview, ImportStep,
+    ImportSummary, RevertImportRequest, SaveCsvLayoutRequest, SortDirection, TransactionQuery,
+    TransactionSort, UpdateCsvLayoutRequest,
 };
-use crate::{db, imports, ofx, security, transactions};
+use crate::{csv_layouts, db, imports, ofx, security, transactions};
 
 /// Every `raw_transactions` column, in table order.
 type RawRow = (
@@ -21,6 +23,7 @@ type RawRow = (
     Option<String>,
     Option<i64>,
     String,
+    Option<String>,
 );
 
 /// (posted_date, amount_cents, description, memo, transaction_type)
@@ -48,6 +51,7 @@ fn database(name: &str) -> Db {
     let state = AppState {
         db: run(db::connect(&dir)),
         session: Default::default(),
+        pending_import: Default::default(),
     };
     run(sqlx::query(
         "INSERT INTO accounts (name, owner, bank_name, account_number, routing_number) \
@@ -64,19 +68,153 @@ fn fixture(file: &str) -> PathBuf {
         .join(file)
 }
 
+fn sample(file: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../samples")
+        .join(file)
+}
+
+fn imported(step: ImportStep) -> ImportSummary {
+    match step {
+        ImportStep::Imported(summary) => summary,
+        other => panic!("expected Imported, got {other:?}"),
+    }
+}
+
+fn review(step: ImportStep) -> ImportReview {
+    match step {
+        ImportStep::Review(review) => review,
+        other => panic!("expected Review, got {other:?}"),
+    }
+}
+
+fn import_error(result: Result<ImportStep, AppError>) -> String {
+    match result {
+        Err(AppError::Import(message)) => message,
+        other => panic!("expected an Import error, got {other:?}"),
+    }
+}
+
+/// The fixtures README's bank layout (also the samples' CSV layout).
+fn bank_mapping() -> CsvMapping {
+    CsvMapping {
+        date_format: DateFormat::MmDdYyyy,
+        posted_date: 1,
+        description: 8,
+        amount: AmountColumns::Signed { column: 5 },
+        transaction_id: Some(0),
+        memo: Some(13),
+        transaction_type: Some(3),
+        running_balance: Some(11),
+        posting_status: Some(4),
+        bank_category: Some(9),
+    }
+}
+
+fn split_mapping() -> CsvMapping {
+    CsvMapping {
+        date_format: DateFormat::MDYyyy,
+        posted_date: 0,
+        description: 1,
+        amount: AmountColumns::Split {
+            debit: 2,
+            credit: 3,
+        },
+        transaction_id: None,
+        memo: None,
+        transaction_type: None,
+        running_balance: Some(4),
+        posting_status: None,
+        bank_category: None,
+    }
+}
+
+fn overlap_mapping() -> CsvMapping {
+    CsvMapping {
+        date_format: DateFormat::YyyyMmDd,
+        posted_date: 0,
+        description: 1,
+        amount: AmountColumns::Signed { column: 2 },
+        transaction_id: None,
+        memo: None,
+        transaction_type: None,
+        running_balance: None,
+        posting_status: None,
+        bank_category: None,
+    }
+}
+
+/// (added, duplicates, not posted, review skipped, file balance check)
+fn csv_counts(summary: &ImportSummary) -> (u32, u32, u32, u32, FileBalanceCheck) {
+    (
+        summary.added,
+        summary.duplicates,
+        summary.not_posted,
+        summary.review_skipped,
+        summary.file_balance_check,
+    )
+}
+
 impl Db {
+    fn step_at(&self, path: &Path) -> Result<ImportStep, AppError> {
+        run(imports::import_path(&self.state, path))
+    }
+
+    fn step(&self, file: &str) -> Result<ImportStep, AppError> {
+        self.step_at(&fixture(file))
+    }
+
     fn import(&self, file: &str) -> Result<ImportSummary, AppError> {
-        run(imports::import_path(&self.state, &fixture(file)))
+        self.step(file).map(imported)
     }
 
     fn import_ok(&self, file: &str) -> ImportSummary {
         self.import(file).unwrap()
     }
 
+    fn save(&self, name: &str, mapping: CsvMapping) -> Result<ImportStep, AppError> {
+        run(imports::save_csv_layout(
+            &self.state,
+            SaveCsvLayoutRequest {
+                name: name.into(),
+                mapping,
+            },
+        ))
+    }
+
+    /// Imports a CSV whose header is new: it needs a mapping, then saving the layout imports it.
+    fn import_mapped_at(&self, path: &Path, name: &str, mapping: CsvMapping) -> ImportSummary {
+        assert!(matches!(
+            self.step_at(path).unwrap(),
+            ImportStep::NeedsMapping(_)
+        ));
+        imported(self.save(name, mapping).unwrap())
+    }
+
+    fn import_mapped(&self, file: &str, name: &str, mapping: CsvMapping) -> ImportSummary {
+        self.import_mapped_at(&fixture(file), name, mapping)
+    }
+
+    fn commit(&self, skip_rows: Vec<u32>) -> Result<ImportSummary, AppError> {
+        run(imports::commit_import(
+            &self.state,
+            CommitImportRequest { skip_rows },
+        ))
+    }
+
+    fn descriptions(&self, import_id: i64) -> Vec<String> {
+        run(sqlx::query_scalar(
+            "SELECT raw_description FROM raw_transactions WHERE import_id = ? ORDER BY id",
+        )
+        .bind(import_id)
+        .fetch_all(security::pool(&self.state).unwrap()))
+        .unwrap()
+    }
+
     fn raw_rows(&self) -> Vec<RawRow> {
         run(sqlx::query_as(
             "SELECT id, import_id, account_id, fitid, posted_date, amount_cents, raw_description, \
-             memo, transaction_type, running_balance_cents, original_row \
+             memo, transaction_type, running_balance_cents, original_row, bank_category \
              FROM raw_transactions ORDER BY id",
         )
         .fetch_all(security::pool(&self.state).unwrap()))
@@ -335,19 +473,457 @@ fn no_fitid_rows_dedupe_only_against_earlier_imports() {
 #[test]
 fn samples_import_as_consecutive_months() {
     let db = database("samples");
-    let sample = |file: &str| {
-        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../samples")
-            .join(file);
-        run(imports::import_path(&db.state, &path)).unwrap()
-    };
+    let month = |file: &str| imported(db.step_at(&sample(file)).unwrap());
     use BalanceCheck::*;
     assert_eq!(
-        outcome(&sample("checking-2026-08.ofx")),
+        outcome(&month("checking-2026-08.ofx")),
         (26, 0, Baseline, Some(486851), None)
     );
     assert_eq!(
-        outcome(&sample("checking-2026-09.qfx")),
+        outcome(&month("checking-2026-09.qfx")),
         (27, 0, Passed, Some(658651), Some(658651))
     );
+    let october = db.import_mapped_at(&sample("checking-2026-10.csv"), "Bank", bank_mapping());
+    assert_eq!(
+        outcome(&october),
+        (27, 0, Passed, Some(1029791), Some(1029791))
+    );
+    assert_eq!(
+        csv_counts(&october),
+        (27, 0, 1, 0, FileBalanceCheck::Passed)
+    );
+}
+
+/// V3.1 AC1: an unknown header needs a mapping; once saved, a file with the same header imports straight away.
+#[test]
+fn unknown_csv_header_needs_a_mapping_once() {
+    let db = database("csv-mapping");
+    let ImportStep::NeedsMapping(needed) = db.step("checking-bank.csv").unwrap() else {
+        panic!("expected NeedsMapping");
+    };
+    assert_eq!(needed.file_name, "checking-bank.csv");
+    assert_eq!(needed.headers.len(), 14);
+    assert_eq!(
+        (needed.headers[0].as_str(), needed.headers[13].as_str()),
+        ("Transaction ID", "Extended Description")
+    );
+    assert_eq!(needed.rows.len(), 5);
+    assert_eq!(needed.rows[0][4], "Pending");
+    assert_eq!(db.scalar("SELECT COUNT(*) FROM imports"), 0);
+
+    // The draft preview reads the pending file.
+    let preview = imports::preview_csv_mapping(&db.state, bank_mapping()).unwrap();
+    assert_eq!(preview.len(), 5);
+    assert_eq!((preview[1].line, preview[1].amount_cents), (3, Some(-3850)));
+
+    let first = imported(db.save("  Bank  ", bank_mapping()).unwrap());
+    assert_eq!(first.format, ImportFormat::Csv);
+    assert_eq!(first.added, 6);
+    let layouts = run(csv_layouts::list(&db.state)).unwrap();
+    assert_eq!(layouts.len(), 1);
+    assert_eq!(layouts[0].name, "Bank");
+    assert_eq!(layouts[0].mapping, bank_mapping());
+    assert_eq!(
+        db.scalar("SELECT csv_layout_id FROM imports"),
+        layouts[0].id
+    );
+
+    // Same header, no mapping step.
+    let second = db.import_ok("checking-bank-reimport.csv");
+    assert_eq!((second.added, second.duplicates), (3, 2));
+    assert_eq!(
+        db.scalar("SELECT COUNT(*) FROM imports WHERE csv_layout_id IS NOT NULL"),
+        2
+    );
+}
+
+/// V3.1 AC2, AC3, AC4, AC6, AC10: the README's CSV steps 7-9 after the six OFX steps.
+#[test]
+fn csv_fixtures_follow_the_ofx_steps() {
+    let db = database("csv-sequence");
+    for file in [
+        "checking-sgml.qfx",
+        "checking-xml.ofx",
+        "checking-overlap.ofx",
+        "checking-broken-balance.ofx",
+        "checking-no-fitid.ofx",
+    ] {
+        db.import_ok(file);
+    }
+    use BalanceCheck::*;
+
+    // Step 7: signed amounts, pending skipped, running balance feeds the V3 check.
+    let bank = db.import_mapped("checking-bank.csv", "Bank", bank_mapping());
+    assert_eq!(outcome(&bank), (6, 0, Passed, Some(630401), Some(630401)));
+    assert_eq!(csv_counts(&bank), (6, 0, 1, 0, FileBalanceCheck::Passed));
+    let stored: Vec<(Option<String>, String, i64)> = run(sqlx::query_as(
+        "SELECT fitid, posted_date, amount_cents FROM raw_transactions WHERE import_id = ? ORDER BY id",
+    )
+    .bind(bank.import_id)
+    .fetch_all(security::pool(&db.state).unwrap()))
+    .unwrap();
+    let amounts: Vec<i64> = stored.iter().map(|row| row.2).collect();
+    assert_eq!(amounts, [-3850, -425, -4500, 210000, -6000, -1234]);
+    // AC4: the pending Dec 1 row isn't stored.
+    assert!(stored.iter().all(|row| row.1 != "2026-12-01"));
+    let payroll: (
+        String,
+        Option<String>,
+        Option<String>,
+        Option<i64>,
+        Option<String>,
+        String,
+    ) = run(sqlx::query_as(
+        "SELECT raw_description, memo, transaction_type, running_balance_cents, bank_category, \
+             original_row FROM raw_transactions WHERE fitid = '20261125 ECB 00103'",
+    )
+    .fetch_one(security::pool(&db.state).unwrap()))
+    .unwrap();
+    assert_eq!(
+        payroll,
+        (
+            "Acme Payroll".into(),
+            Some("ACME PAYROLL, DIRECT DEP".into()),
+            Some("Credit".into()),
+            Some(639176),
+            Some("Paychecks".into()),
+            r#""20261125 ECB 00103","11/25/2026","11/25/2026","Credit","Posted","2100.00000","","300000103","Acme Payroll","Paychecks","ACH","6391.76000","","ACME PAYROLL, DIRECT DEP""#.into(),
+        )
+    );
+
+    // Step 8, AC3: the re-import adds only the new rows.
+    let reimport = db.import_ok("checking-bank-reimport.csv");
+    assert_eq!(
+        outcome(&reimport),
+        (3, 2, Passed, Some(646061), Some(646061))
+    );
+    assert_eq!(
+        csv_counts(&reimport),
+        (3, 2, 0, 0, FileBalanceCheck::Passed)
+    );
+
+    // Step 9, AC2: debit/credit columns.
+    let split = db.import_mapped("checking-split.csv", "Split", split_mapping());
+    assert_eq!(outcome(&split), (4, 0, Passed, Some(844181), Some(844181)));
+    assert_eq!(split.file_balance_check, FileBalanceCheck::Passed);
+    let split_amounts: Vec<i64> = run(sqlx::query_scalar(
+        "SELECT amount_cents FROM raw_transactions WHERE import_id = ? ORDER BY id",
+    )
+    .bind(split.import_id)
+    .fetch_all(security::pool(&db.state).unwrap()))
+    .unwrap();
+    assert_eq!(split_amounts, [-2310, 210000, -9120, -450]);
+
+    // AC3: the same file again adds nothing and matches its own earlier balance.
+    let again = db.import_ok("checking-bank.csv");
+    assert_eq!(outcome(&again), (0, 6, Passed, Some(630401), Some(630401)));
+    assert_eq!(again.not_posted, 1);
+
+    // AC10: integer cents, and the trigger blocks any UPDATE of a raw row.
+    assert_eq!(
+        db.scalar(
+            "SELECT COUNT(*) FROM raw_transactions WHERE typeof(amount_cents) <> 'integer' \
+             OR (running_balance_cents IS NOT NULL AND typeof(running_balance_cents) <> 'integer')"
+        ),
+        0
+    );
+    let before = db.raw_rows();
+    let error = run(
+        sqlx::query("UPDATE raw_transactions SET bank_category = 'X'")
+            .execute(security::pool(&db.state).unwrap()),
+    )
+    .unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("raw transactions are never modified")
+    );
+    assert_eq!(db.raw_rows(), before);
+}
+
+/// V3.1 AC3: without a mapped ID column, rows dedupe on date + amount + description.
+#[test]
+fn csv_reimport_without_an_id_column_adds_nothing() {
+    let db = database("csv-no-id");
+    let mapping = CsvMapping {
+        transaction_id: None,
+        ..bank_mapping()
+    };
+    let first = db.import_mapped("checking-bank.csv", "Bank without ID", mapping);
+    assert_eq!((first.added, first.duplicates), (6, 0));
+    let again = db.import_ok("checking-bank.csv");
+    assert_eq!((again.added, again.duplicates), (0, 6));
+    let reimport = db.import_ok("checking-bank-reimport.csv");
+    assert_eq!((reimport.added, reimport.duplicates), (3, 2));
+    assert_eq!(
+        db.scalar("SELECT COUNT(*) FROM raw_transactions WHERE fitid IS NOT NULL"),
+        0
+    );
+}
+
+/// V3.1 AC5: a CSV overlapping an OFX import goes to review; "Yes" rows aren't stored, "No" rows are,
+/// and Cancel stores nothing.
+#[test]
+fn csv_overlapping_ofx_is_reviewed_before_anything_is_stored() {
+    let db = database("csv-overlap");
+    db.import_ok("checking-sgml.qfx");
+    db.import_ok("checking-xml.ofx");
+    let rows_before = db.raw_rows();
+
+    assert!(matches!(
+        db.step("checking-overlap-ofx.csv").unwrap(),
+        ImportStep::NeedsMapping(_)
+    ));
+    let first = review(db.save("Overlap", overlap_mapping()).unwrap());
+    assert_eq!(first.file_name, "checking-overlap-ofx.csv");
+    assert_eq!(first.format, ImportFormat::Csv);
+    let expected_pairs = [
+        (
+            0,
+            "2026-10-16",
+            "2026-10-16",
+            -4210,
+            "Fresh Market",
+            "FRESH MARKET",
+        ),
+        (
+            1,
+            "2026-10-19",
+            "2026-10-18",
+            -12055,
+            "Water and Sewer",
+            "WATER & SEWER DEPT",
+        ),
+        (
+            2,
+            "2026-10-22",
+            "2026-10-20",
+            -30000,
+            "Check 1002",
+            "CHECK 1002",
+        ),
+    ];
+    let pairs: Vec<_> = first
+        .pairs
+        .iter()
+        .map(|pair| {
+            assert_eq!(pair.existing_file_name, "checking-xml.ofx");
+            assert_eq!(pair.existing_format, ImportFormat::Ofx);
+            assert_eq!(pair.new_row.amount_cents, pair.existing.amount_cents);
+            (
+                pair.row_index,
+                pair.new_row.posted_date.as_str(),
+                pair.existing.posted_date.as_str(),
+                pair.new_row.amount_cents,
+                pair.new_row.description.as_str(),
+                pair.existing.description.as_str(),
+            )
+        })
+        .collect();
+    assert_eq!(pairs, expected_pairs);
+
+    // Cancel stores nothing, but the layout stays saved.
+    imports::cancel_import(&db.state);
+    assert_eq!(db.scalar("SELECT COUNT(*) FROM imports"), 2);
+    assert_eq!(db.raw_rows(), rows_before);
+    assert!(matches!(db.commit(vec![]), Err(AppError::NotFound(_))));
+
+    // "Yes" to every pair: only the two non-suspects are stored.
+    let second = review(db.step("checking-overlap-ofx.csv").unwrap());
+    assert_eq!(second.pairs.len(), 3);
+    // Only suspect rows, each once; a rejected list keeps the review pending.
+    for (skip, message) in [
+        (vec![3], "Row 3 isn't a suspected duplicate in this review."),
+        (vec![0, 0], "Row 0 is listed more than once."),
+    ] {
+        match db.commit(skip) {
+            Err(AppError::Validation(text)) => assert_eq!(text, message),
+            other => panic!("expected a Validation error, got {other:?}"),
+        }
+    }
+    assert_eq!(db.scalar("SELECT COUNT(*) FROM imports"), 2);
+    let skipped = db.commit(vec![0, 1, 2]).unwrap();
+    assert_eq!(
+        csv_counts(&skipped),
+        (2, 0, 0, 3, FileBalanceCheck::NotChecked)
+    );
+    assert_eq!(
+        outcome(&skipped),
+        (2, 0, BalanceCheck::NotChecked, None, None)
+    );
+    assert_eq!(
+        db.descriptions(skipped.import_id),
+        ["Book Nook", "Gas N Go"]
+    );
+    // The pending import is gone after a commit.
+    assert!(matches!(db.commit(vec![]), Err(AppError::NotFound(_))));
+
+    // "Yes" to one pair, "No" to the others.
+    run(imports::revert(
+        &db.state,
+        RevertImportRequest {
+            import_id: skipped.import_id,
+        },
+    ))
+    .unwrap();
+    review(db.step("checking-overlap-ofx.csv").unwrap());
+    let mixed = db.commit(vec![0]).unwrap();
+    assert_eq!((mixed.added, mixed.review_skipped), (4, 1));
+    assert_eq!(
+        db.descriptions(mixed.import_id),
+        ["Water and Sewer", "Check 1002", "Book Nook", "Gas N Go"]
+    );
+
+    // "No" to every pair: all five are stored.
+    run(imports::revert(
+        &db.state,
+        RevertImportRequest {
+            import_id: mixed.import_id,
+        },
+    ))
+    .unwrap();
+    review(db.step("checking-overlap-ofx.csv").unwrap());
+    let kept = db.commit(vec![]).unwrap();
+    assert_eq!((kept.added, kept.review_skipped), (5, 0));
+}
+
+/// V3.1 AC5: the review applies the other way too, an OFX after a CSV.
+#[test]
+fn ofx_after_an_overlapping_csv_is_reviewed() {
+    let db = database("ofx-after-csv");
+    let csv = db.import_mapped("checking-overlap-ofx.csv", "Overlap", overlap_mapping());
+    assert_eq!(csv.added, 5);
+    let review = review(db.step("checking-xml.ofx").unwrap());
+    assert_eq!(review.format, ImportFormat::Ofx);
+    let pairs: Vec<_> = review
+        .pairs
+        .iter()
+        .map(|pair| {
+            assert_eq!(pair.existing_file_name, "checking-overlap-ofx.csv");
+            assert_eq!(pair.existing_format, ImportFormat::Csv);
+            (
+                pair.row_index,
+                pair.new_row.description.as_str(),
+                pair.existing.description.as_str(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        pairs,
+        [
+            (0, "FRESH MARKET", "Fresh Market"),
+            (1, "WATER & SEWER DEPT", "Water and Sewer"),
+            (2, "CHECK 1002", "Check 1002"),
+        ]
+    );
+    let summary = db.commit(vec![1]).unwrap();
+    assert_eq!(
+        (summary.added, summary.duplicates, summary.review_skipped),
+        (7, 0, 1)
+    );
+    assert_eq!(summary.format, ImportFormat::Ofx);
+    assert_eq!(summary.file_balance_check, FileBalanceCheck::NotChecked);
+}
+
+/// V3.1 AC6: a broken running balance flags the import and still feeds the V3 check.
+#[test]
+fn broken_running_balance_flags_the_import() {
+    let db = database("csv-broken-balance");
+    let summary = db.import_mapped(
+        "checking-broken-running-balance.csv",
+        "Bank",
+        bank_mapping(),
+    );
+    assert_eq!(
+        csv_counts(&summary),
+        (3, 0, 0, 0, FileBalanceCheck::Mismatch)
+    );
+    assert_eq!(
+        outcome(&summary),
+        (3, 0, BalanceCheck::Baseline, Some(146501), None)
+    );
+    let record = &run(imports::list(&db.state)).unwrap()[0];
+    assert_eq!(record.file_balance_check, FileBalanceCheck::Mismatch);
+    assert_eq!(record.balance_as_of.as_deref(), Some("2026-12-12"));
+}
+
+/// V3.1 AC7: a sub-cent amount or a bad date rejects the file and stores nothing.
+#[test]
+fn sub_cent_amounts_and_bad_dates_reject_the_file() {
+    let db = database("csv-rejects");
+    let sub_cent = "Line 3: Amount 0.00500 isn't a whole number of cents.";
+    // While mapping: nothing is saved and the file stays pending.
+    assert!(matches!(
+        db.step("checking-sub-cent.csv").unwrap(),
+        ImportStep::NeedsMapping(_)
+    ));
+    assert_eq!(import_error(db.save("Bank", bank_mapping())), sub_cent);
+    assert_eq!(db.scalar("SELECT COUNT(*) FROM csv_layouts"), 0);
+    assert!(imports::preview_csv_mapping(&db.state, bank_mapping()).is_ok());
+    imports::cancel_import(&db.state);
+
+    // With a saved layout: rejected straight away, pointing at the layout.
+    db.import_mapped("checking-bank.csv", "Bank", bank_mapping());
+    let rows = db.raw_rows();
+    let hint = " If the saved layout is wrong, edit it in Settings > CSV layouts.";
+    assert_eq!(
+        import_error(db.step("checking-sub-cent.csv")),
+        format!("{sub_cent}{hint}")
+    );
+    assert_eq!(
+        import_error(db.step("checking-bad-date.csv")),
+        format!("Line 2: Posting Date 13/05/2026 isn't a MM/DD/YYYY date.{hint}")
+    );
+    assert_eq!(db.scalar("SELECT COUNT(*) FROM imports"), 1);
+    assert_eq!(db.raw_rows(), rows);
+}
+
+/// V3.1 AC8: editing or deleting a layout changes no imported row or import record.
+#[test]
+fn editing_and_deleting_a_layout_keeps_imported_data() {
+    let db = database("csv-layout-edit");
+    db.import_mapped("checking-bank.csv", "Bank", bank_mapping());
+    let rows = db.raw_rows();
+    let records = format!("{:?}", run(imports::list(&db.state)).unwrap());
+    let layout_id = run(csv_layouts::list(&db.state)).unwrap()[0].id;
+
+    let updated = run(csv_layouts::update(
+        &db.state,
+        UpdateCsvLayoutRequest {
+            layout_id,
+            name: "Bank, no ID".into(),
+            mapping: CsvMapping {
+                transaction_id: None,
+                ..bank_mapping()
+            },
+        },
+    ))
+    .unwrap();
+    assert_eq!(updated.name, "Bank, no ID");
+    assert_eq!(db.raw_rows(), rows);
+    assert_eq!(
+        format!("{:?}", run(imports::list(&db.state)).unwrap()),
+        records
+    );
+    assert_eq!(db.scalar("SELECT csv_layout_id FROM imports"), layout_id);
+
+    run(csv_layouts::delete(
+        &db.state,
+        DeleteCsvLayoutRequest { layout_id },
+    ))
+    .unwrap();
+    assert_eq!(db.raw_rows(), rows);
+    assert_eq!(
+        format!("{:?}", run(imports::list(&db.state)).unwrap()),
+        records
+    );
+    assert_eq!(
+        db.scalar("SELECT COUNT(*) FROM imports WHERE csv_layout_id IS NULL"),
+        1
+    );
+    // Without the layout, the header needs a mapping again.
+    assert!(matches!(
+        db.step("checking-bank.csv").unwrap(),
+        ImportStep::NeedsMapping(_)
+    ));
 }

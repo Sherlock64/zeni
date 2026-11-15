@@ -1,6 +1,8 @@
 mod accounts;
 mod commands;
 mod crypto;
+mod csv_import;
+mod csv_layouts;
 mod db;
 #[cfg(test)]
 mod import_acceptance_tests;
@@ -30,6 +32,7 @@ pub fn run() {
             app.manage(AppState {
                 db,
                 session: Default::default(),
+                pending_import: Default::default(),
             });
             Ok(())
         })
@@ -45,6 +48,13 @@ pub fn run() {
             commands::list_accounts,
             commands::reveal_account_numbers,
             commands::import_file,
+            commands::preview_csv_mapping,
+            commands::save_csv_layout,
+            commands::commit_import,
+            commands::cancel_import,
+            commands::list_csv_layouts,
+            commands::update_csv_layout,
+            commands::delete_csv_layout,
             commands::list_imports,
             commands::revert_import,
             commands::list_transactions

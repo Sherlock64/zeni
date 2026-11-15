@@ -9,6 +9,71 @@ const recoveryCodes = [
   "Z8C4J-E1M5R-PY3TW-HN0FB",
 ];
 
+const bankHeaders = ["Transaction ID", "Posting Date", "Effective Date", "Transaction Type", "Amount", "Check Number", "Reference Number", "Description", "Transaction Category", "Type", "Balance", "Memo", "Extended Description", "Posting Status"];
+const bankMapping = {
+  dateFormat: "MM/DD/YYYY",
+  postedDate: 1,
+  description: 7,
+  amount: { kind: "signed", column: 4 },
+  transactionId: 0,
+  memo: 12,
+  transactionType: 3,
+  runningBalance: 10,
+  postingStatus: 13,
+  bankCategory: 8,
+};
+
+export const csvSummary = {
+  importId: 4,
+  fileName: "checking-2026-10.csv",
+  format: "csv",
+  added: 25,
+  duplicates: 0,
+  balanceCheck: "passed",
+  ledgerBalanceCents: 1029791,
+  expectedBalanceCents: 1029791,
+  notPosted: 1,
+  reviewSkipped: 2,
+  fileBalanceCheck: "passed",
+};
+
+// import_file answers for `?import=mapping|review|csv|mismatch`.
+export const importSteps: Record<string, unknown> = {
+  mapping: {
+    step: "needsMapping",
+    data: {
+      fileName: "checking-2026-10.csv",
+      headers: bankHeaders,
+      rows: [],
+    },
+  },
+  review: {
+    step: "review",
+    data: {
+      fileName: "checking-2026-10.csv",
+      format: "csv",
+      pairs: [
+        {
+          rowIndex: 4,
+          newRow: { postedDate: "2026-10-05", amountCents: -4500, description: "CITY WATER UTILITY AUTOPAY" },
+          existing: { postedDate: "2026-10-03", amountCents: -4500, description: "CITY WATER UTILITY" },
+          existingFileName: "checking-2026-10.ofx",
+          existingFormat: "ofx",
+        },
+        {
+          rowIndex: 11,
+          newRow: { postedDate: "2026-10-20", amountCents: -3275, description: "SHELL FUEL 0193 SPRINGFIELD" },
+          existing: { postedDate: "2026-10-21", amountCents: -3275, description: "SHELL FUEL 0193" },
+          existingFileName: "checking-2026-10.ofx",
+          existingFormat: "ofx",
+        },
+      ],
+    },
+  },
+  csv: { step: "imported", data: csvSummary },
+  mismatch: { step: "imported", data: { ...csvSummary, notPosted: 0, reviewSkipped: 0, fileBalanceCheck: "mismatch" } },
+};
+
 // Fake command responses for snapshot.html, keyed by command name. Fake data only.
 export const fixtures: Record<string, unknown> = {
   app_info: {
@@ -28,14 +93,20 @@ export const fixtures: Record<string, unknown> = {
   ],
   reveal_account_numbers: { accountNumber: "000123456789", routingNumber: "011000015" },
   import_file: {
-    importId: 3,
-    fileName: "checking-2026-10.qfx",
-    format: "qfx",
-    added: 12,
-    duplicates: 3,
-    balanceCheck: "passed",
-    ledgerBalanceCents: 482317,
-    expectedBalanceCents: 482317,
+    step: "imported",
+    data: {
+      importId: 3,
+      fileName: "checking-2026-10.qfx",
+      format: "qfx",
+      added: 12,
+      duplicates: 3,
+      balanceCheck: "passed",
+      ledgerBalanceCents: 482317,
+      expectedBalanceCents: 482317,
+      notPosted: 0,
+      reviewSkipped: 0,
+      fileBalanceCheck: "notChecked",
+    },
   },
   list_imports: [
     {
@@ -49,6 +120,7 @@ export const fixtures: Record<string, unknown> = {
       balanceAsOf: "2026-10-31",
       expectedBalanceCents: 482317,
       balanceCheck: "passed",
+      fileBalanceCheck: "notChecked",
     },
     {
       id: 2,
@@ -61,6 +133,7 @@ export const fixtures: Record<string, unknown> = {
       balanceAsOf: "2026-09-30",
       expectedBalanceCents: 402150,
       balanceCheck: "mismatch",
+      fileBalanceCheck: "notChecked",
     },
     {
       id: 1,
@@ -73,9 +146,41 @@ export const fixtures: Record<string, unknown> = {
       balanceAsOf: "2026-08-31",
       expectedBalanceCents: null,
       balanceCheck: "baseline",
+      fileBalanceCheck: "notChecked",
     },
   ],
   revert_import: null,
+  preview_csv_mapping: [
+    { line: 2, postedDate: "2026-10-31", amountCents: -1850, description: "CORNER COFFEE ROASTERS", transactionId: "T-20261031-01", memo: "Card purchase 1234", transactionType: "Debit", runningBalanceCents: 1027941, postingStatus: "Posted", bankCategory: "Dining", error: null },
+    { line: 3, postedDate: "2026-10-30", amountCents: 210000, description: "ACME CORP PAYROLL", transactionId: "T-20261030-01", memo: "Direct deposit", transactionType: "Credit", runningBalanceCents: 1029791, postingStatus: "Posted", bankCategory: "Income", error: null },
+    { line: 4, postedDate: null, amountCents: null, description: null, transactionId: null, memo: null, transactionType: null, runningBalanceCents: null, postingStatus: null, bankCategory: null, error: "Posting Date: 13/45/2026 isn't a MM/DD/YYYY date." },
+    { line: 5, postedDate: "2026-10-28", amountCents: -12000, description: "CITY WATER UTILITY", transactionId: "T-20261028-01", memo: "Autopay ref 88213", transactionType: "Debit", runningBalanceCents: 819791, postingStatus: "Posted", bankCategory: "Utilities", error: null },
+    { line: 6, postedDate: "2026-10-27", amountCents: -4599, description: "STREAMFLIX SUBSCRIPTION", transactionId: null, memo: null, transactionType: "Debit", runningBalanceCents: 831791, postingStatus: "Pending", bankCategory: "Entertainment", error: null },
+  ],
+  save_csv_layout: { step: "imported", data: csvSummary },
+  commit_import: csvSummary,
+  cancel_import: null,
+  delete_csv_layout: null,
+  list_csv_layouts: [
+    { id: 1, name: "Example Community Bank", headers: bankHeaders.map((h) => h.toLowerCase()), mapping: bankMapping },
+    {
+      id: 2,
+      name: "Sample card (debit and credit)",
+      headers: ["date", "description", "debit", "credit", "balance"],
+      mapping: {
+        dateFormat: "YYYY-MM-DD",
+        postedDate: 0,
+        description: 1,
+        amount: { kind: "split", debit: 2, credit: 3 },
+        transactionId: null,
+        memo: null,
+        transactionType: null,
+        runningBalance: 4,
+        postingStatus: null,
+        bankCategory: null,
+      },
+    },
+  ],
   list_transactions: {
     rows: [
       { id: 101, importId: 1, postedDate: "2026-10-31", amountCents: -1850, description: "CORNER COFFEE ROASTERS", memo: "Card purchase 1234", transactionType: "POS", runningBalanceCents: null },
@@ -94,6 +199,9 @@ export const fixtures: Record<string, unknown> = {
     total: 57,
   },
 };
+
+// The backend returns the updated layout; the UI only refetches the list.
+fixtures.update_csv_layout = (fixtures.list_csv_layouts as unknown[])[0];
 
 // `?status=needsSetup|locked|unlocked` (default unlocked), `?reason=<LockReason>` (default keyringLocked),
 // `?keyringSaved=false` for the keyring-save failure in setup and status, `?codesLeft=<n>` (default 8).
@@ -116,5 +224,6 @@ export const errorMessages: Record<string, string> = {
   Locked: "Unlock Zeni first.",
   NotFound: "No account with that id.",
   Crypto: "A stored value failed to decrypt.",
+  Validation: "Choose a different column for each role.",
   Import: "Zeni only imports US dollar statements; this file is in EUR.",
 };
