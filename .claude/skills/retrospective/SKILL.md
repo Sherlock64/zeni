@@ -37,14 +37,18 @@ One self-contained HTML file. No external scripts, fonts or images: it is opened
 1. Collect candidates into one list: every non-blocking follow-up in `snapshots/V<n>/council-findings.md` for the session's version(s) not already marked `-> #<n>` or `-> SB-<n>`, plus the "could have gone better" items that are concrete defects. Mark the `build-version` step 6.2 floor items `private` yourself.
 2. Spawn `council-security` once with the rest, each with an id, and the step 6.2 rule. Tell it this is triage mode: instead of the member-contract VERDICT/FINDINGS format, it replies one line per item, `<id> public|private - <reason>`, and says private when unsure.
 3. Append each private item to `snapshots/security-bugs.md`, numbering on from its last entry: `SB-<n> [severity] <path>:<line> - Problem: ... Fix: ... Source: <version> <member|retro>. Status: open`. Mark its source line `-> SB-<n>`.
-4. Dedupe the public ones by file and problem against `gh issue list --label factory-bug --state open`. One issue per defect.
-5. Show the user each issue's full rendered title and body, plus how many items went private (count only). Create nothing without their yes. Creating issues is outward-facing.
-6. If the label is missing, `gh label create factory-bug --color FBCA04 --description "Minor defect filed by Zeni's agent workflow"`. Create each with `gh issue create --label factory-bug`, title `<area>: <short defect>`, body:
+4. Dedupe the public ones by file and problem against `gh issue list --label factory-bug --state open --limit 1000`. One issue per defect.
+5. Give each public item a severity: its finding's (non-blocking findings are normally `medium` or `low`), or for a retro item the one you assign. Show the user each issue's full rendered title, body and severity label, plus how many items went private (count only). Create nothing without their yes. Creating issues is outward-facing.
+6. Create each missing label once (`gh label list`):
+   - `gh label create factory-bug --color 5319E7 --description "Minor defect filed by Zeni's agent workflow"`
+   - `gh label create severity:<level> --color <color> --description "<Level> severity"`, colors `critical` B60205, `high` D93F0B, `medium` FBCA04, `low` 0E8A16.
+
+   Create each issue with `gh issue create --label factory-bug --label severity:<level>`, title `<area>: <short defect>`, body:
    ```
    **Problem:** <one or two sentences>
    **Where:** `<path>:<line>`
    **Fix:** <the suggested fix>
-   **Source:** <version> council (<member>, <severity>) | <version> retro
+   **Source:** <version> council (<member>) | <version> retro
    ```
 7. Mark each source line in `council-findings.md` with `-> #<n>`.
 
