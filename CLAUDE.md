@@ -19,7 +19,8 @@ Personal finance desktop app: Tauri 2, Rust + sqlx/SQLite backend, TypeScript + 
 | Request | Playbook |
 |---|---|
 | Question or investigation, no code change | `investigate` skill |
-| Bug or small fix | `fix-bug` skill |
+| Bug or small fix (or a GitHub issue: `#<issue>`) | `fix-bug` skill |
+| Clean up all factory-bug issues | `factory-cleanup` skill (one minor version) |
 | PRD version (major or minor) | `build-version` skill (`write-prd` first if there is no PRD) |
 | Novel or high-risk technical decision | `build-version` Design check |
 
