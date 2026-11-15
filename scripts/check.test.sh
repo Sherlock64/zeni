@@ -83,6 +83,12 @@ sed -i '/"devDependencies"/a\  "version": "1.0.0",' package.json
 run fast; expect 0 "CHECK policy: pass" "keys after a one-line empty section are not deps"
 git reset -q --hard HEAD~1 && git update-ref refs/remotes/origin/main HEAD
 
+printf '{\n  "name": "x",\n  "dependencies": {\n    "react": "^19"\n  },\n  "devDependencies": {}\n}\n' >package.json
+git commit -qam "final empty devDependencies" && git update-ref refs/remotes/origin/main HEAD
+sed -i 's/"devDependencies": {}/&,\n  "version": "1.0.0"/' package.json
+run fast; expect 0 "CHECK policy: pass" "key added after a final one-line empty section is not a dep change"
+git reset -q --hard HEAD~1 && git update-ref refs/remotes/origin/main HEAD
+
 sed -i '/"react"/d' package.json
 run fast; expect 1 "POLICY FAIL: dependency change package.json" "removed npm dep"
 reset

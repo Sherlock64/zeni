@@ -4,7 +4,7 @@ description: Read-only Zeni council member for security and data integrity. Revi
 tools: Read, Grep, Glob, Bash
 ---
 
-You are the security member of Zeni's review council. Zeni stores personal finance data and bank account numbers locally. Follow `.claude/skills/council-review/member-contract.md` exactly. Use Bash only for read-only `git`.
+You are the security member of Zeni's review council. Zeni stores personal finance data and bank account numbers locally. Follow `.claude/skills/council-review/member-contract.md` exactly.
 
 ## Rubric
 

@@ -14,6 +14,15 @@ Personal finance desktop app: Tauri 2, Rust + sqlx/SQLite backend, TypeScript + 
 - Stop and ask at marked checkpoints.
 - Start each session on one fresh branch from the latest `origin/main`, and keep all of that session's work on it. Name it `v<version>-<one or two words>`. Versions are semantic (major.minor.hotfix) with trailing zeros dropped: `v3` is 3.0.0, `v3.1` is 3.1.0, `v3.0.1` is a hotfix on `v3`. Major work massively changes how the app works as a whole (backup and restore, nicknames, categorisation) or may modify or remove what users already have (dropping tables, changing or removing UI features, changing settings the user may have set). Minor work only adds, without changing how the app works as a whole (new tables, new features, slow patches). Hotfixes are urgent fixes, very small harmless changes, and documentation changes, including PRDs and the roadmap. Major and minor work needs a PRD and takes its version (`PRD-V3.1.md` -> `v3.1-<words>`); a hotfix needs no PRD and takes the next hotfix number after the latest version merged to `main` (`v3.0.1-...`, then `v3.0.2-...`). PRs target `main`.
 
+## Workflow
+
+| Request | Playbook |
+|---|---|
+| Question or investigation, no code change | `investigate` skill |
+| Bug or small fix | `fix-bug` skill |
+| PRD version (major or minor) | `build-version` skill (`write-prd` first if there is no PRD) |
+| Novel or high-risk technical decision | `build-version` Design check |
+
 ## Layout
 
 - `src-tauri/src/`: Rust backend: `commands.rs` (thin Tauri wrappers), `db.rs`, `types.rs`, `crypto.rs` (AES-256-GCM, Argon2id, recovery codes), `keyring.rs` (Secret Service via oo7; `Keyring` trait, faked in tests), `security.rs` (setup, unlock, recover, reset, session key), `accounts.rs` (validation, encrypted insert, list, reveal), `ofx.rs` (hand-written OFX 1.x SGML / 2.x XML parser), `csv_import.rs` (pure CSV header, mapping preview and parse, running-balance check), `csv_layouts.rs` (saved CSV layouts: mapping validation, CRUD), `imports.rs` (two-step import: preview holds the parsed file in `AppState.pending_import`, then commit or cancel; dedupe, cross-format suspects, balance check, revert), `transactions.rs` (paged list query), `backup.rs` (`VACUUM INTO` backups, retention, daily and pre-revert backups, validated restore with a safety copy, undo restore), `import_acceptance_tests.rs` (V3 acceptance tests over the fixtures)
@@ -25,6 +34,7 @@ Personal finance desktop app: Tauri 2, Rust + sqlx/SQLite backend, TypeScript + 
 - `src/components/ui/`: shadcn components; they import `cn` from the `cn` package
 - `scripts/`: dev scripts; `check.sh` is the verification gate (`check.test.sh` self-tests it; what it enforces: `CONSTRAINTS.md`); `snapshot.html` + `src/snapshot.ts` are the dev-only mocked-IPC entry for snapshots (not in the release build)
 - `plans/`: PRDs and roadmap
+- `docs/`: user guides; `glossary.md` (domain terms), `database.md` (schema detail), `adr/` (architecture decisions; when to write one: `adr/README.md`)
 - `.claude/`: agent and skill definitions
 
 ## Commands
@@ -45,8 +55,6 @@ Run Rust commands in `src-tauri/`.
 - Debug builds (`pnpm tauri dev`) use `~/.local/share/com.sherlock64.zeni/dev/zeni.db` and tag keyring items `zeni-dev`, so dev runs never touch the user's real data. Test erase, restore and migrations only there or in temp-dir tests; never point a dev build at the real database.
 - Migrations live in `src-tauri/migrations/` and run on startup. A migration that rebuilds a table other tables reference starts with `-- no-transaction` and runs `PRAGMA foreign_keys = OFF` before its own `BEGIN` (see `0004_csv_import.sql`); dropping the table with foreign keys on cascade-deletes the child rows.
 - Never edit an applied migration; add a new one.
-- `key_wraps` holds the data key wrapped by the master password (one `password` row) and by each unused recovery code (`recovery` rows); `app_meta.data_key_id` names the matching keyring item. `accounts.account_number`/`routing_number` are `nonce || ciphertext` BLOBs.
-- `imports` has one row per imported file (also when every row was a duplicate) with its `format` (`ofx`, `qfx` or `csv`), its balance check and `file_balance_check` (CSV running-balance check; `notChecked` for OFX/QFX). `csv_layout_id` references `csv_layouts` with `ON DELETE SET NULL`; the `imports_raw_no_update` trigger aborts updates to every other column. `raw_transactions` holds the imported rows (dedupe and cross-format rules: `docs/importing.md`; `(account_id, fitid)` is a unique index; a mapped CSV transaction ID is stored as `fitid`, the bank's category as `bank_category`, the CSV line as `original_row`). A trigger aborts every `UPDATE` on `raw_transactions`. Reverting an import hard-deletes it and its rows.
+- Imported data is never updated: triggers abort every `UPDATE` on `raw_transactions` and on the file-read columns of `imports`. Reverting an import hard-deletes it and its rows.
 - `AppState.db` is a `RwLock` that a restore swaps; `security::pool` returns a clone of the pool, so never hold the lock across an `await`.
-- `app_meta` backup keys: `backup_folder` (chosen folder; absent means `<data dir>/backups`), `backup_keep` (automatic backups kept, 1-365, default 14), `last_daily_backup` (local date of the last successful daily backup).
-- `csv_layouts` holds one saved column mapping per `header_fingerprint` (normalised header names joined with `\n`, unique), as zero-based column indexes: one `amount_column` or a `debit_column`/`credit_column` pair.
+- Tables, columns, triggers and `app_meta` keys: `docs/database.md`.

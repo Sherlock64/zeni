@@ -19,11 +19,18 @@ First read `CLAUDE.md` and `.claude/skills/build-version/dev-contract.md`, and f
 - The app is dark-only (`class="dark"` on `<html>`). Use theme tokens (`bg-background`, `text-muted-foreground`, `destructive`, and so on); never use raw colour values.
 - Add shadcn primitives with `pnpm exec shadcn add <component>`, and don't hand-edit files in `src/components/ui/`. When it asks to overwrite an existing file there, answer no: `button.tsx` carries house styles such as `aria-disabled:opacity-50`. If the command wants to install an npm package, stop and report it as a dependency to approve.
 - Icons come from `lucide-react`, with `aria-hidden="true"` when they are decorative.
-- Money arrives as integer cents. Display it only through `formatCents` in `src/lib/money.ts`.
+- Display money only through `formatCents` in `src/lib/money.ts`.
 - Tests sit next to the file they test as `*.test.tsx`. Mock `@/lib/commands` with `vi.mock`, reset with `beforeEach(() => vi.resetAllMocks())` (define global stubs such as `matchMedia` and `scrollTo` as plain functions, so the reset doesn't wipe them), render inside a fresh `QueryClientProvider` with `retry: false`, give tests that route a fresh router with `createMemoryHistory` (see `src/components/app-shell.test.tsx`), and query by role or text. Radix `Select` and `RadioGroup` need a `ResizeObserver` stub (see `src/components/import-controls.test.tsx`); Radix `Select` can't be opened in jsdom, so check its options in a snapshot.
 - A dialog opened without a trigger (`open` state only) passes `onCloseAutoFocus` that calls `event.preventDefault()` and focuses the button that opened it, like `returnFocus` in `src/components/csv-layouts-card.tsx`.
 
 If a needed command does not exist yet, code against the contract in your task message and mock it in tests. Report anything the contract is missing.
+
+## Before you report
+
+- Every dialog, and every retry that replaces its button, returns focus to a sensible control.
+- Every async state (loading, error, retry that fails again, cancel) has a test.
+- User-facing labels reuse the PRD's words for each concept.
+- When the version adds a file format, grep `src/` for every format list (for example `OFX or QFX`) and update each one.
 
 ## Snapshots
 
