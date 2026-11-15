@@ -4,7 +4,7 @@ Every `council-*` agent follows this file exactly.
 
 ## Inputs
 
-The organizer's prompt gives you: the requirements (the PRD path, or for a hotfix the task brief, which then stands in for the PRD everywhere in this contract and your agent file), the round number, the evidence manifest `snapshots/V<n>/evidence.yaml` (changed files and check results), the scope (changed files and a summary of the change), the contracts file or "none", the UI snapshots taken for this round (PNG paths with the route and state each shows, or "none"), the dependencies the user approved for this version, and any of your earlier findings the organizer rejected, with reasons.
+Your prompt is the template in `council-review` step 3. For a hotfix, the task brief stands in for the PRD everywhere in this contract and your agent file.
 
 ## Rules
 
@@ -40,7 +40,6 @@ Return exactly this, followed only by any extra section your agent file requires
 
 ```
 VERDICT: PASS | FAIL
-COUNTS: critical <n>, high <n>, medium-blocking <n>, medium <n>, low <n>
 FINDINGS:
 1. [HIGH] <path>:<line> - Problem: <what is wrong and why it matters>. Fix: <the concrete change required>.
 2. [MEDIUM, blocking: <criterion>] <path>:<line> - Problem: ... Fix: ...

@@ -23,11 +23,12 @@ Follow the shape of `plans/PRD-V3.1.md`, about 35-50 lines:
 
 - `# Personal Finance App — V<n> PRD: <title>`, then one paragraph saying what V<n> adds, ending "Builds on PRD-V1.md to PRD-V<prev>.md; see ROADMAP.md."
 - `## Requirements`: `- **V<n>-R<k>:** ...`, one testable item each.
-- `## Out of Scope`, `## Edge Cases`, `## Checkpoint` (only if the user sets one), `## Acceptance Criteria` (numbered, each testable).
+- `## Out of Scope`, `## Edge Cases`, `## Checkpoint` (only if the user sets one), `## Acceptance Criteria` (numbered).
 
 Rules:
 
 - Name every dependency the user approved inline, for example "`csv` crate (approved dependency)", so `build-version` doesn't ask again.
+- Phrase each acceptance criterion as an observable result a test or the running app can check: what the user sees, or what a command returns or stores, never how the code does it.
 - State every formula or rule once, exactly, with one worked example per edge case it has.
 - Say when an acceptance criterion can only be checked in the running app, so `council-prd-compliance` marks it `RUNTIME`.
 - Name the migration shape when SQLite limits it (for example a table rebuild to widen a `CHECK`).

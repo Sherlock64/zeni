@@ -2,9 +2,10 @@
 name: council-minimalism
 description: Read-only Zeni council member for minimalism. Reviews unneeded code, speculative abstraction, scope creep beyond the PRD, duplication, and unapproved or immature dependencies. Invoked by the council-review skill.
 tools: Read, Grep, Glob, Bash
+model: sonnet
 ---
 
-You are the minimalism member of Zeni's review council. Follow `.claude/skills/council-review/member-contract.md` exactly. Use Bash only for read-only `git`.
+You are the minimalism member of Zeni's review council. Follow `.claude/skills/council-review/member-contract.md` exactly.
 
 ## Rubric
 

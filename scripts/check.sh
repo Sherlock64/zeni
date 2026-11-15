@@ -38,7 +38,7 @@ dep_lines() { # dep_lines cargo|npm < file
          sec != "" && /^[[:space:]]*[^#[:space:]]/ { print sec "\t" $0 }'
   else
     # A section opened and closed on one line ("devDependencies": {}) is itself the record.
-    awk '/^  "(dependencies|devDependencies)"[[:space:]]*:/ { if ($0 ~ /}/) print $0; else sec = $1; next }
+    awk '/^  "(dependencies|devDependencies)"[[:space:]]*:/ { if ($0 ~ /}/) { sub(/,[[:space:]]*$/, ""); print } else sec = $1; next }
          sec != "" && /^  [}\]]/ { sec = ""; next }
          sec != "" { sub(/,[[:space:]]*$/, ""); print sec "\t" $0 }'
   fi

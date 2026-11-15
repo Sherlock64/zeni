@@ -10,21 +10,17 @@ The reference implementations are `app_info` / `load_app_info` (a database read 
 1. **Types** go in `src-tauri/src/types.rs`, or the `types` module once it is split. Each type needs `#[derive(TS)]`, `#[ts(export)]` and `#[serde(rename_all = "camelCase")]`.
    - Request: `#[derive(Debug, Deserialize, TS)]`, named `<Name>Request`.
    - Response: `#[derive(Debug, Serialize, TS)]`.
-   - A type holding a password, recovery code, key, or account or routing number drops `Debug` (`SetupRequest`, `AccountNumbers`). Put it below the comment in `types.rs` that marks the secret-holding types.
+   - A secret-holding type (`CLAUDE.md`), such as `SetupRequest` or `AccountNumbers`, drops `Debug` and goes below the comment in `types.rs` that marks them.
    - Money fields: `i64` cents with `#[ts(type = "number")]`. Without it, ts-rs emits `bigint`, which doesn't match the JSON number serde sends.
    - Errors: use `AppError::Validation` for bad input. `sqlx`, migrate and `std::io` errors become `AppError::Database` through the `From` impls, so use `?`. A new kind gets a variant holding one `String`, with `#[error("{0}")]`. A unit variant would serialize without `message` and break `CommandError`.
 2. **Logic** goes in a private plain function in `src-tauri/src/commands.rs`, which knows nothing about Tauri. Only its wrapper and tests call it, so it gets no `pub`. Logic for a domain with its own module (`security.rs`, `accounts.rs`) goes there instead, as a `pub` function the wrapper calls, with its tests in that module:
    ```rust
    async fn <logic_name>(state: &AppState, request: <Name>Request) -> Result<<Response>, AppError>
    ```
-   - If it needs the database, get it first. While the database is unavailable this returns `AppError::Database`:
-     ```rust
-     let database = state.db.as_ref().map_err(|error| AppError::Database(error.clone()))?;
-     ```
-   - In a domain module, `security::pool(state)?` does the same and returns the pool.
-   - If it needs the data key, get it with `security::session_key(state)?`. While Zeni is locked this returns `AppError::Locked`. Encrypt and decrypt only through `src-tauri/src/crypto.rs`.
+   - If it needs the database, get the pool first with `security::pool(state)?`. It returns a clone, so no lock is held across an `.await` (a restore swaps the pool), and `AppError::Database` while the database is unavailable.
+   - If it needs the data key, get it with `security::session_key(state)?`. While Zeni is locked this returns `AppError::Locked`.
    - Reach the Secret Service only through the `Keyring` trait in `src-tauri/src/keyring.rs`: take `keyring: &impl Keyring`, and pass `&SecretService` from the wrapper (see `security_status`).
-   - Put queries in `db.rs` or a domain module, and call them with `&database.pool`.
+   - Put queries in `db.rs` or a domain module, and call them with `&pool`.
    - Drop `async`, `state` or `request` when they aren't used.
 3. **Validate first** in the logic function. Trim strings. Reject empty values, values over a `const MAX_...` limit, out-of-range numbers and unknown values with `AppError::Validation("<field> must ...")` before touching the database.
 4. **Tauri wrapper**, the only part tests can't call:
@@ -40,7 +36,7 @@ The reference implementations are `app_info` / `load_app_info` (a database read 
 6. **Rust tests** go in `#[cfg(test)] mod tests` of `commands.rs`. Call the plain function, not the wrapper. Cover:
    - The success path, with state from `db::connect(&db::temp_dir("<name>"))`. Remove the directory at the end.
    - Each validation rule, on both sides of every limit (for example 200 accepted, 201 rejected), and after trimming.
-   - For database commands, the unavailable case: `AppState { db: Err("...".into()), session: Default::default(), pending_import: Default::default() }` returns `Database`.
+   - For database commands, the unavailable case: `AppState { db: std::sync::RwLock::new(Err("...".into())), session: Default::default(), pending_import: Default::default(), backup: Default::default() }` returns `Database`.
    - For commands that need the data key, the locked case returns `Locked`.
    - Keyring code gets the `FakeKeyring` in `security.rs` tests, never the real Secret Service. Argon2 runs with the light `crypto::TEST_KDF` under `cfg(test)`, as `security.rs` imports it; never lower `PASSWORD_KDF` or `RECOVERY_KDF` themselves.
    - Errors, asserted on their serialized `kind` with `serde_json::to_value`.
@@ -53,7 +49,7 @@ The reference implementations are `app_info` / `load_app_info` (a database read 
    - A command that returns `()` uses `call<null>`.
    - Export only the wrappers.
 9. **TS test** in `src/lib/commands.test.ts`: assert that `invoke` was called with `"<snake_name>"` and `{ request: ... }`.
-10. **Check:** run the task checks in `.claude/skills/build-version/dev-contract.md` rule 7, with `--rust commands::` (plus the logic module, if any) and `--ts src/lib/commands.test.ts`.
+10. **Check:** run the task checks in `.claude/skills/build-version/dev-contract.md` rule 9, with `--rust commands::` (plus the logic module, if any) and `--ts src/lib/commands.test.ts`.
 
 The UI side is `ui-dev`'s work:
 - Read with `useQuery({ queryKey: ["<snake_name>"], queryFn: <camelName> })`, or use `useMutation` for writes. A query used in more than one place gets a hook in `src/hooks/`, like `use-app-info.ts`.

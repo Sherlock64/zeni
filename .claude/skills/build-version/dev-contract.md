@@ -19,14 +19,17 @@ Nobody edits `plans/`; the user writes PRDs, or the organizer does with the user
 2. Follow `CLAUDE.md`. It is the single source of coding rules; this contract does not restate them.
 3. Never add a Cargo or npm dependency. If one is needed, report the crate or package, version and reason; the organizer asks the user.
 4. Build only what the task asks for. No features, options or abstractions beyond it.
-5. Other devs edit the same working tree at the same time. A build or test failure in a file you do not own is reported, not fixed. A `cargo` "waiting for file lock" message means another dev is building; wait, don't kill it. If you edit a hub file (`build-version` step 1.2), retake every earlier snapshot of the states it changes.
-6. Do not commit, push or touch git state.
-7. Before reporting done, run the checks for what you changed and make them pass. Don't run the full suites; the organizer runs them once at integration.
+5. For nontrivial logic (parsing, money, validation, state changes, anything security touches), work red-green at a public seam: write the test against the plain function a command calls, a module's `pub fn`, or the rendered component; see it fail; then make it pass.
+6. Done means tested: every new component has one test per error branch it renders, and every new backend operation one per failure branch it returns.
+7. Other devs edit the same working tree at the same time. A build or test failure in a file you do not own is reported, not fixed. A `cargo` "waiting for file lock" message means another dev is building; wait, don't kill it. If you edit a hub file (`build-version` step 1.2), retake every earlier snapshot of the states it changes.
+8. Do not commit, push or touch git state.
+9. Before reporting done, run the checks for what you changed and make them pass. Don't run the full suites; the organizer runs them once at integration.
    - Rust: format only your own files with `rustfmt --edition 2024 <file>`, never plain `cargo fmt`.
-   - From the repo root, `scripts/check.sh task --rust <cargo test filter> --ts <vitest path>`: one `--rust` per changed Rust module (for example `--rust csv_layouts::`) and one `--ts` per changed or affected test file (for example `--ts src/lib/money.test.ts`), both repeatable. It runs the policy checks, `pnpm exec tsc`, `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` and only those tests. With no tests to name, run `scripts/check.sh fast`.
+   - From the repo root, `scripts/check.sh task --rust <cargo test filter> --ts <vitest path>`: one `--rust` per changed Rust module (for example `--rust csv_layouts::`) and one `--ts` per changed or affected test file (for example `--ts src/lib/money.test.ts`), both repeatable. With no tests to name, run `scripts/check.sh fast`.
+   - `dead_code` clippy errors your task message says are expected (callers land in a later task) may stay; list them in `CHECKS`.
    - Never set `ZENI_DEPS_APPROVED` or `ZENI_SUPPRESSIONS_APPROVED`. Report a `POLICY FAIL` in `NEEDS`.
    - UI: the snapshots in `ui-dev`'s agent file, viewed and fixed until they look right.
-8. Report in this format:
+10. Report in this format:
    ```
    STATUS: DONE | BLOCKED
    CHANGED: <every file created, edited or deleted>

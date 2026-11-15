@@ -13,7 +13,7 @@ Each member owns one dimension. Every `CLAUDE.md` rule has exactly one owner.
 |---|---|---|
 | `council-code-cleanliness` | Readability, structure, idioms, lint/format/type-check clean, consistency with established patterns | Types separate from logic; integer cents |
 | `council-minimalism` | Unneeded code, abstraction, scope creep, duplication, dependencies | No unapproved deps; prefer mature libraries |
-| `council-security` | Secrets, crypto, IPC surface, SQL safety, data integrity | Raw imported data never modified; never edit an applied migration |
+| `council-security` | Secrets, crypto, IPC surface, SQL safety, data integrity | Encrypt only account and routing numbers, only through `crypto.rs`; never log or expose secrets; raw imported data never modified; never edit an applied migration |
 | `council-ui-design` | Visual consistency: shadcn usage, theme tokens, layout, typography | - |
 | `council-ux-design` | Flows, states, feedback, copy | - |
 | `council-accessibility` | WCAG 2.1 AA: semantics, keyboard, focus, names, contrast | - |
