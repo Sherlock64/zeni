@@ -189,7 +189,7 @@ pub async fn insert(
 /// Every saved layout, by name.
 pub async fn list(state: &AppState) -> Result<Vec<CsvLayout>, AppError> {
     sqlx::query(select!("ORDER BY name COLLATE NOCASE, id"))
-        .fetch_all(security::pool(state)?)
+        .fetch_all(&security::pool(state)?)
         .await?
         .into_iter()
         .map(layout)
@@ -201,7 +201,7 @@ pub async fn update(
     state: &AppState,
     request: UpdateCsvLayoutRequest,
 ) -> Result<CsvLayout, AppError> {
-    let pool = security::pool(state)?;
+    let pool = &security::pool(state)?;
     let name = validate_name(&request.name)?;
     let existing = by_id(pool, request.layout_id)
         .await?
@@ -242,7 +242,7 @@ pub async fn update(
 pub async fn delete(state: &AppState, request: DeleteCsvLayoutRequest) -> Result<(), AppError> {
     let deleted = sqlx::query("DELETE FROM csv_layouts WHERE id = ?")
         .bind(request.layout_id)
-        .execute(security::pool(state)?)
+        .execute(&security::pool(state)?)
         .await?;
     if deleted.rows_affected() == 0 {
         return Err(not_found());
@@ -269,8 +269,9 @@ mod tests {
         let dir = db::temp_dir(name);
         let _ = std::fs::remove_dir_all(&dir);
         let state = AppState {
-            db: tauri::async_runtime::block_on(db::connect(&dir)),
+            db: std::sync::RwLock::new(tauri::async_runtime::block_on(db::connect(&dir))),
             session: Default::default(),
+            backup: Default::default(),
             pending_import: Default::default(),
         };
         (dir, state)
@@ -356,7 +357,7 @@ mod tests {
     fn insert_find_and_list_round_trip_signed_and_split() {
         let (dir, state) = state("csv-layouts-round-trip");
         tauri::async_runtime::block_on(async {
-            let pool = security::pool(&state).unwrap();
+            let pool = &security::pool(&state).unwrap();
             let saved = insert(pool, "  Credit union  ", FINGERPRINT, &signed())
                 .await
                 .unwrap();
@@ -409,7 +410,7 @@ mod tests {
     fn insert_rejects_bad_names_bad_mappings_and_a_known_header() {
         let (dir, state) = state("csv-layouts-insert-errors");
         tauri::async_runtime::block_on(async {
-            let pool = security::pool(&state).unwrap();
+            let pool = &security::pool(&state).unwrap();
             assert_eq!(
                 validation(insert(pool, "   ", FINGERPRINT, &signed()).await),
                 "Give the layout a name."
@@ -441,7 +442,7 @@ mod tests {
     fn update_validates_against_its_own_header() {
         let (dir, state) = state("csv-layouts-update");
         tauri::async_runtime::block_on(async {
-            let pool = security::pool(&state).unwrap();
+            let pool = &security::pool(&state).unwrap();
             let saved = insert(pool, "Bank", SPLIT_FINGERPRINT, &split())
                 .await
                 .unwrap();
@@ -502,7 +503,7 @@ mod tests {
     fn delete_clears_the_import_link_and_leaves_imported_data_alone() {
         let (dir, state) = state("csv-layouts-delete");
         tauri::async_runtime::block_on(async {
-            let pool = security::pool(&state).unwrap();
+            let pool = &security::pool(&state).unwrap();
             let saved = insert(pool, "Bank", FINGERPRINT, &signed()).await.unwrap();
             sqlx::query(
                 "INSERT INTO accounts (name, owner, bank_name, account_number, routing_number) \
@@ -595,8 +596,9 @@ mod tests {
     #[test]
     fn database_unavailable_is_reported() {
         let state = AppState {
-            db: Err("disk gone".into()),
+            db: std::sync::RwLock::new(Err("disk gone".into())),
             session: Default::default(),
+            backup: Default::default(),
             pending_import: Default::default(),
         };
         tauri::async_runtime::block_on(async {

@@ -20,11 +20,14 @@ const RECOVERY_CODE_COUNT: usize = 8;
 const MIN_PASSWORD_CHARS: usize = 12;
 const MAX_PASSWORD_CHARS: usize = 1024;
 
-pub fn pool(state: &AppState) -> Result<&SqlitePool, AppError> {
+/// A clone of the current pool, so no lock is held across an await (a restore swaps it).
+pub fn pool(state: &AppState) -> Result<SqlitePool, AppError> {
     state
         .db
+        .read()
+        .unwrap_or_else(PoisonError::into_inner)
         .as_ref()
-        .map(|database| &database.pool)
+        .map(|database| database.pool.clone())
         .map_err(|error| AppError::Database(error.clone()))
 }
 
@@ -191,7 +194,7 @@ fn default_owner() -> String {
 }
 
 pub async fn status(state: &AppState, keyring: &impl Keyring) -> Result<SecurityStatus, AppError> {
-    let pool = pool(state)?;
+    let pool = &pool(state)?;
     if !is_set_up(pool).await? {
         return Ok(SecurityStatus::NeedsSetup {
             default_owner: default_owner(),
@@ -211,7 +214,16 @@ pub async fn status(state: &AppState, keyring: &impl Keyring) -> Result<Security
                 KeyringLoad::Missing => Some(LockReason::KeyMissing),
             };
             if let Some(reason) = reason {
-                return Ok(SecurityStatus::Locked { reason });
+                let can_undo_restore = state
+                    .backup
+                    .undo_path
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .is_some();
+                return Ok(SecurityStatus::Locked {
+                    reason,
+                    can_undo_restore,
+                });
             }
             true
         }
@@ -233,7 +245,7 @@ pub async fn complete_setup(
 ) -> Result<SetupResponse, AppError> {
     validate_new_password("masterPassword", &request.master_password)?;
     let account = accounts::validate(request.account)?;
-    let pool = pool(state)?;
+    let pool = &pool(state)?;
     if is_set_up(pool).await? {
         return Err(AppError::Locked("Zeni is already set up.".into()));
     }
@@ -267,7 +279,7 @@ pub async fn unlock(
     request: UnlockRequest,
 ) -> Result<(), AppError> {
     require_password(&request.master_password)?;
-    let pool = pool(state)?;
+    let pool = &pool(state)?;
     require_locked(state, pool).await?;
     let (_, key) = find_key(pool, "password", request.master_password.as_bytes())
         .await?
@@ -285,7 +297,7 @@ pub async fn recover(
 ) -> Result<(), AppError> {
     let code = crypto::normalize_recovery_code(&request.recovery_code)?;
     validate_new_password("newMasterPassword", &request.new_master_password)?;
-    let pool = pool(state)?;
+    let pool = &pool(state)?;
     require_locked(state, pool).await?;
     let (code_id, key) = find_key(pool, "recovery", code.as_bytes())
         .await?
@@ -308,7 +320,7 @@ pub async fn recover(
 
 /// "Erase and set up again": only from the lock screen.
 pub async fn reset(state: &AppState, keyring: &impl Keyring) -> Result<(), AppError> {
-    let pool = pool(state)?;
+    let pool = &pool(state)?;
     if !is_set_up(pool).await? {
         return Err(AppError::Validation("Zeni isn't set up yet.".into()));
     }
@@ -347,7 +359,7 @@ pub async fn regenerate_recovery_codes(
     request: UnlockRequest,
 ) -> Result<RecoveryCodes, AppError> {
     require_password(&request.master_password)?;
-    let pool = pool(state)?;
+    let pool = &pool(state)?;
     if !is_unlocked(state) {
         return Err(unlock_first());
     }
@@ -366,7 +378,7 @@ pub async fn regenerate_recovery_codes(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use std::collections::HashMap;
     use std::path::PathBuf;
     use std::sync::Mutex;
@@ -376,11 +388,11 @@ mod tests {
     use crate::db;
     use crate::types::{Account, AccountNumbers, NewAccount, RevealAccountNumbersRequest};
 
-    const PASSWORD: &str = "correct horse battery";
+    pub(crate) const PASSWORD: &str = "correct horse battery";
 
     /// In-memory Secret Service. `blocked` simulates a locked or unreachable keyring.
     #[derive(Default)]
-    struct FakeKeyring {
+    pub(crate) struct FakeKeyring {
         blocked: Mutex<Option<LockReason>>,
         items: Mutex<HashMap<String, [u8; 32]>>,
     }
@@ -439,8 +451,9 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         Fixture {
             state: AppState {
-                db: run(db::connect(&dir)),
+                db: std::sync::RwLock::new(run(db::connect(&dir))),
                 session: Default::default(),
+                backup: Default::default(),
                 pending_import: Default::default(),
             },
             keyring: FakeKeyring::default(),
@@ -449,7 +462,7 @@ mod tests {
     }
 
     impl Fixture {
-        fn pool(&self) -> &SqlitePool {
+        fn pool(&self) -> SqlitePool {
             pool(&self.state).unwrap()
         }
         fn status(&self) -> SecurityStatus {
@@ -502,7 +515,7 @@ mod tests {
             ))
         }
         fn count(&self, sql: &'static str) -> i64 {
-            run(sqlx::query_scalar(sql).fetch_one(self.pool())).unwrap()
+            run(sqlx::query_scalar(sql).fetch_one(&self.pool())).unwrap()
         }
     }
 
@@ -530,7 +543,7 @@ mod tests {
                  VALUES (?, x'00', 1, 1, 1, x'00')",
             )
             .bind(kind)
-            .execute(f.pool()))
+            .execute(&f.pool()))
         };
         insert("password").unwrap();
         insert("recovery").unwrap();
@@ -545,7 +558,7 @@ mod tests {
             "INSERT INTO accounts (name, owner, bank_name, account_number, routing_number)
              VALUES ('a', 'b', 'c', x'01', x'02')",
         )
-        .execute(f.pool()))
+        .execute(&f.pool()))
         .unwrap();
         assert_eq!(f.count("SELECT COUNT(*) FROM accounts"), 1);
     }
@@ -573,7 +586,7 @@ mod tests {
             f.count("SELECT COUNT(*) FROM key_wraps WHERE kind = 'password'"),
             1
         );
-        let key_id = run(key_id(f.pool())).unwrap();
+        let key_id = run(key_id(&f.pool())).unwrap();
         assert!(f.keyring.items.lock().unwrap().contains_key(&key_id));
 
         let accounts = f.accounts();
@@ -594,7 +607,7 @@ mod tests {
         let (account_number, routing_number): (Vec<u8>, Vec<u8>) = run(sqlx::query_as(
             "SELECT account_number, routing_number FROM accounts",
         )
-        .fetch_one(f.pool()))
+        .fetch_one(&f.pool()))
         .unwrap();
         let contains = |haystack: &[u8], needle: &[u8]| {
             haystack
@@ -628,8 +641,9 @@ mod tests {
     #[test]
     fn setup_validates_before_touching_the_db() {
         let state = AppState {
-            db: Err("no database".into()),
+            db: std::sync::RwLock::new(Err("no database".into())),
             session: Default::default(),
+            backup: Default::default(),
             pending_import: Default::default(),
         };
         let keyring = FakeKeyring::default();
@@ -655,8 +669,9 @@ mod tests {
     #[test]
     fn every_command_reports_a_missing_database() {
         let state = AppState {
-            db: Err("no database".into()),
+            db: std::sync::RwLock::new(Err("no database".into())),
             session: Default::default(),
+            backup: Default::default(),
             pending_import: Default::default(),
         };
         let keyring = FakeKeyring::default();
@@ -692,7 +707,7 @@ mod tests {
         f.setup();
         f.relaunch();
 
-        let locked = |reason: &str| serde_json::json!({ "state": "locked", "reason": reason });
+        let locked = |reason: &str| serde_json::json!({ "state": "locked", "reason": reason, "canUndoRestore": false });
         f.keyring.block(Some(LockReason::KeyringLocked));
         assert_eq!(f.status_json(), locked("keyringLocked"));
         f.keyring.block(Some(LockReason::KeyringUnavailable));
@@ -706,7 +721,7 @@ mod tests {
         f.keyring.items.lock().unwrap().insert("stale".into(), key);
         assert_eq!(f.status_json(), locked("keyMissing"));
 
-        let key_id = run(key_id(f.pool())).unwrap();
+        let key_id = run(key_id(&f.pool())).unwrap();
         f.keyring.items.lock().unwrap().insert(key_id, key);
         assert!(matches!(
             f.status(),
@@ -719,6 +734,19 @@ mod tests {
         f.keyring.block(Some(LockReason::KeyringUnavailable));
         assert!(matches!(f.status(), SecurityStatus::Unlocked { .. }));
         assert_eq!(f.reveal(1).unwrap().account_number, "123456789012");
+    }
+
+    #[test]
+    fn locked_status_offers_undo_only_while_a_restore_can_be_undone() {
+        let f = fixture("undo-restore");
+        f.setup();
+        f.relaunch();
+        f.keyring.block(Some(LockReason::KeyringLocked));
+        assert_eq!(f.status_json()["canUndoRestore"], false);
+        *f.state.backup.undo_path.lock().unwrap() = Some(f.dir.join("safety.db"));
+        assert_eq!(f.status_json()["canUndoRestore"], true);
+        *f.state.backup.undo_path.lock().unwrap() = None;
+        assert_eq!(f.status_json()["canUndoRestore"], false);
     }
 
     #[test]
@@ -868,7 +896,7 @@ mod tests {
                 "INSERT INTO imports (account_id, file_name, format, balance_check)
                  SELECT id, 'bank.ofx', 'ofx', 'notChecked' FROM accounts RETURNING id",
             )
-            .fetch_one(f.pool())
+            .fetch_one(&f.pool())
             .await
             .unwrap();
             sqlx::query(
@@ -877,7 +905,7 @@ mod tests {
                  SELECT ?, id, 'F1', '2026-01-02', -1250, 'COFFEE', '<STMTTRN>' FROM accounts",
             )
             .bind(import_id)
-            .execute(f.pool())
+            .execute(&f.pool())
             .await
             .unwrap();
         });
@@ -894,7 +922,7 @@ mod tests {
         let f = fixture("reveal");
         f.setup();
         assert_eq!(kind(f.reveal(999)), "NotFound");
-        run(sqlx::query("UPDATE accounts SET routing_number = account_number").execute(f.pool()))
+        run(sqlx::query("UPDATE accounts SET routing_number = account_number").execute(&f.pool()))
             .unwrap();
         // Same key, wrong AAD: the swapped blob doesn't decrypt.
         assert_eq!(kind(f.reveal(1)), "Crypto");

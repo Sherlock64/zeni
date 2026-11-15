@@ -1,5 +1,6 @@
 import type { ComponentProps, ReactNode } from "react";
 import type { Account } from "@/types/bindings/Account";
+import type { BackupFile } from "@/types/bindings/BackupFile";
 import type { CsvMapping } from "@/types/bindings/CsvMapping";
 import type { CsvMappingNeeded } from "@/types/bindings/CsvMappingNeeded";
 import type { ImportReview } from "@/types/bindings/ImportReview";
@@ -7,6 +8,7 @@ import type { ImportStep } from "@/types/bindings/ImportStep";
 import type { ImportRecord } from "@/types/bindings/ImportRecord";
 import type { ImportSummary } from "@/types/bindings/ImportSummary";
 import type { LockReason } from "@/types/bindings/LockReason";
+import type { RestoreSource } from "@/types/bindings/RestoreSource";
 import type { TransactionQuery } from "@/types/bindings/TransactionQuery";
 import type { TransactionSort } from "@/types/bindings/TransactionSort";
 import type { CommandError } from "@/types/command";
@@ -37,7 +39,9 @@ export type RecoveryCodesProps = { codes: string[]; onContinue: () => void };
 
 export type SetupPageProps = { defaultOwner: string };
 
-export type UnlockPageProps = { reason: LockReason };
+export type UnlockPageProps = { reason: LockReason; canUndoRestore: boolean };
+
+export type UndoRestoreProps = { onUndone: () => void };
 
 export type GateScreenProps = { children: ReactNode };
 
@@ -105,3 +109,6 @@ export type DuplicateReviewDialogProps = {
   // The dialogs have no trigger, so the caller says where focus goes when they close.
   onCloseAutoFocus: (event: Event) => void;
 };
+
+// The backup waiting on the restore confirm dialog.
+export type RestoreTarget = { source: RestoreSource; file: BackupFile };

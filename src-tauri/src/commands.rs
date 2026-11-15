@@ -1,15 +1,18 @@
+use std::sync::PoisonError;
+
 use tauri::{AppHandle, State};
 use tauri_plugin_dialog::DialogExt;
 
 use crate::keyring::SecretService;
 use crate::types::{
-    Account, AccountNumbers, AppError, AppInfo, AppState, CommitImportRequest, CsvLayout,
-    CsvMapping, CsvPreviewRow, DeleteCsvLayoutRequest, ImportRecord, ImportStep, ImportSummary,
-    RecoverRequest, RecoveryCodes, RevealAccountNumbersRequest, RevertImportRequest,
-    SampleErrorRequest, SaveCsvLayoutRequest, SecurityStatus, SetupRequest, SetupResponse,
-    TransactionPage, TransactionQuery, UnlockRequest, UpdateCsvLayoutRequest,
+    Account, AccountNumbers, AppError, AppInfo, AppState, BackupFile, BackupSettings,
+    CommitImportRequest, CsvLayout, CsvMapping, CsvPreviewRow, DeleteCsvLayoutRequest,
+    ImportRecord, ImportStep, ImportSummary, RecoverRequest, RecoveryCodes, RestoreBackupRequest,
+    RevealAccountNumbersRequest, RevertImportRequest, SampleErrorRequest, SaveCsvLayoutRequest,
+    SecurityStatus, SetBackupRetentionRequest, SetupRequest, SetupResponse, TransactionPage,
+    TransactionQuery, UnlockRequest, UpdateCsvLayoutRequest,
 };
-use crate::{accounts, csv_layouts, db, imports, security, transactions};
+use crate::{accounts, backup, csv_layouts, db, imports, security, transactions};
 
 const MAX_REASON_CHARS: usize = 200;
 
@@ -25,15 +28,16 @@ async fn load_app_info(
     name: String,
     version: String,
 ) -> Result<AppInfo, AppError> {
-    let database = state
-        .db
-        .as_ref()
-        .map_err(|error| AppError::Database(error.clone()))?;
+    let db_path = match &*state.db.read().unwrap_or_else(PoisonError::into_inner) {
+        Ok(database) => database.path.display().to_string(),
+        Err(error) => return Err(AppError::Database(error.clone())),
+    };
+    let pool = security::pool(state)?;
     Ok(AppInfo {
         name,
         version,
-        db_path: database.path.display().to_string(),
-        migrations_applied: db::applied_migrations(&database.pool).await?,
+        db_path,
+        migrations_applied: db::applied_migrations(&pool).await?,
     })
 }
 
@@ -198,6 +202,86 @@ pub async fn list_transactions(
     transactions::list(&state, request).await
 }
 
+#[tauri::command]
+pub async fn backup_settings(state: State<'_, AppState>) -> Result<BackupSettings, AppError> {
+    backup::settings(&state).await
+}
+
+/// Opens the native folder picker and stores the chosen folder. `None` when the user cancels.
+#[tauri::command]
+pub async fn choose_backup_folder(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Option<BackupSettings>, AppError> {
+    // Fails before showing the picker when locked or the database is unavailable.
+    backup::settings(&state).await?;
+    let (sender, mut receiver) = tauri::async_runtime::channel(1);
+    app.dialog().file().pick_folder(move |folder| {
+        let _ = sender.try_send(folder);
+    });
+    let Some(folder) = receiver.recv().await.flatten() else {
+        return Ok(None);
+    };
+    let path = folder
+        .into_path()
+        .map_err(|_| AppError::Backup("Couldn't open the selected folder.".into()))?;
+    backup::set_folder(&state, &path).await.map(Some)
+}
+
+#[tauri::command]
+pub async fn set_backup_retention(
+    state: State<'_, AppState>,
+    request: SetBackupRetentionRequest,
+) -> Result<BackupSettings, AppError> {
+    backup::set_retention(&state, request).await
+}
+
+#[tauri::command]
+pub async fn back_up_now(state: State<'_, AppState>) -> Result<BackupFile, AppError> {
+    backup::back_up_now(&state).await
+}
+
+#[tauri::command]
+pub async fn list_backups(state: State<'_, AppState>) -> Result<Vec<BackupFile>, AppError> {
+    backup::list(&state).await
+}
+
+/// Opens the native file picker and remembers the chosen file for `restore_backup`. `None` on cancel.
+#[tauri::command]
+pub async fn pick_restore_file(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Option<BackupFile>, AppError> {
+    backup::settings(&state).await?;
+    let (sender, mut receiver) = tauri::async_runtime::channel(1);
+    app.dialog()
+        .file()
+        .add_filter("Zeni backups", &["db"])
+        .pick_file(move |file| {
+            let _ = sender.try_send(file);
+        });
+    let Some(file) = receiver.recv().await.flatten() else {
+        return Ok(None);
+    };
+    let path = file
+        .into_path()
+        .map_err(|_| AppError::Backup("Couldn't open the selected file.".into()))?;
+    backup::pick(&state, path).await.map(Some)
+}
+
+#[tauri::command]
+pub async fn restore_backup(
+    state: State<'_, AppState>,
+    request: RestoreBackupRequest,
+) -> Result<(), AppError> {
+    backup::restore(&state, request).await
+}
+
+#[tauri::command]
+pub async fn undo_restore(state: State<'_, AppState>) -> Result<(), AppError> {
+    backup::undo_restore(&state).await
+}
+
 #[cfg(test)]
 mod tests {
     use sqlx::SqlitePool;
@@ -252,8 +336,9 @@ mod tests {
     fn app_info_reports_db_and_migrations() {
         let dir = db::temp_dir("app-info");
         let state = AppState {
-            db: tauri::async_runtime::block_on(db::connect(&dir)),
+            db: std::sync::RwLock::new(tauri::async_runtime::block_on(db::connect(&dir))),
             session: Default::default(),
+            backup: Default::default(),
             pending_import: Default::default(),
         };
         let info = app_info_for(&state).unwrap();
@@ -270,8 +355,11 @@ mod tests {
     #[test]
     fn app_info_fails_while_db_unavailable() {
         let state = AppState {
-            db: Err("Couldn't open the database at /x/zeni.db: denied".into()),
+            db: std::sync::RwLock::new(Err(
+                "Couldn't open the database at /x/zeni.db: denied".into()
+            )),
             session: Default::default(),
+            backup: Default::default(),
             pending_import: Default::default(),
         };
         let error = serde_json::to_value(app_info_for(&state).unwrap_err()).unwrap();
@@ -289,11 +377,12 @@ mod tests {
         // A database without migrations has no `_sqlx_migrations` table.
         let pool = tauri::async_runtime::block_on(SqlitePool::connect("sqlite::memory:")).unwrap();
         let state = AppState {
-            db: Ok(Database {
+            db: std::sync::RwLock::new(Ok(Database {
                 pool,
                 path: "memory".into(),
-            }),
+            })),
             session: Default::default(),
+            backup: Default::default(),
             pending_import: Default::default(),
         };
         assert!(matches!(app_info_for(&state), Err(AppError::Database(_))));

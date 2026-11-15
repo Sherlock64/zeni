@@ -21,7 +21,7 @@ struct Filters {
 /// One page of the checking account's raw transactions.
 pub async fn list(state: &AppState, query: TransactionQuery) -> Result<TransactionPage, AppError> {
     let filters = validate(&query)?;
-    let pool = security::pool(state)?;
+    let pool = &security::pool(state)?;
 
     let mut count = QueryBuilder::<Sqlite>::new("SELECT COUNT(*) FROM raw_transactions");
     push_filters(&mut count, &filters);
@@ -188,11 +188,12 @@ mod tests {
         let dir = db::temp_dir(&format!("transactions-{name}"));
         let _ = std::fs::remove_dir_all(&dir);
         let state = AppState {
-            db: run(db::connect(&dir)),
+            db: std::sync::RwLock::new(run(db::connect(&dir))),
             session: Default::default(),
+            backup: Default::default(),
             pending_import: Default::default(),
         };
-        let pool = security::pool(&state).unwrap();
+        let pool = &security::pool(&state).unwrap();
         run(async {
             for _ in 0..2 {
                 sqlx::query(
@@ -437,8 +438,9 @@ mod tests {
     #[test]
     fn reports_a_missing_database() {
         let state = AppState {
-            db: Err("no database".into()),
+            db: std::sync::RwLock::new(Err("no database".into())),
             session: Default::default(),
+            backup: Default::default(),
             pending_import: Default::default(),
         };
         assert!(matches!(

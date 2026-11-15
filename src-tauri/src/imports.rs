@@ -15,7 +15,7 @@ use crate::types::{
     ParsedStatement, ParsedTransaction, PendingImport, PendingStep, RevertImportRequest, ReviewRow,
     SaveCsvLayoutRequest, SuspectedDuplicate,
 };
-use crate::{csv_import, csv_layouts, ofx, security};
+use crate::{backup, csv_import, csv_layouts, ofx, security};
 
 const MAX_FILE_BYTES: u64 = 10 * 1024 * 1024;
 /// Data rows shown while mapping a CSV.
@@ -46,7 +46,7 @@ fn mapping_file(pending: &Option<PendingImport>) -> Result<(&str, &str), AppErro
 
 /// Reads and parses the file at `path`, then previews it. A CSV with an unknown header waits for a mapping.
 pub async fn import_path(state: &AppState, path: &Path) -> Result<ImportStep, AppError> {
-    let pool = security::pool(state)?;
+    let pool = &security::pool(state)?;
     *pending(state) = None;
     let format = match path
         .extension()
@@ -123,7 +123,7 @@ pub async fn save_csv_layout(
     state: &AppState,
     request: SaveCsvLayoutRequest,
 ) -> Result<ImportStep, AppError> {
-    let pool = security::pool(state)?;
+    let pool = &security::pool(state)?;
     let (file_name, fingerprint, statement) = {
         let pending = pending(state);
         let (file_name, text) = mapping_file(&pending)?;
@@ -152,7 +152,7 @@ pub async fn commit_import(
     state: &AppState,
     request: CommitImportRequest,
 ) -> Result<ImportSummary, AppError> {
-    let pool = security::pool(state)?;
+    let pool = &security::pool(state)?;
     let taken = {
         let mut pending = pending(state);
         let Some(PendingImport {
@@ -217,7 +217,7 @@ async fn import_or_review(
     statement: ParsedStatement,
 ) -> Result<ImportStep, AppError> {
     *pending(state) = None;
-    let pool = security::pool(state)?;
+    let pool = &security::pool(state)?;
     if !statement.currency.eq_ignore_ascii_case("USD") {
         return Err(AppError::Import(format!(
             "Zeni only imports US dollar statements; this file is in {}.",
@@ -483,12 +483,13 @@ pub async fn list(state: &AppState) -> Result<Vec<ImportRecord>, AppError> {
          ledger_balance_cents, balance_as_of, expected_balance_cents, balance_check, file_balance_check \
          FROM imports ORDER BY id DESC",
     )
-    .fetch_all(security::pool(state)?)
+    .fetch_all(&security::pool(state)?)
     .await?)
 }
 
-/// Deletes one import and its raw rows in one transaction.
+/// Takes a pre-revert backup, then deletes one import and its raw rows in one transaction.
 pub async fn revert(state: &AppState, request: RevertImportRequest) -> Result<(), AppError> {
+    backup::before_revert(state).await?;
     let mut tx = security::pool(state)?.begin().await?;
     sqlx::query("DELETE FROM raw_transactions WHERE import_id = ?")
         .bind(request.import_id)
@@ -552,8 +553,9 @@ mod tests {
         let dir = db::temp_dir(name);
         let _ = std::fs::remove_dir_all(&dir);
         let state = AppState {
-            db: tauri::async_runtime::block_on(db::connect(&dir)),
+            db: std::sync::RwLock::new(tauri::async_runtime::block_on(db::connect(&dir))),
             session: Default::default(),
+            backup: Default::default(),
             pending_import: Default::default(),
         };
         if with_account {
@@ -562,7 +564,7 @@ mod tests {
                     "INSERT INTO accounts (name, owner, bank_name, account_number, routing_number) \
                      VALUES ('Checking', 'Sam', 'Bank', x'00', x'00')",
                 )
-                .execute(security::pool(&state).unwrap()),
+                .execute(&security::pool(&state).unwrap()),
             )
             .unwrap();
         }
@@ -761,11 +763,17 @@ mod tests {
             )
             .await
             .unwrap();
+            let backups: Vec<_> = std::fs::read_dir(dir.join("backups"))
+                .unwrap()
+                .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+                .collect();
+            assert_eq!(backups.len(), 1);
+            assert!(backups[0].ends_with("-pre-revert.db"), "{backups:?}");
             let records = list(&state).await.unwrap();
             assert_eq!(records.len(), 1);
             assert_eq!((records[0].id, records[0].row_count), (second.import_id, 1));
             let (rows,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM raw_transactions")
-                .fetch_one(security::pool(&state).unwrap())
+                .fetch_one(&security::pool(&state).unwrap())
                 .await
                 .unwrap();
             assert_eq!(rows, 1);
@@ -786,10 +794,42 @@ mod tests {
     }
 
     #[test]
+    fn a_failed_pre_revert_backup_reverts_nothing() {
+        let (dir, state) = state("imports-revert-no-backup", true);
+        tauri::async_runtime::block_on(async {
+            let summary = import(
+                &state,
+                &statement(None, vec![row(Some("A"), "2026-10-01", 1, "X")]),
+            )
+            .await;
+            let unplugged = dir.join("unplugged");
+            sqlx::query("INSERT INTO app_meta (key, value) VALUES ('backup_folder', ?)")
+                .bind(unplugged.to_str().unwrap())
+                .execute(&security::pool(&state).unwrap())
+                .await
+                .unwrap();
+            let request = RevertImportRequest {
+                import_id: summary.import_id,
+            };
+            match revert(&state, request).await {
+                Err(AppError::Backup(message)) => assert!(
+                    message.starts_with(
+                        "Couldn't back up before reverting, so nothing was reverted: "
+                    ),
+                    "{message}"
+                ),
+                other => panic!("expected a Backup error, got {other:?}"),
+            }
+            assert_eq!(list(&state).await.unwrap().len(), 1);
+        });
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
     fn import_needs_an_account_and_us_dollars() {
         let (dir, state) = state("imports-rejects", false);
         tauri::async_runtime::block_on(async {
-            let pool = security::pool(&state).unwrap();
+            let pool = &security::pool(&state).unwrap();
             let usd = statement(None, vec![row(Some("A"), "2026-10-01", 1, "X")]);
             let error = try_import(&state, &usd).await;
             assert!(matches!(error, Err(AppError::NotFound(_))));
@@ -867,7 +907,7 @@ mod tests {
             let (description,): (String,) = sqlx::query_as(
                 "SELECT raw_description FROM raw_transactions WHERE amount_cents = -1999",
             )
-            .fetch_one(security::pool(&state).unwrap())
+            .fetch_one(&security::pool(&state).unwrap())
             .await
             .unwrap();
             assert_eq!(description, "CAF\u{e9}");
@@ -898,8 +938,9 @@ mod tests {
     #[test]
     fn reports_a_missing_database() {
         let state = AppState {
-            db: Err("no database".into()),
+            db: std::sync::RwLock::new(Err("no database".into())),
             session: Default::default(),
+            backup: Default::default(),
             pending_import: Default::default(),
         };
         tauri::async_runtime::block_on(async {
@@ -947,7 +988,7 @@ mod tests {
         format: ImportFormat,
         transactions: Vec<ParsedTransaction>,
     ) -> Vec<(u32, String)> {
-        let pool = security::pool(state).unwrap();
+        let pool = &security::pool(state).unwrap();
         suspects(pool, 1, format, &statement(None, transactions))
             .await
             .unwrap()
@@ -957,7 +998,7 @@ mod tests {
     }
 
     async fn store(state: &AppState, format: ImportFormat, transactions: Vec<ParsedTransaction>) {
-        let pool = security::pool(state).unwrap();
+        let pool = &security::pool(state).unwrap();
         import_statement(
             pool,
             "old",
@@ -1058,7 +1099,7 @@ mod tests {
             ));
             assert!(pending(&state).is_none());
             let (layouts,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM csv_layouts")
-                .fetch_one(security::pool(&state).unwrap())
+                .fetch_one(&security::pool(&state).unwrap())
                 .await
                 .unwrap();
             assert_eq!(layouts, 0);

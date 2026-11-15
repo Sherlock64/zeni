@@ -1,24 +1,32 @@
 import { invoke } from "@tauri-apps/api/core";
 import {
   appInfo,
+  backUpNow,
+  backupSettings,
   cancelImport,
+  chooseBackupFolder,
   commitImport,
   completeSetup,
   deleteCsvLayout,
   importFile,
+  listBackups,
   listCsvLayouts,
   listImports,
   listTransactions,
   listAccounts,
+  pickRestoreFile,
   previewCsvMapping,
   recover,
   regenerateRecoveryCodes,
   resetSecurity,
+  restoreBackup,
   revealAccountNumbers,
   revertImport,
   sampleError,
   saveCsvLayout,
   securityStatus,
+  setBackupRetention,
+  undoRestore,
   unlock,
   updateCsvLayout,
 } from "@/lib/commands";
@@ -166,6 +174,48 @@ test("CSV import and layout wrappers invoke their commands with the request", as
       layout,
     ],
     [() => deleteCsvLayout({ layoutId: 4 }), "delete_csv_layout", { request: { layoutId: 4 } }, null],
+  ];
+  for (const [run, command, args, response] of cases) {
+    mockInvoke.mockResolvedValueOnce(response);
+    await expect(run()).resolves.toEqual(response);
+    expect(mockInvoke).toHaveBeenLastCalledWith(command, args);
+  }
+});
+
+test("backup wrappers invoke their commands with the request", async () => {
+  const settings = { folder: "/b", isDefaultFolder: true, keepAutomatic: 14, dailyWarning: null };
+  const file = {
+    fileName: "zeni-20261115-140322-manual.db",
+    path: "/b/zeni-20261115-140322-manual.db",
+    kind: "manual",
+    createdAt: "2026-11-15 14:03:22",
+    sizeBytes: 4096,
+  };
+  const cases: [() => Promise<unknown>, string, unknown, unknown][] = [
+    [backupSettings, "backup_settings", undefined, settings],
+    [chooseBackupFolder, "choose_backup_folder", undefined, null],
+    [
+      () => setBackupRetention({ keepAutomatic: 7 }),
+      "set_backup_retention",
+      { request: { keepAutomatic: 7 } },
+      settings,
+    ],
+    [backUpNow, "back_up_now", undefined, file],
+    [listBackups, "list_backups", undefined, [file]],
+    [pickRestoreFile, "pick_restore_file", undefined, null],
+    [
+      () => restoreBackup({ source: { kind: "backup", fileName: file.fileName } }),
+      "restore_backup",
+      { request: { source: { kind: "backup", fileName: file.fileName } } },
+      null,
+    ],
+    [
+      () => restoreBackup({ source: { kind: "pickedFile" } }),
+      "restore_backup",
+      { request: { source: { kind: "pickedFile" } } },
+      null,
+    ],
+    [undoRestore, "undo_restore", undefined, null],
   ];
   for (const [run, command, args, response] of cases) {
     mockInvoke.mockResolvedValueOnce(response);

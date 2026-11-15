@@ -1,4 +1,5 @@
 mod accounts;
+mod backup;
 mod commands;
 mod crypto;
 mod csv_import;
@@ -29,11 +30,20 @@ pub fn run() {
             if let Err(error) = &db {
                 eprintln!("{error}");
             }
+            let daily_due = db.is_ok();
             app.manage(AppState {
-                db,
+                db: std::sync::RwLock::new(db),
                 session: Default::default(),
+                backup: Default::default(),
                 pending_import: Default::default(),
             });
+            if daily_due {
+                // Off the setup thread, so the window isn't blocked by the copy.
+                let handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    backup::daily_backup(&handle.state::<AppState>()).await;
+                });
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -57,7 +67,15 @@ pub fn run() {
             commands::delete_csv_layout,
             commands::list_imports,
             commands::revert_import,
-            commands::list_transactions
+            commands::list_transactions,
+            commands::backup_settings,
+            commands::choose_backup_folder,
+            commands::set_backup_retention,
+            commands::back_up_now,
+            commands::list_backups,
+            commands::pick_restore_file,
+            commands::restore_backup,
+            commands::undo_restore
         ])
         .run(tauri::generate_context!())
         .expect("error while running Zeni");

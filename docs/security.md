@@ -67,6 +67,14 @@ On the unlock screen, choose **Can't unlock?**, then **Erase and set up again**.
 
 Zeni then returns to first-run setup, where you choose a new master password and enter your account details again, then import your bank files again. This can't be undone.
 
+Zeni keeps your backup files. A backup made before the erase still opens with the master password or recovery codes you had then: [Restoring a backup made before a security reset](backup.md#restoring-a-backup-made-before-a-security-reset).
+
+## Backups
+
+A backup file is a full copy of the database. It holds all your data in plain text, except the account and routing numbers, which stay encrypted exactly as in the database. Keep backup files somewhere private, such as the default backup folder or an encrypted drive. Anyone who can read a backup file can read your account names, owners, banks and transactions.
+
+Zeni creates each backup file readable only by you (mode 0600). The default backup folder is readable only by you (mode 0700). Zeni doesn't change the permissions of a folder you choose. How backups work: [docs/backup.md](backup.md).
+
 ## Check it yourself
 
 You can confirm that the numbers are stored only as ciphertext. Install the SQLite command-line tool:

@@ -49,15 +49,16 @@ fn database(name: &str) -> Db {
     let dir = db::temp_dir(&format!("acceptance-{name}"));
     let _ = std::fs::remove_dir_all(&dir);
     let state = AppState {
-        db: run(db::connect(&dir)),
+        db: std::sync::RwLock::new(run(db::connect(&dir))),
         session: Default::default(),
+        backup: Default::default(),
         pending_import: Default::default(),
     };
     run(sqlx::query(
         "INSERT INTO accounts (name, owner, bank_name, account_number, routing_number) \
          VALUES ('Checking', 'Sam', 'Bank', x'00', x'00')",
     )
-    .execute(security::pool(&state).unwrap()))
+    .execute(&security::pool(&state).unwrap()))
     .unwrap();
     Db { state, dir }
 }
@@ -207,7 +208,7 @@ impl Db {
             "SELECT raw_description FROM raw_transactions WHERE import_id = ? ORDER BY id",
         )
         .bind(import_id)
-        .fetch_all(security::pool(&self.state).unwrap()))
+        .fetch_all(&security::pool(&self.state).unwrap()))
         .unwrap()
     }
 
@@ -217,12 +218,12 @@ impl Db {
              memo, transaction_type, running_balance_cents, original_row, bank_category \
              FROM raw_transactions ORDER BY id",
         )
-        .fetch_all(security::pool(&self.state).unwrap()))
+        .fetch_all(&security::pool(&self.state).unwrap()))
         .unwrap()
     }
 
     fn scalar(&self, sql: &'static str) -> i64 {
-        run(sqlx::query_scalar(sql).fetch_one(security::pool(&self.state).unwrap())).unwrap()
+        run(sqlx::query_scalar(sql).fetch_one(&security::pool(&self.state).unwrap())).unwrap()
     }
 
     /// Every transaction as `transactions::list` shows it, sorted.
@@ -442,7 +443,7 @@ fn fixture_sequence_imports_dedupes_checks_balances_and_reverts() {
 
     // AC7: the trigger blocks any UPDATE of a raw row.
     let error = run(sqlx::query("UPDATE raw_transactions SET amount_cents = 0")
-        .execute(security::pool(&db.state).unwrap()))
+        .execute(&security::pool(&db.state).unwrap()))
     .unwrap_err();
     assert!(
         error
@@ -560,7 +561,7 @@ fn csv_fixtures_follow_the_ofx_steps() {
         "SELECT fitid, posted_date, amount_cents FROM raw_transactions WHERE import_id = ? ORDER BY id",
     )
     .bind(bank.import_id)
-    .fetch_all(security::pool(&db.state).unwrap()))
+    .fetch_all(&security::pool(&db.state).unwrap()))
     .unwrap();
     let amounts: Vec<i64> = stored.iter().map(|row| row.2).collect();
     assert_eq!(amounts, [-3850, -425, -4500, 210000, -6000, -1234]);
@@ -577,7 +578,7 @@ fn csv_fixtures_follow_the_ofx_steps() {
         "SELECT raw_description, memo, transaction_type, running_balance_cents, bank_category, \
              original_row FROM raw_transactions WHERE fitid = '20261125 ECB 00103'",
     )
-    .fetch_one(security::pool(&db.state).unwrap()))
+    .fetch_one(&security::pool(&db.state).unwrap()))
     .unwrap();
     assert_eq!(
         payroll,
@@ -610,7 +611,7 @@ fn csv_fixtures_follow_the_ofx_steps() {
         "SELECT amount_cents FROM raw_transactions WHERE import_id = ? ORDER BY id",
     )
     .bind(split.import_id)
-    .fetch_all(security::pool(&db.state).unwrap()))
+    .fetch_all(&security::pool(&db.state).unwrap()))
     .unwrap();
     assert_eq!(split_amounts, [-2310, 210000, -9120, -450]);
 
@@ -630,7 +631,7 @@ fn csv_fixtures_follow_the_ofx_steps() {
     let before = db.raw_rows();
     let error = run(
         sqlx::query("UPDATE raw_transactions SET bank_category = 'X'")
-            .execute(security::pool(&db.state).unwrap()),
+            .execute(&security::pool(&db.state).unwrap()),
     )
     .unwrap_err();
     assert!(

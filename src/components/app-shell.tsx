@@ -107,7 +107,7 @@ export function AppShell() {
   if (status.data.state === "locked") {
     return (
       <GateScreen>
-        <UnlockPage reason={status.data.reason} />
+        <UnlockPage reason={status.data.reason} canUndoRestore={status.data.canUndoRestore} />
       </GateScreen>
     );
   }
