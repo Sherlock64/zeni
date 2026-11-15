@@ -256,7 +256,7 @@ export const errorMessages: Record<string, string> = {
   NotFound: "No account with that id.",
   Crypto: "A stored value failed to decrypt.",
   Validation: "Choose a different column for each role.",
-  // Shown by the restore error snapshot (`?fail=restore_backup:Backup`).
-  Backup: "That backup is from a newer version of Zeni. Update Zeni, then restore it.",
+  // The restore double failure (`?fail=restore_backup:Backup`); fixtures key by kind, so the undo error snapshot shows it too, though undo never returns it.
+  Backup: "Couldn't open the restored backup (Permission denied (os error 13)), and putting your data back failed too. Your data is in the safety copy zeni-20261102-101500-safety.db in the backup folder.",
   Import: "Zeni only imports US dollar statements; this file is in EUR.",
 };

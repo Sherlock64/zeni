@@ -261,7 +261,7 @@ function UndoRestore({ onUndone }: UndoRestoreProps) {
         <CommandErrorAlert
           title="Couldn't undo the restore"
           error={mutation.error}
-          nextStep="The restored data is still in place. Try again, or unlock and restore the newest safety copy from Settings."
+          nextStep="The backup folder keeps every safety copy."
         />
       )}
     </div>
