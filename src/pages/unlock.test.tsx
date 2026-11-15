@@ -187,10 +187,10 @@ test("undoes a restore, re-reads every query, ignores repeat presses and focuses
 });
 
 test("shows a failed undo with what to do next", async () => {
-  vi.mocked(undoRestore).mockRejectedValue({ kind: "NotFound", message: "There's no restore to undo." });
+  vi.mocked(undoRestore).mockRejectedValue({ kind: "Backup", message: "That backup isn't readable. The restored data is still in place." });
   renderPage("keyMissing", true);
   fireEvent.click(screen.getByRole("button", { name: "Undo restore" }));
   const alert = await screen.findByRole("alert");
-  expect(within(alert).getByText("There's no restore to undo.")).toBeTruthy();
-  expect(within(alert).getByText(/The restored data is still in place\./)).toBeTruthy();
+  expect(within(alert).getByText("That backup isn't readable. The restored data is still in place.")).toBeTruthy();
+  expect(within(alert).getByText("The backup folder keeps every safety copy.")).toBeTruthy();
 });

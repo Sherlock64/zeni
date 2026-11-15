@@ -325,7 +325,7 @@ export function BackupCard() {
               <CommandErrorAlert
                 title="Couldn't restore"
                 error={restore.error}
-                nextStep="Your current data wasn't changed. Choose another backup, or check the backup folder."
+                nextStep="Choose another backup, or check the backup folder."
               />
             )}
             <AlertDialogFooter>

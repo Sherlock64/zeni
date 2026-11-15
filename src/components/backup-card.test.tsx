@@ -201,14 +201,25 @@ test("confirms a restore naming the date, then re-reads every query", async () =
 });
 
 test("keeps the dialog open to show a failed restore", async () => {
-  vi.mocked(restoreBackup).mockRejectedValue({ kind: "Backup", message: "That file isn't a Zeni backup." });
+  vi.mocked(restoreBackup).mockRejectedValue({ kind: "Backup", message: "That file isn't a Zeni backup. Your current data wasn't changed." });
   renderCard();
   fireEvent.click(await screen.findByRole("button", { name: "Restore the backup from Nov 15, 2026 at 09:00" }));
   fireEvent.click(screen.getByRole("button", { name: "Replace my data" }));
   const dialog = screen.getByRole("alertdialog");
   const alert = await within(dialog).findByRole("alert");
-  expect(within(alert).getByText("That file isn't a Zeni backup.")).toBeTruthy();
-  expect(within(alert).getByText("Your current data wasn't changed. Choose another backup, or check the backup folder.")).toBeTruthy();
+  expect(within(alert).getByText("That file isn't a Zeni backup. Your current data wasn't changed.")).toBeTruthy();
+  expect(within(alert).getByText("Choose another backup, or check the backup folder.")).toBeTruthy();
+});
+
+test("shows the backend's message when putting the data back failed too", async () => {
+  const message = "Couldn't open the restored backup (Permission denied (os error 13)), and putting your data back failed too. Your data is in the safety copy zeni-20261102-101500-safety.db in the backup folder.";
+  vi.mocked(restoreBackup).mockRejectedValue({ kind: "Backup", message });
+  renderCard();
+  fireEvent.click(await screen.findByRole("button", { name: "Restore the backup from Nov 15, 2026 at 09:00" }));
+  fireEvent.click(screen.getByRole("button", { name: "Replace my data" }));
+  const alert = await within(screen.getByRole("alertdialog")).findByRole("alert");
+  expect(within(alert).getByText(message)).toBeTruthy();
+  expect(within(alert).queryByText(/wasn't changed/)).toBeNull();
 });
 
 test("restores a picked file, and does nothing when the picker is cancelled", async () => {
