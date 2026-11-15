@@ -29,14 +29,14 @@ pub async fn connect(data_dir: &Path) -> Result<Database, String> {
 }
 
 /// Creates `dir` (and parents) readable only by the current user; tightens it if it already exists.
-fn create_private_dir(dir: &Path) -> Result<(), AppError> {
+pub fn create_private_dir(dir: &Path) -> Result<(), AppError> {
     DirBuilder::new().recursive(true).mode(0o700).create(dir)?;
     fs::set_permissions(dir, Permissions::from_mode(0o700))?;
     Ok(())
 }
 
 /// Opens (creating if missing) the database, makes it owner-only, and applies pending migrations.
-async fn open(path: &Path) -> Result<SqlitePool, AppError> {
+pub async fn open(path: &Path) -> Result<SqlitePool, AppError> {
     // Create it owner-only before SQLite opens it: SQLite gives its -journal/-wal/-shm files the same mode.
     OpenOptions::new()
         .write(true)

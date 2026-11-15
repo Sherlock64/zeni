@@ -74,6 +74,8 @@ export const importSteps: Record<string, unknown> = {
   mismatch: { step: "imported", data: { ...csvSummary, notPosted: 0, reviewSkipped: 0, fileBalanceCheck: "mismatch" } },
 };
 
+const backupFolder = "/home/user/.local/share/com.sherlock64.zeni/backups";
+
 // Fake command responses for snapshot.html, keyed by command name. Fake data only.
 export const fixtures: Record<string, unknown> = {
   app_info: {
@@ -200,18 +202,47 @@ export const fixtures: Record<string, unknown> = {
   },
 };
 
+const backups = [
+  { fileName: "zeni-20261115-090012-daily.db", kind: "daily", createdAt: "2026-11-15 09:00:12", sizeBytes: 1843200 },
+  { fileName: "zeni-20261114-183045-manual.db", kind: "manual", createdAt: "2026-11-14 18:30:45", sizeBytes: 1839104 },
+  { fileName: "zeni-20261112-150301-pre-revert.db", kind: "preRevert", createdAt: "2026-11-12 15:03:01", sizeBytes: 1802240 },
+  { fileName: "zeni-20261102-101500-safety.db", kind: "safety", createdAt: "2026-11-02 10:15:00", sizeBytes: 1622016 },
+].map((file) => ({ ...file, path: `${backupFolder}/${file.fileName}` }));
+
+// `?dailyWarning=1` shows the failed daily backup warning. Read here because snapshot.ts only passes params to securityStatus.
+const backupSettings = {
+  folder: backupFolder,
+  isDefaultFolder: true,
+  keepAutomatic: 14,
+  dailyWarning:
+    new URLSearchParams(globalThis.location?.search).get("dailyWarning") === "1"
+      ? "The backup folder /media/usb/zeni-backups doesn't exist."
+      : null,
+};
+
+Object.assign(fixtures, {
+  backup_settings: backupSettings,
+  choose_backup_folder: { ...backupSettings, folder: "/media/usb/zeni-backups", isDefaultFolder: false },
+  set_backup_retention: backupSettings,
+  back_up_now: { ...backups[1], fileName: "zeni-20261115-140322-manual.db", createdAt: "2026-11-15 14:03:22", path: `${backupFolder}/zeni-20261115-140322-manual.db` },
+  list_backups: backups,
+  pick_restore_file: { fileName: "zeni-copy.db", path: "/home/user/Documents/zeni-copy.db", kind: "other", createdAt: "2026-10-30 21:12:05", sizeBytes: 1720320 },
+  restore_backup: null,
+  undo_restore: null,
+});
+
 // The backend returns the updated layout; the UI only refetches the list.
 fixtures.update_csv_layout = (fixtures.list_csv_layouts as unknown[])[0];
 
 // `?status=needsSetup|locked|unlocked` (default unlocked), `?reason=<LockReason>` (default keyringLocked),
-// `?keyringSaved=false` for the keyring-save failure in setup and status, `?codesLeft=<n>` (default 8).
+// `?undo=1` offers Undo restore when locked, `?keyringSaved=false` for the keyring-save failure in setup and status, `?codesLeft=<n>` (default 8).
 export function securityStatus(params: URLSearchParams) {
   const keyringSaved = params.get("keyringSaved") !== "false";
   switch (params.get("status")) {
     case "needsSetup":
       return { state: "needsSetup", defaultOwner: "sam" };
     case "locked":
-      return { state: "locked", reason: params.get("reason") ?? "keyringLocked" };
+      return { state: "locked", reason: params.get("reason") ?? "keyringLocked", canUndoRestore: params.get("undo") === "1" };
     default:
       return { state: "unlocked", keyringSaved, recoveryCodesLeft: Number(params.get("codesLeft") ?? 8) };
   }
@@ -225,5 +256,7 @@ export const errorMessages: Record<string, string> = {
   NotFound: "No account with that id.",
   Crypto: "A stored value failed to decrypt.",
   Validation: "Choose a different column for each role.",
+  // Shown by the restore error snapshot (`?fail=restore_backup:Backup`).
+  Backup: "That backup is from a newer version of Zeni. Update Zeni, then restore it.",
   Import: "Zeni only imports US dollar statements; this file is in EUR.",
 };

@@ -13,6 +13,7 @@ const nextSteps: Partial<Record<CommandError["kind"], string>> = {
   NotFound: "It may have been removed. Reload the page and try again.",
   Crypto: "Zeni couldn't decrypt stored data. The database may be damaged or from another installation.",
   Validation: "Check your entries, then try again.",
+  Backup: "Check that the backup folder exists and is writable, or choose another folder in Settings.",
   Import: "Nothing was imported. Check the file, or download it from your bank again, then retry.",
 };
 

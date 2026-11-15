@@ -85,7 +85,7 @@ pub async fn insert(
 
 /// The plain-text fields of every account, by id. Works locked or unlocked.
 pub async fn list(state: &AppState) -> Result<Vec<Account>, AppError> {
-    let pool: &SqlitePool = security::pool(state)?;
+    let pool: &SqlitePool = &security::pool(state)?;
     let rows: Vec<(i64, String, String, String)> =
         sqlx::query_as("SELECT id, name, owner, bank_name FROM accounts ORDER BY id")
             .fetch_all(pool)
@@ -106,7 +106,7 @@ pub async fn reveal(
     state: &AppState,
     request: RevealAccountNumbersRequest,
 ) -> Result<AccountNumbers, AppError> {
-    let pool = security::pool(state)?;
+    let pool = &security::pool(state)?;
     let key = security::session_key(state)?;
     let row: Option<(Vec<u8>, Vec<u8>)> =
         sqlx::query_as("SELECT account_number, routing_number FROM accounts WHERE id = ?")

@@ -2,6 +2,8 @@ import { invoke, type InvokeArgs } from "@tauri-apps/api/core";
 import type { Account } from "@/types/bindings/Account";
 import type { AccountNumbers } from "@/types/bindings/AccountNumbers";
 import type { AppInfo } from "@/types/bindings/AppInfo";
+import type { BackupFile } from "@/types/bindings/BackupFile";
+import type { BackupSettings } from "@/types/bindings/BackupSettings";
 import type { CommitImportRequest } from "@/types/bindings/CommitImportRequest";
 import type { CsvLayout } from "@/types/bindings/CsvLayout";
 import type { CsvMapping } from "@/types/bindings/CsvMapping";
@@ -12,11 +14,13 @@ import type { ImportStep } from "@/types/bindings/ImportStep";
 import type { ImportSummary } from "@/types/bindings/ImportSummary";
 import type { RecoverRequest } from "@/types/bindings/RecoverRequest";
 import type { RecoveryCodes } from "@/types/bindings/RecoveryCodes";
+import type { RestoreBackupRequest } from "@/types/bindings/RestoreBackupRequest";
 import type { RevealAccountNumbersRequest } from "@/types/bindings/RevealAccountNumbersRequest";
 import type { RevertImportRequest } from "@/types/bindings/RevertImportRequest";
 import type { SampleErrorRequest } from "@/types/bindings/SampleErrorRequest";
 import type { SaveCsvLayoutRequest } from "@/types/bindings/SaveCsvLayoutRequest";
 import type { SecurityStatus } from "@/types/bindings/SecurityStatus";
+import type { SetBackupRetentionRequest } from "@/types/bindings/SetBackupRetentionRequest";
 import type { SetupRequest } from "@/types/bindings/SetupRequest";
 import type { SetupResponse } from "@/types/bindings/SetupResponse";
 import type { TransactionPage } from "@/types/bindings/TransactionPage";
@@ -86,3 +90,14 @@ export const listImports = () => call<ImportRecord[]>("list_imports");
 export const revertImport = (request: RevertImportRequest) => call<null>("revert_import", { request });
 export const listTransactions = (request: TransactionQuery) =>
   call<TransactionPage>("list_transactions", { request });
+export const backupSettings = () => call<BackupSettings>("backup_settings");
+// Rust opens the folder picker; null means the user cancelled it.
+export const chooseBackupFolder = () => call<BackupSettings | null>("choose_backup_folder");
+export const setBackupRetention = (request: SetBackupRetentionRequest) =>
+  call<BackupSettings>("set_backup_retention", { request });
+export const backUpNow = () => call<BackupFile>("back_up_now");
+export const listBackups = () => call<BackupFile[]>("list_backups");
+// Rust opens the file picker; null means the user cancelled it.
+export const pickRestoreFile = () => call<BackupFile | null>("pick_restore_file");
+export const restoreBackup = (request: RestoreBackupRequest) => call<null>("restore_backup", { request });
+export const undoRestore = () => call<null>("undo_restore");

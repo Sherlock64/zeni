@@ -15,10 +15,10 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { recover, resetSecurity, unlock } from "@/lib/commands";
+import { recover, resetSecurity, undoRestore, unlock } from "@/lib/commands";
 import { masterPasswordErrors } from "@/lib/validation";
 import type { LockReason } from "@/types/bindings/LockReason";
-import type { FieldErrors, UnlockPageProps } from "@/types/ui";
+import type { FieldErrors, UndoRestoreProps, UnlockPageProps } from "@/types/ui";
 
 const reasons: Record<LockReason, string> = {
   keyringLocked: "Your system keyring is locked, so Zeni can't read its key from it.",
@@ -29,7 +29,7 @@ const reasons: Record<LockReason, string> = {
 // Same rules as the backend: uppercase, drop spaces and dashes, then 20 Crockford base32 characters.
 export const recoveryCodeValid = (code: string) => /^[0-9A-HJKMNP-TV-Z]{20}$/.test(code.toUpperCase().replace(/[\s-]/g, ""));
 
-export function UnlockPage({ reason }: UnlockPageProps) {
+export function UnlockPage({ reason, canUndoRestore }: UnlockPageProps) {
   const [mode, setMode] = useState<"password" | "recovery">("password");
   const heading = useRef<HTMLHeadingElement>(null);
 
@@ -49,7 +49,9 @@ export function UnlockPage({ reason }: UnlockPageProps) {
         </CardTitle>
         <CardDescription>
           {mode === "password"
-            ? `${reasons[reason]} Enter your master password to unlock.`
+            ? canUndoRestore
+              ? `${reasons[reason]} You just restored a backup: enter the master password you used when that backup was made, use a recovery code from then, or undo the restore.`
+              : `${reasons[reason]} Enter your master password to unlock.`
             : "Enter one of your saved recovery codes and choose a new master password. The code then stops working."}
         </CardDescription>
       </CardHeader>
@@ -67,6 +69,8 @@ export function UnlockPage({ reason }: UnlockPageProps) {
           )}
           <ResetDialog />
         </div>
+        {/* The undo button goes away once it worked, so focus moves to the heading if Zeni stays locked. */}
+        {canUndoRestore && <UndoRestore onUndone={() => heading.current?.focus()} />}
       </CardContent>
     </Card>
   );
@@ -233,5 +237,33 @@ function ResetDialog() {
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+  );
+}
+
+function UndoRestore({ onUndone }: UndoRestoreProps) {
+  const queryClient = useQueryClient();
+  // The restored data may unlock differently, so every query is re-read.
+  const mutation = useMutation({
+    mutationFn: undoRestore,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries();
+      onUndone();
+    },
+  });
+
+  return (
+    <div className="flex flex-col items-start gap-3 border-t pt-4">
+      <p className="text-sm text-muted-foreground">Undo restore puts back the data you had before the restore.</p>
+      <Button variant="outline" aria-disabled={mutation.isPending} onClick={() => !mutation.isPending && mutation.mutate()}>
+        {mutation.isPending ? "Undoing…" : "Undo restore"}
+      </Button>
+      {mutation.isError && (
+        <CommandErrorAlert
+          title="Couldn't undo the restore"
+          error={mutation.error}
+          nextStep="The restored data is still in place. Try again, or unlock and restore the newest safety copy from Settings."
+        />
+      )}
+    </div>
   );
 }

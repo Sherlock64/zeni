@@ -128,4 +128,4 @@ The summary shows no running-balance result when no balance column is mapped or 
 
 Click **Import history** on the Transactions page to see every import, newest first, with its row count and balance check results.
 
-To undo an import, click **Revert** next to it and confirm. Zeni permanently deletes that import and every transaction it added. This cannot be undone, but you can import the same file again. Other imports keep the balance check result they had when you imported them.
+To undo an import, click **Revert** next to it and confirm. Zeni permanently deletes that import and every transaction it added. Zeni backs up your data first and reverts nothing if that backup fails. To get the import back, import the same file again or restore the before-revert backup: [docs/backup.md](backup.md). Other imports keep the balance check result they had when you imported them.

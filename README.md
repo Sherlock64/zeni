@@ -19,6 +19,8 @@ Zeni opens a setup screen on first launch: set a master password, add the checki
 
 To import bank transactions from OFX, QFX or CSV files: [docs/importing.md](docs/importing.md).
 
+To back up and restore your data: [docs/backup.md](docs/backup.md).
+
 ## Commands
 
 ```sh

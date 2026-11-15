@@ -1,18 +1,23 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, within } from "@testing-library/react";
-import { recover, resetSecurity, unlock } from "@/lib/commands";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { recover, resetSecurity, undoRestore, unlock } from "@/lib/commands";
 import { recoveryCodeValid, UnlockPage } from "@/pages/unlock";
 import type { LockReason } from "@/types/bindings/LockReason";
 
-vi.mock("@/lib/commands", () => ({ unlock: vi.fn(), recover: vi.fn(), resetSecurity: vi.fn() }));
+vi.mock("@/lib/commands", () => ({
+  unlock: vi.fn(),
+  recover: vi.fn(),
+  resetSecurity: vi.fn(),
+  undoRestore: vi.fn(),
+}));
 beforeEach(() => vi.resetAllMocks());
 
-function renderPage(reason: LockReason = "keyringLocked") {
+function renderPage(reason: LockReason = "keyringLocked", canUndoRestore = false) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const invalidate = vi.spyOn(client, "invalidateQueries");
   render(
     <QueryClientProvider client={client}>
-      <UnlockPage reason={reason} />
+      <UnlockPage reason={reason} canUndoRestore={canUndoRestore} />
     </QueryClientProvider>,
   );
   return invalidate;
@@ -155,4 +160,37 @@ test("marks Erase busy and ignores repeat presses", async () => {
   const dialog = await screen.findByRole("alertdialog");
   fireEvent.click(within(dialog).getByRole("button", { name: "Erase and set up again" }));
   await expectBusy("Erasing…", resetSecurity);
+});
+
+test("offers Undo restore only after a restore, and says which password to use", () => {
+  renderPage("keyMissing");
+  expect(screen.queryByRole("button", { name: "Undo restore" })).toBeNull();
+  expect(screen.getByText(/Enter your master password to unlock\./)).toBeTruthy();
+  cleanup();
+  renderPage("keyMissing", true);
+  expect(screen.getByRole("button", { name: "Undo restore" }).dataset.variant).toBe("outline");
+  expect(screen.getByText(/enter the master password you used when that backup was made, use a recovery code from then, or undo the restore\./)).toBeTruthy();
+});
+
+test("undoes a restore, re-reads every query, ignores repeat presses and focuses the heading", async () => {
+  let finish: (value: null) => void = () => {};
+  vi.mocked(undoRestore).mockReturnValue(new Promise((resolve) => (finish = resolve)));
+  const invalidate = renderPage("keyMissing", true);
+  fireEvent.click(screen.getByRole("button", { name: "Undo restore" }));
+  const busy = await screen.findByRole("button", { name: "Undoing…" });
+  expect(busy.getAttribute("aria-disabled")).toBe("true");
+  fireEvent.click(busy);
+  expect(undoRestore).toHaveBeenCalledTimes(1);
+  finish(null);
+  await vi.waitFor(() => expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Unlock Zeni" })));
+  expect(invalidate).toHaveBeenCalledWith();
+});
+
+test("shows a failed undo with what to do next", async () => {
+  vi.mocked(undoRestore).mockRejectedValue({ kind: "NotFound", message: "There's no restore to undo." });
+  renderPage("keyMissing", true);
+  fireEvent.click(screen.getByRole("button", { name: "Undo restore" }));
+  const alert = await screen.findByRole("alert");
+  expect(within(alert).getByText("There's no restore to undo.")).toBeTruthy();
+  expect(within(alert).getByText(/The restored data is still in place\./)).toBeTruthy();
 });

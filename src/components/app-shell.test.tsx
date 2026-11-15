@@ -4,7 +4,10 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { appInfo, completeSetup, listAccounts, listCsvLayouts, listImports, listTransactions, securityStatus, unlock } from "@/lib/commands";
 import { routeTree } from "@/router";
 
+// The backup card has its own tests.
+vi.mock("@/components/backup-card", () => ({ BackupCard: () => null }));
 vi.mock("@/lib/commands", () => ({
+  undoRestore: vi.fn(),
   cancelImport: vi.fn(),
   listCsvLayouts: vi.fn(),
   updateCsvLayout: vi.fn(),
@@ -144,7 +147,7 @@ test("shows first-run setup without the sidebar when setup is needed", async () 
 });
 
 test("shows the unlock screen when locked, then the app with focus on its heading once unlocked", async () => {
-  vi.mocked(securityStatus).mockResolvedValue({ state: "locked", reason: "keyringUnavailable" });
+  vi.mocked(securityStatus).mockResolvedValue({ state: "locked", reason: "keyringUnavailable", canUndoRestore: false });
   vi.mocked(unlock).mockResolvedValue(null);
   renderApp();
   expect(await screen.findByRole("heading", { level: 1, name: "Unlock Zeni" })).toBeTruthy();
