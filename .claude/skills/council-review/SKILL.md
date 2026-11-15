@@ -40,7 +40,7 @@ Each member owns one dimension. Every `CLAUDE.md` rule has exactly one owner.
    | `sensitive` | Any sensitive path below, a new or changed external interface (Tauri command, file format, IPC permission), or a change to how data is stored, imported, exported or deleted | `council-security`, `council-test-quality`, `council-prd-compliance`, `council-code-cleanliness`, plus the `ui` members when UI changed |
    | `cross-cutting` | A major redesign across layers, or members contradicting each other across rounds | All eight |
 
-   Sensitive paths: `src-tauri/src/crypto.rs`, `security.rs`, `keyring.rs`, `accounts.rs`, `imports.rs`, `ofx.rs`, `csv_import.rs`, `db.rs`, `src-tauri/migrations/**`, `src-tauri/capabilities/**`, `src-tauri/tauri.conf.json` (CSP/permissions), `Cargo.toml`/`package.json` deps, and any change to account/routing-number handling or raw-import immutability in any file.
+   Sensitive paths: `src-tauri/src/crypto.rs`, `security.rs`, `keyring.rs`, `accounts.rs`, `imports.rs`, `ofx.rs`, `csv_import.rs`, `db.rs`, `backup.rs`, `commands.rs`, `types.rs`, `lib.rs`, `src-tauri/migrations/**`, `src-tauri/capabilities/**`, `src-tauri/tauri.conf.json` (CSP/permissions), `Cargo.toml`/`package.json` deps, and any change to account/routing-number handling or raw-import immutability in any file.
 
    Escalate one row (to `sensitive`, or from `sensitive` to all eight) on a critical unknown, a security-sensitive dependency, or a blast radius you can't bound. A risk row only picks reviewers: every `CLAUDE.md` rule still applies, and a change that touches what a `CLAUDE.md` security rule covers is `sensitive` whatever its paths.
 
@@ -81,4 +81,4 @@ Each member owns one dimension. Every `CLAUDE.md` rule has exactly one owner.
    REJECTED:
    - [member] <finding> - <reason>
    ```
-10. Append the report to `snapshots/V<n>/council-findings.md`, and set the manifest's `review.blocking_findings` to the `BLOCKING` IDs only, as `R<k>-F<n>`.
+10. Append the report to `snapshots/V<n>/council-findings.md` (local; what may reach GitHub: `build-version` step 6.2), and set the manifest's `review.blocking_findings` to the `BLOCKING` IDs only, as `R<k>-F<n>`.
