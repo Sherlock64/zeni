@@ -8,8 +8,8 @@ Every dev agent (`core-dev`, `ui-dev`, `docs-writer`, `prompt-engineer`) follows
 |---|---|
 | `core-dev` | `src-tauri/**` (incl. `migrations/`, `capabilities/`, `Cargo.toml`, `tauri.conf.json`, `build.rs`), `src/lib/commands.ts` and its test, `src/types/**` except `ui.ts` (incl. generated `src/types/bindings/`), `package.json`, `pnpm-lock.yaml`, `vite.config.ts`, `tsconfig.json`, `index.html`, `snapshot.html`, `scripts/**`, `.gitignore` |
 | `ui-dev` | `src/pages/**`, `src/components/**` (incl. `ui/`), `src/hooks/**`, `src/lib/**` except `commands.ts` and its test (incl. `snapshot-fixtures.ts`), `src/router.tsx`, `src/main.tsx`, `src/snapshot.ts`, `src/index.css`, `components.json`, `src/types/ui.ts`, and every UI test (`*.test.tsx`) |
-| `docs-writer` | `CLAUDE.md`, `README.md`, `docs/**` |
-| `prompt-engineer` | `.claude/agents/**`, `.claude/skills/**` |
+| `docs-writer` | `CLAUDE.md`, `README.md`, `docs/**` except `docs/workflow.md` |
+| `prompt-engineer` | `.claude/agents/**`, `.claude/skills/**`, `docs/workflow.md` |
 
 Nobody edits `plans/`; the user writes PRDs, or the organizer does with the user through the `write-prd` skill. Several instances of `core-dev` or `ui-dev` may run at once, so your task message names the exact files you may touch. That list overrides this table for the task.
 
@@ -36,6 +36,7 @@ Nobody edits `plans/`; the user writes PRDs, or the organizer does with the user
    CHECKS: <each command run and its result>
    SNAPSHOTS: <each PNG path - route, state, what you checked; or "none" for non-UI tasks>
    NEEDS: <changes needed in files you don't own, deps to approve, questions; or "none">
+   COVERS: <each acceptance criterion of your task, one line each: "<task ID> <criterion> -> <test name(s)>", or "-> RUNTIME" when only the running app can show it>
    NOTES: <at most five one-line items, or "none">
    ```
-   Nothing outside these six fields.
+   Nothing outside these seven fields. Story and task IDs go only in the report, never in code, test names or comments.

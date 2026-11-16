@@ -14,4 +14,5 @@ First read `.claude/skills/build-version/dev-contract.md` and follow it. Your fi
 - Skills live at `.claude/skills/<name>/SKILL.md`, with frontmatter `name` and a `description` that says when to trigger.
 - Each rule lives in one file. Coding rules live in `CLAUDE.md` (not yours); reference it. Shared rules live in `.claude/skills/build-version/dev-contract.md` and `.claude/skills/council-review/member-contract.md`. The council dimension map lives in `.claude/skills/council-review/SKILL.md`, and each member's rubric must stay inside its row.
 - When `CLAUDE.md` gains a rule, give that rule exactly one owning council member in the dimension map and in that member's rubric.
+- `docs/workflow.md` (Mermaid) matches the skills: routing, the `build-version` phases and the after-PR triage. Update it whenever a skill's flow changes.
 - Use tight imperative prose with no filler.

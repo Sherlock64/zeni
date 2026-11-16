@@ -18,7 +18,7 @@ Each member owns one dimension. Every `CLAUDE.md` rule has exactly one owner.
 | `council-ux-design` | Flows, states, feedback, copy | - |
 | `council-accessibility` | WCAG 2.1 AA: semantics, keyboard, focus, names, contrast | - |
 | `council-test-quality` | Tests run and pass, cover the change, and are meaningful; bindings are fresh | - |
-| `council-prd-compliance` | Every PRD requirement and acceptance criterion, one by one | Stop and ask at marked checkpoints; branch from `main` with the version naming rule |
+| `council-prd-compliance` | Every story task and acceptance criterion, one by one, against the coverage map and tests | Stop and ask at marked checkpoints; branch from `main` with the version naming rule |
 
 ## Steps
 
@@ -26,6 +26,7 @@ Each member owns one dimension. Every `CLAUDE.md` rule has exactly one owner.
    - The changed files: the manifest's `changed_files` (`snapshots/V<n>/evidence.yaml`).
    - A summary of the change in a few lines.
    - The requirements: `plans/PRD-V<n>.md`, or for a hotfix (no PRD) the task brief.
+   - The coverage map `snapshots/V<n>/coverage.md` (the dev reports' `COVERS`).
    - The contracts path `snapshots/V<n>/contracts.md`, or "none".
    - The UI snapshots: one PNG per distinct state of the changed components only (in a re-review, only the retaken ones), with the route and state each shows, or "none" if no UI changed. Only `council-ui-design`, `council-ux-design` and `council-accessibility` get them; the other members get "none".
    - The dependencies the user approved for this version, or "none".
@@ -54,6 +55,7 @@ Each member owns one dimension. Every `CLAUDE.md` rule has exactly one owner.
    <changed files>
    Summary: <summary>
    Contracts: <path or "none">
+   Coverage: snapshots/V<n>/coverage.md
    Snapshots:
    <path - route, state; or "none">
    Approved dependencies: <list or "none">
