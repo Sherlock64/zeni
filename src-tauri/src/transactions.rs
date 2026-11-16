@@ -10,6 +10,11 @@ use crate::types::{
 
 const MAX_PAGE_SIZE: u32 = 200;
 const MAX_SEARCH_CHARS: usize = 200;
+/// Each raw row plus its winning nickname, if any; `nickname_matches` holds at most one row per transaction.
+const TRANSACTIONS_WITH_NICKNAME: &str = " FROM raw_transactions r \
+     LEFT JOIN nickname_matches m ON m.raw_transaction_id = r.id \
+     LEFT JOIN nickname_rules nr ON nr.id = m.rule_id \
+     LEFT JOIN nicknames n ON n.id = nr.nickname_id AND n.enabled = 1";
 
 /// Validated filters: dates are strict "YYYY-MM-DD", search is a LIKE pattern with wildcards escaped.
 struct Filters {
@@ -23,19 +28,21 @@ pub async fn list(state: &AppState, query: TransactionQuery) -> Result<Transacti
     let filters = validate(&query)?;
     let pool = &security::pool(state)?;
 
-    let mut count = QueryBuilder::<Sqlite>::new("SELECT COUNT(*) FROM raw_transactions");
+    let mut count = QueryBuilder::<Sqlite>::new("SELECT COUNT(*)");
+    count.push(TRANSACTIONS_WITH_NICKNAME);
     push_filters(&mut count, &filters);
     let total: u32 = count.build_query_scalar().fetch_one(pool).await?;
 
     let mut select = QueryBuilder::<Sqlite>::new(
-        "SELECT id, import_id, posted_date, amount_cents, raw_description, memo, \
-         transaction_type, running_balance_cents FROM raw_transactions",
+        "SELECT r.id, r.import_id, r.posted_date, r.amount_cents, r.raw_description, r.memo, \
+         r.transaction_type, r.running_balance_cents, n.name AS nickname",
     );
+    select.push(TRANSACTIONS_WITH_NICKNAME);
     push_filters(&mut select, &filters);
     let column = match query.sort {
-        TransactionSort::Date => "posted_date",
-        TransactionSort::Amount => "amount_cents",
-        TransactionSort::Description => "raw_description COLLATE NOCASE",
+        TransactionSort::Date => "r.posted_date",
+        TransactionSort::Amount => "r.amount_cents",
+        TransactionSort::Description => "COALESCE(n.name, r.raw_description) COLLATE NOCASE",
     };
     let direction = match query.direction {
         SortDirection::Asc => "ASC",
@@ -43,7 +50,7 @@ pub async fn list(state: &AppState, query: TransactionQuery) -> Result<Transacti
     };
     // Both are fixed strings from the enums above, never user text.
     select.push(format_args!(
-        " ORDER BY {column} {direction}, id {direction} LIMIT "
+        " ORDER BY {column} {direction}, r.id {direction} LIMIT "
     ));
     select.push_bind(i64::from(query.page_size));
     select.push(" OFFSET ");
@@ -64,6 +71,7 @@ pub async fn list(state: &AppState, query: TransactionQuery) -> Result<Transacti
             memo: row.get("memo"),
             transaction_type: row.get("transaction_type"),
             running_balance_cents: row.get("running_balance_cents"),
+            nickname: row.get("nickname"),
         })
         .collect();
     Ok(TransactionPage { rows, total })
@@ -130,23 +138,27 @@ pub(crate) fn is_date(text: &str) -> bool {
     year > 0 && (1..=days).contains(&day)
 }
 
-/// The WHERE clause shared by the count and the page: the checking account (lowest id) plus filters.
+/// The WHERE clause shared by the count and the page (both over `TRANSACTIONS_WITH_NICKNAME`): the checking account (lowest id) plus filters.
 fn push_filters(builder: &mut QueryBuilder<Sqlite>, filters: &Filters) {
-    builder.push(" WHERE account_id = (SELECT MIN(id) FROM accounts)");
+    builder.push(" WHERE r.account_id = (SELECT MIN(id) FROM accounts)");
     if let Some(from) = &filters.from {
         builder
-            .push(" AND posted_date >= ")
+            .push(" AND r.posted_date >= ")
             .push_bind(from.as_str());
     }
     if let Some(to) = &filters.to {
-        builder.push(" AND posted_date <= ").push_bind(to.as_str());
+        builder
+            .push(" AND r.posted_date <= ")
+            .push_bind(to.as_str());
     }
     if let Some(pattern) = &filters.pattern {
         // LIKE is case-insensitive for ASCII only (SQLite without ICU).
         builder
-            .push(" AND (raw_description LIKE ")
+            .push(" AND (n.name LIKE ")
             .push_bind(pattern.as_str())
-            .push(" ESCAPE '\\' OR memo LIKE ")
+            .push(" ESCAPE '\\' OR r.raw_description LIKE ")
+            .push_bind(pattern.as_str())
+            .push(" ESCAPE '\\' OR r.memo LIKE ")
             .push_bind(pattern.as_str())
             .push(" ESCAPE '\\')");
     }
@@ -354,6 +366,61 @@ mod tests {
         assert_eq!(search("o_f"), Vec::<i64>::new());
         assert_eq!(search("\\"), vec![6]);
         assert_eq!(search("a\\b"), vec![6]);
+    }
+
+    /// Maps row 1 to "Morning Brew" and row 2 to a disabled nickname.
+    fn add_nicknames(f: &Fixture) {
+        let pool = &security::pool(&f.state).unwrap();
+        run(async {
+            for sql in [
+                "INSERT INTO nicknames (id, name, enabled) VALUES (1, 'Morning Brew', 1), (2, 'Hidden', 0)",
+                "INSERT INTO nickname_rules (id, nickname_id, mode, field, pattern)
+                 VALUES (1, 1, 'contains', 'description', 'coffee'), (2, 2, 'exact', 'description', 'payroll')",
+                "INSERT INTO nickname_matches (raw_transaction_id, rule_id) VALUES (1, 1), (2, 2)",
+            ] {
+                sqlx::query(sql).execute(pool).await.unwrap();
+            }
+        });
+    }
+
+    #[test]
+    fn maps_the_winning_enabled_nickname() {
+        let f = fixture("nickname-map");
+        add_nicknames(&f);
+        let page = run(list(&f.state, query())).unwrap();
+        let names: Vec<_> = page
+            .rows
+            .iter()
+            .map(|row| row.nickname.as_deref())
+            .collect();
+        assert_eq!(names, [Some("Morning Brew"), None, None, None, None, None]);
+        assert_eq!(page.total, 6);
+    }
+
+    #[test]
+    fn description_sort_uses_the_shown_nickname() {
+        let f = fixture("nickname-sort");
+        add_nicknames(&f);
+        let sorted = |direction| {
+            ids(&f, |q| {
+                (q.sort, q.direction) = (TransactionSort::Description, direction)
+            })
+            .0
+        };
+        // Row 1 sorts as "Morning Brew"; row 2's nickname is disabled, so it sorts as "PAYROLL".
+        assert_eq!(sorted(SortDirection::Asc), vec![6, 4, 3, 1, 2, 5]);
+        assert_eq!(sorted(SortDirection::Desc), vec![5, 2, 1, 3, 4, 6]);
+    }
+
+    #[test]
+    fn search_matches_nickname_and_counts_each_row_once() {
+        let f = fixture("nickname-search");
+        add_nicknames(&f);
+        let search = |text: &str| ids(&f, |q| q.search = Some(text.into()));
+        assert_eq!(search("brew"), (vec![1], 1));
+        // Row 1 matches by nickname and description, row 4 (no nickname) by memo.
+        assert_eq!(search("coffee"), (vec![1, 4], 2));
+        assert_eq!(search("hidden"), (vec![], 0));
     }
 
     #[test]

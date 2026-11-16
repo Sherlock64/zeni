@@ -5585,6 +5585,7 @@ dependencies = [
  "argon2",
  "csv",
  "oo7",
+ "regex",
  "serde",
  "serde_json",
  "sqlx",

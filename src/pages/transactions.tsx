@@ -1,18 +1,22 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { ArrowDownIcon, ArrowUpDownIcon, ArrowUpIcon, ReceiptTextIcon, SearchXIcon } from "lucide-react";
 import { cn } from "cn";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CommandErrorAlert } from "@/components/command-error-alert";
 import { ImportControls } from "@/components/import-controls";
 import { Page } from "@/components/page";
+import { RenameDialog } from "@/components/rename-dialog";
 import { TextField } from "@/components/text-field";
 import { Button } from "@/components/ui/button";
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { listTransactions } from "@/lib/commands";
 import { formatDate } from "@/lib/dates";
 import { formatCents } from "@/lib/money";
+import type { Transaction } from "@/types/bindings/Transaction";
 import type { TransactionQuery } from "@/types/bindings/TransactionQuery";
 import type { TransactionSort } from "@/types/bindings/TransactionSort";
 import type { SortHeaderProps } from "@/types/ui";
@@ -39,6 +43,19 @@ export function TransactionsPage() {
     queryFn: () => listTransactions(query),
     placeholderData: keepPreviousData,
   });
+  // The row being renamed, and the row element to return focus to when the dialog closes.
+  const [renaming, setRenaming] = useState<Transaction | null>(null);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renames, setRenames] = useState(0);
+  const renamedRow = useRef<HTMLElement | null>(null);
+  // The row whose nickname tooltip is open: by hover on the nickname, or while the row has keyboard focus.
+  const [tooltipRow, setTooltipRow] = useState<number | null>(null);
+
+  function startRename(row: Transaction) {
+    setRenaming(row);
+    setRenames((count) => count + 1);
+    setRenameOpen(true);
+  }
 
   // Every filter change starts again from the first page.
   const filter = (change: Partial<TransactionQuery>) => setQuery((q) => ({ ...q, ...change, page: 0 }));
@@ -157,43 +174,82 @@ export function TransactionsPage() {
     return (
       <div className="flex flex-col gap-4">
         <div className="rounded-xl border" aria-busy={transactions.isFetching}>
-          <Table aria-label="Transactions">
-            <TableHeader>
-              <TableRow>
-                <SortHeader column="date" label="Date" query={query} onSort={sortBy} />
-                <SortHeader column="description" label="Description" query={query} onSort={sortBy} />
-                {showType && <TableHead scope="col">Type</TableHead>}
-                <SortHeader column="amount" label="Amount" query={query} onSort={sortBy} className="text-right" />
-                {showBalance && (
-                  <TableHead scope="col" className="text-right">
-                    Balance
-                  </TableHead>
-                )}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data.rows.map((row) => (
-                <TableRow key={row.id}>
-                  <TableCell className="tabular-nums">{formatDate(row.postedDate)}</TableCell>
-                  {/* The memo sits under the description so the table fits narrow windows without scrolling. */}
-                  <TableCell className="whitespace-normal">
-                    <p className="font-medium">{row.description}</p>
-                    {row.memo && <p className="text-muted-foreground">{row.memo}</p>}
-                  </TableCell>
-                  {showType && <TableCell className="text-muted-foreground">{row.transactionType}</TableCell>}
-                  {/* The minus sign marks money out; the colour only reinforces it. */}
-                  <TableCell className={cn("text-right tabular-nums", row.amountCents < 0 && "text-destructive")}>
-                    {formatCents(row.amountCents)}
-                  </TableCell>
+          <TooltipProvider>
+            <Table aria-label="Transactions">
+              <TableHeader>
+                <TableRow>
+                  <SortHeader column="date" label="Date" query={query} onSort={sortBy} />
+                  <SortHeader column="description" label="Description" query={query} onSort={sortBy} />
+                  {showType && <TableHead scope="col">Type</TableHead>}
+                  <SortHeader column="amount" label="Amount" query={query} onSort={sortBy} className="text-right" />
                   {showBalance && (
-                    <TableCell className="text-right tabular-nums">
-                      {row.runningBalanceCents !== null && formatCents(row.runningBalanceCents)}
-                    </TableCell>
+                    <TableHead scope="col" className="text-right">
+                      Balance
+                    </TableHead>
                   )}
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {data.rows.map((row) => (
+                  <ContextMenu key={row.id} modal={false}>
+                    {/* Focusable, so the context-menu key or Shift+F10 opens the menu from the keyboard. */}
+                    <ContextMenuTrigger asChild>
+                      <TableRow
+                        tabIndex={0}
+                        className="select-auto focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+                        onContextMenu={(event) => (renamedRow.current = event.currentTarget)}
+                        onFocus={row.nickname ? () => setTooltipRow(row.id) : undefined}
+                        onBlur={row.nickname ? () => setTooltipRow(null) : undefined}
+                      >
+                        <TableCell className="tabular-nums">{formatDate(row.postedDate)}</TableCell>
+                        {/* The memo sits under the description so the table fits narrow windows without scrolling. */}
+                        <TableCell className="whitespace-normal">
+                          {row.nickname ? (
+                            <Tooltip
+                              open={tooltipRow === row.id}
+                              onOpenChange={(open) => setTooltipRow(open ? row.id : null)}
+                            >
+                              <TooltipTrigger asChild>
+                                <p className="w-fit font-medium">
+                                  {row.nickname}
+                                  <span className="sr-only">
+                                    , description {row.description}
+                                    {row.memo && `, memo ${row.memo}`}
+                                  </span>
+                                </p>
+                              </TooltipTrigger>
+                              <TooltipContent side="bottom" align="start" className="flex-col items-start break-words">
+                                <p>Description: {row.description}</p>
+                                {row.memo && <p>Memo: {row.memo}</p>}
+                              </TooltipContent>
+                            </Tooltip>
+                          ) : (
+                            <>
+                              <p className="font-medium">{row.description}</p>
+                              {row.memo && <p className="text-muted-foreground">{row.memo}</p>}
+                            </>
+                          )}
+                        </TableCell>
+                        {showType && <TableCell className="text-muted-foreground">{row.transactionType}</TableCell>}
+                        {/* The minus sign marks money out; the colour only reinforces it. */}
+                        <TableCell className={cn("text-right tabular-nums", row.amountCents < 0 && "text-destructive")}>
+                          {formatCents(row.amountCents)}
+                        </TableCell>
+                        {showBalance && (
+                          <TableCell className="text-right tabular-nums">
+                            {row.runningBalanceCents !== null && formatCents(row.runningBalanceCents)}
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    </ContextMenuTrigger>
+                    <ContextMenuContent>
+                      <ContextMenuItem onSelect={() => startRename(row)}>Rename it</ContextMenuItem>
+                    </ContextMenuContent>
+                  </ContextMenu>
+                ))}
+              </TableBody>
+            </Table>
+          </TooltipProvider>
         </div>
         <nav aria-label="Pages" className="flex flex-wrap items-center justify-between gap-3 text-sm">
           <p className="text-muted-foreground">
@@ -256,7 +312,7 @@ export function TransactionsPage() {
               label="Search"
               type="search"
               name="search"
-              placeholder="Description or memo"
+              placeholder="Search nickname, description or memo"
               maxLength={200}
               value={searchText}
               onChange={(event) => setSearchText(event.target.value)}
@@ -265,6 +321,18 @@ export function TransactionsPage() {
         </div>
       )}
       {content()}
+      {renaming && (
+        <RenameDialog
+          key={renames}
+          transaction={renaming}
+          open={renameOpen}
+          onOpenChange={setRenameOpen}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            renamedRow.current?.focus();
+          }}
+        />
+      )}
     </Page>
   );
 }

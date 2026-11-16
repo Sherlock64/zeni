@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { TriangleAlertIcon } from "lucide-react";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { BackupCard } from "@/components/backup-card";
@@ -23,7 +23,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAppInfo } from "@/hooks/use-app-info";
 import { useSecurityStatus } from "@/hooks/use-security-status";
-import { regenerateRecoveryCodes, sampleError } from "@/lib/commands";
+import { nicknameSettings, regenerateRecoveryCodes, sampleError, setNicknameStaleDays } from "@/lib/commands";
 import type { CommandError } from "@/types/command";
 import type { InfoRowProps } from "@/types/ui";
 
@@ -61,12 +61,14 @@ export function SettingsPage() {
   }
 
   return (
-    <Page title="Settings" description="Security, backups, saved CSV layouts and details of this installation of Zeni.">
+    <Page title="Settings" description="Security, backups, saved CSV layouts, nicknames and details of this installation of Zeni.">
       <SecurityCard />
 
       <BackupCard />
 
       <CsvLayoutsCard />
+
+      <NicknamesCard />
 
       <Card>
         <CardHeader>
@@ -163,6 +165,86 @@ function SecurityCard() {
           </Alert>
         )}
         <RegenerateCodesDialog />
+      </CardContent>
+    </Card>
+  );
+}
+
+function NicknamesCard() {
+  const queryClient = useQueryClient();
+  const settings = useQuery({ queryKey: ["nickname_settings"], queryFn: nicknameSettings });
+  const [days, setDays] = useState<string | null>(null);
+  const [rangeError, setRangeError] = useState(false);
+  const save = useMutation({
+    mutationFn: setNicknameStaleDays,
+    onSuccess: (saved) => {
+      queryClient.setQueryData(["nickname_settings"], saved);
+      // The stale badges depend on this setting.
+      queryClient.invalidateQueries({ queryKey: ["list_nicknames"] });
+    },
+  });
+  const value = days ?? String(settings.data?.staleDays ?? "");
+  const rangeMessage = "Stale days must be 1 to 3650.";
+  const fieldError = rangeError ? rangeMessage : save.error?.kind === "Validation" ? save.error.message : undefined;
+
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    if (save.isPending) return;
+    // Mirrors the backend's range; a fraction or negative number would not reach it as a whole number of days.
+    const staleDays = Number(value);
+    const valid = value.trim() !== "" && Number.isInteger(staleDays) && staleDays >= 1 && staleDays <= 3650;
+    setRangeError(!valid);
+    if (valid) save.mutate({ staleDays });
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>
+          <h2>Nicknames</h2>
+        </CardTitle>
+        <CardDescription>
+          A nickname is flagged as stale when it hasn't matched for this many days before your newest transaction.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {settings.isError ? (
+          <CommandErrorAlert title="Couldn't load nickname settings" error={settings.error} />
+        ) : settings.isPending ? (
+          <Skeleton aria-hidden="true" className="h-16 w-64" />
+        ) : (
+          <form noValidate onSubmit={submit} className="flex flex-col items-start gap-3">
+            <TextField
+              label="Flag nicknames as stale after (days)"
+              name="staleDays"
+              type="number"
+              inputMode="numeric"
+              min={1}
+              max={3650}
+              className="w-32"
+              value={value}
+              hint="Between 1 and 3650."
+              error={fieldError}
+              announce
+              onChange={(event) => {
+                save.reset();
+                setRangeError(false);
+                setDays(event.target.value);
+              }}
+            />
+            <div className="flex items-center gap-3">
+              <Button type="submit" variant="outline" aria-disabled={save.isPending}>
+                {save.isPending ? "Saving…" : "Save"}
+              </Button>
+              <p aria-live="polite" className="text-sm text-muted-foreground">
+                {save.isSuccess ? "Saved." : ""}
+              </p>
+            </div>
+            {save.isError && save.error.kind !== "Validation" && (
+              <CommandErrorAlert title="Couldn't save the setting" error={save.error} />
+            )}
+          </form>
+        )}
       </CardContent>
     </Card>
   );

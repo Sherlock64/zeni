@@ -9,6 +9,10 @@ import type { ImportRecord } from "@/types/bindings/ImportRecord";
 import type { ImportSummary } from "@/types/bindings/ImportSummary";
 import type { LockReason } from "@/types/bindings/LockReason";
 import type { RestoreSource } from "@/types/bindings/RestoreSource";
+import type { RuleInput } from "@/types/bindings/RuleInput";
+import type { Nickname } from "@/types/bindings/Nickname";
+import type { NicknameRule } from "@/types/bindings/NicknameRule";
+import type { Transaction } from "@/types/bindings/Transaction";
 import type { TransactionQuery } from "@/types/bindings/TransactionQuery";
 import type { TransactionSort } from "@/types/bindings/TransactionSort";
 import type { CommandError } from "@/types/command";
@@ -112,3 +116,53 @@ export type DuplicateReviewDialogProps = {
 
 // The backup waiting on the restore confirm dialog.
 export type RestoreTarget = { source: RestoreSource; file: BackupFile };
+
+export type NicknameRuleFieldsProps = {
+  value: RuleInput;
+  onChange: (rule: RuleInput) => void;
+  // A pattern error from a failed save; replaces the live count's own regex error.
+  error?: string;
+  // False when the caller shows RuleMatchCount itself, outside these fields. Defaults to true.
+  showCount?: boolean;
+};
+
+export type RuleMatchCountProps = { rule: RuleInput };
+
+export type RenameDialogProps = {
+  transaction: Transaction;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  // The dialog has no trigger, so the caller says where focus goes when it closes.
+  onCloseAutoFocus: (event: Event) => void;
+};
+
+// What the Nicknames page's form dialog is adding or editing.
+export type NicknameDialogTarget =
+  | { kind: "add" }
+  | { kind: "rename"; nickname: Nickname }
+  | { kind: "addRule"; nickname: Nickname }
+  | { kind: "editRule"; nickname: Nickname; rule: NicknameRule };
+
+export type NicknameFormDialogProps = {
+  target: NicknameDialogTarget;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  // The dialog has no trigger, so the caller says where focus goes when it closes.
+  onCloseAutoFocus: (event: Event) => void;
+};
+
+// A nickname, or one of its rules, waiting on the delete confirm dialog.
+export type NicknameDeleteTarget = { nickname: Nickname; rule?: NicknameRule };
+
+export type NicknameMatchesProps = { count: number; last: string | null };
+
+export type NicknameMenuItem = {
+  label: string;
+  // Gets the menu's trigger, so a dialog the item opens can return focus to it.
+  onSelect: (trigger: HTMLElement) => void;
+  destructive?: boolean;
+  // Marks the item unavailable and is shown under its label.
+  disabledReason?: string;
+};
+
+export type NicknameRowMenuProps = { label: string; items: NicknameMenuItem[]; menuFor?: number };

@@ -185,18 +185,18 @@ export const fixtures: Record<string, unknown> = {
   ],
   list_transactions: {
     rows: [
-      { id: 101, importId: 1, postedDate: "2026-10-31", amountCents: -1850, description: "CORNER COFFEE ROASTERS", memo: "Card purchase 1234", transactionType: "POS", runningBalanceCents: null },
-      { id: 100, importId: 1, postedDate: "2026-10-30", amountCents: 245000, description: "ACME CORP PAYROLL", memo: "Direct deposit", transactionType: "DIRECTDEP", runningBalanceCents: null },
-      { id: 99, importId: 1, postedDate: "2026-10-29", amountCents: -8642, description: "GREENLEAF MARKET #42", memo: null, transactionType: null, runningBalanceCents: null },
-      { id: 98, importId: 1, postedDate: "2026-10-28", amountCents: -12000, description: "CITY WATER UTILITY", memo: "Autopay ref 88213", transactionType: null, runningBalanceCents: null },
-      { id: 97, importId: 1, postedDate: "2026-10-27", amountCents: -4599, description: "STREAMFLIX SUBSCRIPTION", memo: null, transactionType: null, runningBalanceCents: null },
-      { id: 96, importId: 1, postedDate: "2026-10-26", amountCents: -6000, description: "ATM WITHDRAWAL 5TH AVE", memo: "Fee waived", transactionType: null, runningBalanceCents: null },
-      { id: 95, importId: 1, postedDate: "2026-10-24", amountCents: 1525, description: "REFUND PAPER & INK CO", memo: null, transactionType: null, runningBalanceCents: null },
-      { id: 94, importId: 1, postedDate: "2026-10-22", amountCents: -185000, description: "MAPLE STREET APARTMENTS", memo: "Rent October", transactionType: null, runningBalanceCents: null },
-      { id: 93, importId: 1, postedDate: "2026-10-20", amountCents: -3275, description: "SHELL FUEL 0193", memo: null, transactionType: null, runningBalanceCents: null },
-      { id: 92, importId: 1, postedDate: "2026-10-18", amountCents: -2210, description: "PIZZERIA NAPOLI", memo: null, transactionType: null, runningBalanceCents: null },
-      { id: 91, importId: 1, postedDate: "2026-10-16", amountCents: -15000, description: "TRANSFER TO SAVINGS", memo: "Online transfer", transactionType: null, runningBalanceCents: null },
-      { id: 90, importId: 1, postedDate: "2026-10-15", amountCents: 312, description: "INTEREST PAYMENT", memo: null, transactionType: null, runningBalanceCents: null },
+      { id: 101, importId: 1, postedDate: "2026-10-31", amountCents: -1850, description: "CORNER COFFEE ROASTERS", memo: "Card purchase 1234", transactionType: "POS", runningBalanceCents: null, nickname: "Corner Coffee" },
+      { id: 100, importId: 1, postedDate: "2026-10-30", amountCents: 245000, description: "ACME CORP PAYROLL", memo: "Direct deposit", transactionType: "DIRECTDEP", runningBalanceCents: null, nickname: "Paycheck" },
+      { id: 99, importId: 1, postedDate: "2026-10-29", amountCents: -8642, description: "GREENLEAF MARKET #42", memo: null, transactionType: null, runningBalanceCents: null, nickname: null },
+      { id: 98, importId: 1, postedDate: "2026-10-28", amountCents: -12000, description: "CITY WATER UTILITY", memo: "Autopay ref 88213", transactionType: null, runningBalanceCents: null, nickname: "Water bill" },
+      { id: 97, importId: 1, postedDate: "2026-10-27", amountCents: -4599, description: "STREAMFLIX SUBSCRIPTION", memo: null, transactionType: null, runningBalanceCents: null, nickname: "Streamflix" },
+      { id: 96, importId: 1, postedDate: "2026-10-26", amountCents: -6000, description: "ATM WITHDRAWAL 5TH AVE", memo: "Fee waived", transactionType: null, runningBalanceCents: null, nickname: null },
+      { id: 95, importId: 1, postedDate: "2026-10-24", amountCents: 1525, description: "REFUND PAPER & INK CO", memo: null, transactionType: null, runningBalanceCents: null, nickname: null },
+      { id: 94, importId: 1, postedDate: "2026-10-22", amountCents: -185000, description: "MAPLE STREET APARTMENTS", memo: "Rent October", transactionType: null, runningBalanceCents: null, nickname: "Rent" },
+      { id: 93, importId: 1, postedDate: "2026-10-20", amountCents: -3275, description: "SHELL FUEL 0193", memo: null, transactionType: null, runningBalanceCents: null, nickname: null },
+      { id: 92, importId: 1, postedDate: "2026-10-18", amountCents: -2210, description: "PIZZERIA NAPOLI", memo: null, transactionType: null, runningBalanceCents: null, nickname: null },
+      { id: 91, importId: 1, postedDate: "2026-10-16", amountCents: -15000, description: "TRANSFER TO SAVINGS", memo: "Online transfer", transactionType: null, runningBalanceCents: null, nickname: null },
+      { id: 90, importId: 1, postedDate: "2026-10-15", amountCents: 312, description: "INTEREST PAYMENT", memo: null, transactionType: null, runningBalanceCents: null, nickname: null },
     ],
     total: 57,
   },
@@ -229,6 +229,44 @@ Object.assign(fixtures, {
   pick_restore_file: { fileName: "zeni-copy.db", path: "/home/user/Documents/zeni-copy.db", kind: "other", createdAt: "2026-10-30 21:12:05", sizeBytes: 1720320 },
   restore_backup: null,
   undo_restore: null,
+});
+
+// Nicknames ordered by name: one stale, one disabled, one stale-exempt, one never matched.
+const nicknames = [
+  { name: "Corner Coffee", matchCount: 9, lastMatched: "2026-10-31", rules: [{ mode: "exact", field: "description", pattern: "CORNER COFFEE ROASTERS", matchCount: 9, lastMatched: "2026-10-31" }] },
+  { name: "Gym membership", matchCount: 4, lastMatched: "2026-05-02", stale: true, rules: [{ mode: "contains", field: "description", pattern: "ironworks gym", matchCount: 4, lastMatched: "2026-05-02" }] },
+  { name: "Holiday shopping", enabled: false, matchCount: 0, lastMatched: null, stale: true, rules: [{ mode: "contains", field: "description", pattern: "gift barn", matchCount: 0, lastMatched: null }] },
+  { name: "Home insurance", staleExempt: true, matchCount: 1, lastMatched: "2026-03-15", rules: [{ mode: "exact", field: "description", pattern: "SAFEHARBOR INSURANCE ANNUAL", matchCount: 1, lastMatched: "2026-03-15" }] },
+  { name: "Parking", matchCount: 0, lastMatched: null, stale: true, rules: [{ mode: "regex", field: "description", pattern: "^park(ing)? \\d+", matchCount: 0, lastMatched: null }] },
+  {
+    name: "Paycheck",
+    matchCount: 3,
+    lastMatched: "2026-10-30",
+    rules: [
+      { mode: "exact", field: "description", pattern: "ACME CORP PAYROLL", matchCount: 2, lastMatched: "2026-10-30" },
+      { mode: "contains", field: "memo", pattern: "direct deposit", matchCount: 1, lastMatched: "2026-09-30" },
+    ],
+  },
+  { name: "Rent", matchCount: 3, lastMatched: "2026-10-22", rules: [{ mode: "exact", field: "description", pattern: "MAPLE STREET APARTMENTS", matchCount: 3, lastMatched: "2026-10-22" }] },
+  { name: "Streamflix", matchCount: 3, lastMatched: "2026-10-27", rules: [{ mode: "contains", field: "description", pattern: "streamflix", matchCount: 3, lastMatched: "2026-10-27" }] },
+  { name: "Water bill", matchCount: 3, lastMatched: "2026-10-28", rules: [{ mode: "exact", field: "description", pattern: "CITY WATER UTILITY", matchCount: 3, lastMatched: "2026-10-28" }] },
+].map((nickname, index) => {
+  const id = index + 1;
+  const createdAt = "2026-11-03 19:20:00";
+  const rules = nickname.rules.map((rule, ruleIndex) => ({ ...rule, id: id * 10 + ruleIndex, nicknameId: id, createdAt }));
+  return { enabled: true, staleExempt: false, stale: false, ...nickname, id, createdAt, rules };
+});
+
+Object.assign(fixtures, {
+  list_nicknames: nicknames,
+  save_nickname_rule: nicknames[0],
+  count_rule_matches: 12,
+  update_nickname: nicknames[0],
+  delete_nickname: null,
+  update_nickname_rule: nicknames[0],
+  delete_nickname_rule: null,
+  nickname_settings: { staleDays: 90 },
+  set_nickname_stale_days: { staleDays: 90 },
 });
 
 // The backend returns the updated layout; the UI only refetches the list.

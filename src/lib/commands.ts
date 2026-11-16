@@ -9,16 +9,22 @@ import type { CsvLayout } from "@/types/bindings/CsvLayout";
 import type { CsvMapping } from "@/types/bindings/CsvMapping";
 import type { CsvPreviewRow } from "@/types/bindings/CsvPreviewRow";
 import type { DeleteCsvLayoutRequest } from "@/types/bindings/DeleteCsvLayoutRequest";
+import type { DeleteNicknameRequest } from "@/types/bindings/DeleteNicknameRequest";
+import type { DeleteNicknameRuleRequest } from "@/types/bindings/DeleteNicknameRuleRequest";
 import type { ImportRecord } from "@/types/bindings/ImportRecord";
 import type { ImportStep } from "@/types/bindings/ImportStep";
 import type { ImportSummary } from "@/types/bindings/ImportSummary";
+import type { Nickname } from "@/types/bindings/Nickname";
+import type { NicknameSettings } from "@/types/bindings/NicknameSettings";
 import type { RecoverRequest } from "@/types/bindings/RecoverRequest";
 import type { RecoveryCodes } from "@/types/bindings/RecoveryCodes";
 import type { RestoreBackupRequest } from "@/types/bindings/RestoreBackupRequest";
 import type { RevealAccountNumbersRequest } from "@/types/bindings/RevealAccountNumbersRequest";
 import type { RevertImportRequest } from "@/types/bindings/RevertImportRequest";
+import type { RuleInput } from "@/types/bindings/RuleInput";
 import type { SampleErrorRequest } from "@/types/bindings/SampleErrorRequest";
 import type { SaveCsvLayoutRequest } from "@/types/bindings/SaveCsvLayoutRequest";
+import type { SaveNicknameRuleRequest } from "@/types/bindings/SaveNicknameRuleRequest";
 import type { SecurityStatus } from "@/types/bindings/SecurityStatus";
 import type { SetBackupRetentionRequest } from "@/types/bindings/SetBackupRetentionRequest";
 import type { SetupRequest } from "@/types/bindings/SetupRequest";
@@ -27,6 +33,8 @@ import type { TransactionPage } from "@/types/bindings/TransactionPage";
 import type { TransactionQuery } from "@/types/bindings/TransactionQuery";
 import type { UnlockRequest } from "@/types/bindings/UnlockRequest";
 import type { UpdateCsvLayoutRequest } from "@/types/bindings/UpdateCsvLayoutRequest";
+import type { UpdateNicknameRequest } from "@/types/bindings/UpdateNicknameRequest";
+import type { UpdateNicknameRuleRequest } from "@/types/bindings/UpdateNicknameRuleRequest";
 import type { CommandError } from "@/types/command";
 
 function toCommandError(error: unknown): CommandError {
@@ -101,3 +109,15 @@ export const listBackups = () => call<BackupFile[]>("list_backups");
 export const pickRestoreFile = () => call<BackupFile | null>("pick_restore_file");
 export const restoreBackup = (request: RestoreBackupRequest) => call<null>("restore_backup", { request });
 export const undoRestore = () => call<null>("undo_restore");
+export const listNicknames = () => call<Nickname[]>("list_nicknames");
+export const saveNicknameRule = (request: SaveNicknameRuleRequest) => call<Nickname>("save_nickname_rule", { request });
+export const countRuleMatches = (request: RuleInput) => call<number>("count_rule_matches", { request });
+export const updateNickname = (request: UpdateNicknameRequest) => call<Nickname>("update_nickname", { request });
+export const deleteNickname = (request: DeleteNicknameRequest) => call<null>("delete_nickname", { request });
+export const updateNicknameRule = (request: UpdateNicknameRuleRequest) =>
+  call<Nickname>("update_nickname_rule", { request });
+export const deleteNicknameRule = (request: DeleteNicknameRuleRequest) =>
+  call<null>("delete_nickname_rule", { request });
+export const nicknameSettings = () => call<NicknameSettings>("nickname_settings");
+export const setNicknameStaleDays = (request: NicknameSettings) =>
+  call<NicknameSettings>("set_nickname_stale_days", { request });

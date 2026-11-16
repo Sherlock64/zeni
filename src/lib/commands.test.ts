@@ -7,13 +7,18 @@ import {
   chooseBackupFolder,
   commitImport,
   completeSetup,
+  countRuleMatches,
   deleteCsvLayout,
+  deleteNickname,
+  deleteNicknameRule,
   importFile,
+  listAccounts,
   listBackups,
   listCsvLayouts,
   listImports,
+  listNicknames,
   listTransactions,
-  listAccounts,
+  nicknameSettings,
   pickRestoreFile,
   previewCsvMapping,
   recover,
@@ -24,11 +29,15 @@ import {
   revertImport,
   sampleError,
   saveCsvLayout,
+  saveNicknameRule,
   securityStatus,
   setBackupRetention,
+  setNicknameStaleDays,
   undoRestore,
   unlock,
   updateCsvLayout,
+  updateNickname,
+  updateNicknameRule,
 } from "@/lib/commands";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -216,6 +225,48 @@ test("backup wrappers invoke their commands with the request", async () => {
       null,
     ],
     [undoRestore, "undo_restore", undefined, null],
+  ];
+  for (const [run, command, args, response] of cases) {
+    mockInvoke.mockResolvedValueOnce(response);
+    await expect(run()).resolves.toEqual(response);
+    expect(mockInvoke).toHaveBeenLastCalledWith(command, args);
+  }
+});
+
+test("nickname wrappers invoke their commands with the request", async () => {
+  const rule = { mode: "exact", field: "description", pattern: "corner coffee" } as const;
+  const nickname = {
+    id: 1,
+    name: "Coffee",
+    enabled: true,
+    staleExempt: false,
+    createdAt: "2026-11-01 10:00:00",
+    matchCount: 2,
+    lastMatched: "2026-10-31",
+    stale: false,
+    rules: [{ id: 4, nicknameId: 1, ...rule, createdAt: "2026-11-01 10:00:00", matchCount: 2, lastMatched: "2026-10-31" }],
+  };
+  const update = { id: 1, name: "Cafe", enabled: false, staleExempt: true };
+  const cases: [() => Promise<unknown>, string, unknown, unknown][] = [
+    [listNicknames, "list_nicknames", undefined, [nickname]],
+    [
+      () => saveNicknameRule({ name: "Coffee", rule }),
+      "save_nickname_rule",
+      { request: { name: "Coffee", rule } },
+      nickname,
+    ],
+    [() => countRuleMatches(rule), "count_rule_matches", { request: rule }, 2],
+    [() => updateNickname(update), "update_nickname", { request: update }, nickname],
+    [() => deleteNickname({ id: 1 }), "delete_nickname", { request: { id: 1 } }, null],
+    [() => updateNicknameRule({ id: 4, rule }), "update_nickname_rule", { request: { id: 4, rule } }, nickname],
+    [() => deleteNicknameRule({ id: 4 }), "delete_nickname_rule", { request: { id: 4 } }, null],
+    [nicknameSettings, "nickname_settings", undefined, { staleDays: 90 }],
+    [
+      () => setNicknameStaleDays({ staleDays: 30 }),
+      "set_nickname_stale_days",
+      { request: { staleDays: 30 } },
+      { staleDays: 30 },
+    ],
   ];
   for (const [run, command, args, response] of cases) {
     mockInvoke.mockResolvedValueOnce(response);

@@ -1,13 +1,24 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
-import { listTransactions } from "@/lib/commands";
+import { countRuleMatches, listNicknames, listTransactions } from "@/lib/commands";
 import { TransactionsPage } from "@/pages/transactions";
 import type { Transaction } from "@/types/bindings/Transaction";
 
-vi.mock("@/lib/commands", () => ({ listTransactions: vi.fn() }));
+vi.mock("@/lib/commands", () => ({
+  listTransactions: vi.fn(),
+  listNicknames: vi.fn(),
+  countRuleMatches: vi.fn(),
+  saveNicknameRule: vi.fn(),
+}));
 // ImportControls has its own tests; keep this page test about the list.
 vi.mock("@/components/import-controls", () => ({ ImportControls: () => null }));
 beforeEach(() => vi.resetAllMocks());
+// jsdom lacks ResizeObserver, which the rename dialog's radio groups use.
+globalThis.ResizeObserver = class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+};
 
 const row: Transaction = {
   id: 1,
@@ -18,6 +29,7 @@ const row: Transaction = {
   memo: "Card purchase",
   transactionType: null,
   runningBalanceCents: null,
+  nickname: null,
 };
 const base = { from: null, to: null, search: null, sort: "date", direction: "desc", page: 0, pageSize: 50 };
 
@@ -222,4 +234,64 @@ test("shows a load error and retries", async () => {
   expect(within(alert).getByText("Locked")).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Try again" }));
   expect(await screen.findByText("CORNER COFFEE")).toBeTruthy();
+});
+
+test("shows the nickname instead of the description, with the raw text in a tooltip", async () => {
+  vi.mocked(listTransactions).mockResolvedValue({
+    rows: [{ ...row, nickname: "Coffee" }, { ...row, id: 2, description: "PAYROLL", memo: null }],
+    total: 2,
+  });
+  renderPage();
+  const nickname = await screen.findByText("Coffee");
+  // Unmapped rows show the bank's text as before.
+  expect(screen.getByText("PAYROLL")).toBeTruthy();
+  expect(screen.queryByText("CORNER COFFEE")).toBeNull();
+  expect(screen.queryByText("Card purchase")).toBeNull();
+  // Screen readers get the raw text without the tooltip.
+  expect(nickname.textContent).toBe("Coffee, description CORNER COFFEE, memo Card purchase");
+
+  // Focusing the row opens its tooltip, so keyboard users reach the raw text too.
+  const tableRow = nickname.closest("tr")!;
+  fireEvent.focus(tableRow);
+  const tooltip = await screen.findByRole("tooltip");
+  expect(tooltip.textContent).toContain("Description: CORNER COFFEE");
+  expect(tooltip.textContent).toContain("Memo: Card purchase");
+  fireEvent.blur(tableRow);
+  await vi.waitFor(() => expect(screen.queryByRole("tooltip")).toBeNull());
+});
+
+test("a nickname row without a memo leaves Memo out of the tooltip and screen reader text", async () => {
+  vi.mocked(listTransactions).mockResolvedValue({ rows: [{ ...row, nickname: "Coffee", memo: null }], total: 1 });
+  renderPage();
+  const nickname = await screen.findByText("Coffee");
+  expect(nickname.textContent).toBe("Coffee, description CORNER COFFEE");
+  fireEvent.focus(nickname.closest("tr")!);
+  const tooltip = await screen.findByRole("tooltip");
+  expect(tooltip.textContent).toBe("Description: CORNER COFFEE");
+});
+
+test("the search placeholder mentions nicknames", async () => {
+  vi.mocked(listTransactions).mockResolvedValue({ rows: [row], total: 1 });
+  renderPage();
+  expect((await screen.findByLabelText("Search")).getAttribute("placeholder")).toBe("Search nickname, description or memo");
+});
+
+test("right-clicking a row offers Rename it, which opens the rename dialog and returns focus to the row", async () => {
+  vi.mocked(listTransactions).mockResolvedValue({ rows: [row], total: 1 });
+  vi.mocked(listNicknames).mockResolvedValue([]);
+  vi.mocked(countRuleMatches).mockResolvedValue(3);
+  renderPage();
+  const tableRow = (await screen.findByText("CORNER COFFEE")).closest("tr")!;
+  // Focusable, so the keyboard's context-menu key reaches it.
+  expect(tableRow.tabIndex).toBe(0);
+
+  fireEvent.contextMenu(tableRow);
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Rename it" }));
+  const dialog = await screen.findByRole("dialog", { name: "What's its nickname?" });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Match options" }));
+  expect((within(dialog).getByLabelText("Pattern") as HTMLInputElement).value).toBe("CORNER COFFEE");
+
+  fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+  await vi.waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  await vi.waitFor(() => expect(document.activeElement).toBe(tableRow));
 });

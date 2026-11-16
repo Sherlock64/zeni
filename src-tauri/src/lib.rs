@@ -9,6 +9,7 @@ mod db;
 mod import_acceptance_tests;
 mod imports;
 mod keyring;
+mod nicknames;
 mod ofx;
 mod security;
 mod transactions;
@@ -75,7 +76,16 @@ pub fn run() {
             commands::list_backups,
             commands::pick_restore_file,
             commands::restore_backup,
-            commands::undo_restore
+            commands::undo_restore,
+            commands::list_nicknames,
+            commands::save_nickname_rule,
+            commands::count_rule_matches,
+            commands::update_nickname,
+            commands::delete_nickname,
+            commands::update_nickname_rule,
+            commands::delete_nickname_rule,
+            commands::nickname_settings,
+            commands::set_nickname_stale_days
         ])
         .run(tauri::generate_context!())
         .expect("error while running Zeni");

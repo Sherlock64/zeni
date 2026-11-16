@@ -12,7 +12,7 @@ from: string | null,
  */
 to: string | null, 
 /**
- * Case-insensitive substring of description or memo; trimmed, empty means none, at most 200 chars.
+ * Case-insensitive substring of nickname, description or memo; trimmed, empty means none, at most 200 chars.
  */
 search: string | null, sort: TransactionSort, direction: SortDirection, 
 /**
