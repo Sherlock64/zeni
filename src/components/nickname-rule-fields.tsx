@@ -5,6 +5,7 @@ import { TextField } from "@/components/text-field";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { countRuleMatches } from "@/lib/commands";
+import { PATTERN_MAX_LEN } from "@/lib/nickname-limits";
 import type { MatchField } from "@/types/bindings/MatchField";
 import type { MatchMode } from "@/types/bindings/MatchMode";
 import type { RuleInput } from "@/types/bindings/RuleInput";
@@ -59,7 +60,7 @@ export function RuleMatchCount({ rule }: RuleMatchCountProps) {
 }
 
 // Mode, field and pattern of one nickname rule, with a live count of the transactions it matches.
-export function NicknameRuleFields({ value, onChange, error, showCount = true }: NicknameRuleFieldsProps) {
+export function NicknameRuleFields({ value, onChange, error }: NicknameRuleFieldsProps) {
   const id = useId();
   const { regexError } = useRuleCount(value);
   const set = (change: Partial<typeof value>) => onChange({ ...value, ...change });
@@ -104,14 +105,14 @@ export function NicknameRuleFields({ value, onChange, error, showCount = true }:
         label="Pattern"
         name="pattern"
         aria-required="true"
-        maxLength={500}
+        maxLength={PATTERN_MAX_LEN}
         value={value.pattern}
         hint={modes.find(([mode]) => mode === value.mode)?.[2]}
         error={error ?? regexError}
         announce
         onChange={(event) => set({ pattern: event.target.value })}
       />
-      {showCount && <RuleMatchCount rule={value} />}
+      <RuleMatchCount rule={value} />
     </div>
   );
 }

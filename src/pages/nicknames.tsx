@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { EllipsisIcon, PlusIcon, TagIcon } from "lucide-react";
-import { type FormEvent, useEffect, useRef, useState } from "react";
+import { type FormEvent, useEffect, useId, useRef, useState } from "react";
 import { CommandErrorAlert } from "@/components/command-error-alert";
 import { NicknameRuleFields } from "@/components/nickname-rule-fields";
 import { Page } from "@/components/page";
@@ -33,35 +33,31 @@ import {
 } from "@/lib/commands";
 import { formatDate } from "@/lib/dates";
 import { focusFirstInvalid } from "@/lib/focus";
+import { errorField } from "@/lib/nickname-errors";
+import { NICKNAME_MAX_LEN } from "@/lib/nickname-limits";
+import { NICKNAMES_KEY, TRANSACTIONS_KEY } from "@/lib/query-keys";
 import type { Nickname } from "@/types/bindings/Nickname";
+import type { NicknameRule } from "@/types/bindings/NicknameRule";
 import type { RuleInput } from "@/types/bindings/RuleInput";
 import type { CommandError } from "@/types/command";
 import type {
   NicknameDeleteTarget,
   NicknameDialogTarget,
   NicknameFormDialogProps,
+  NicknameMenuItem,
   NicknameMatchesProps,
   NicknameRowMenuProps,
 } from "@/types/ui";
 
-const listKey = ["list_nicknames"];
 const modeLabels = { exact: "Exact", contains: "Contains", regex: "Regex" } as const;
 const fieldLabels = { description: "Description", memo: "Memo" } as const;
-
-// Which field a Validation message belongs to, by the backend's wording.
-function errorField(error: CommandError | null) {
-  if (error?.kind !== "Validation") return null;
-  if (/^(Enter a nickname|Nicknames can be|A nickname named)/.test(error.message)) return "name";
-  if (/^(Enter a pattern|Patterns can be|That regex isn't valid)/.test(error.message)) return "pattern";
-  return null;
-}
 
 function useRefresh() {
   const queryClient = useQueryClient();
   return () =>
     Promise.all([
-      queryClient.invalidateQueries({ queryKey: listKey }),
-      queryClient.invalidateQueries({ queryKey: ["list_transactions"] }),
+      queryClient.invalidateQueries({ queryKey: NICKNAMES_KEY }),
+      queryClient.invalidateQueries({ queryKey: TRANSACTIONS_KEY }),
     ]);
 }
 
@@ -80,6 +76,7 @@ function NicknameMatches({ count, last }: NicknameMatchesProps) {
 // A row's actions in one menu. An item with `disabledReason` stays focusable and says why it can't be used.
 function NicknameRowMenu({ label, items, menuFor }: NicknameRowMenuProps) {
   const trigger = useRef<HTMLButtonElement>(null);
+  const reasonId = useId();
   return (
     // Not modal, so a dialog opened from an item takes focus cleanly.
     <DropdownMenu modal={false}>
@@ -89,16 +86,25 @@ function NicknameRowMenu({ label, items, menuFor }: NicknameRowMenuProps) {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="max-w-64">
-        {items.map((item) => (
+        {items.map((item, index) => (
           <DropdownMenuItem
             key={item.label}
             variant={item.destructive && !item.disabledReason ? "destructive" : "default"}
             aria-disabled={item.disabledReason ? true : undefined}
+            aria-describedby={item.disabledReason ? `${reasonId}-${index}` : undefined}
             className={item.disabledReason ? "flex-col items-start gap-0.5 text-muted-foreground" : undefined}
-            onSelect={(event) => (item.disabledReason ? event.preventDefault() : item.onSelect(trigger.current!))}
+            onSelect={(event) => {
+              if (item.disabledReason) return event.preventDefault();
+              if (trigger.current) item.onSelect(trigger.current);
+            }}
           >
             {item.label}
-            {item.disabledReason && <span className="text-xs">{item.disabledReason}</span>}
+            {/* Hidden from the item's name; aria-describedby still reads it as the description. */}
+            {item.disabledReason && (
+              <span id={`${reasonId}-${index}`} aria-hidden="true" className="text-xs">
+                {item.disabledReason}
+              </span>
+            )}
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>
@@ -109,12 +115,13 @@ function NicknameRowMenu({ label, items, menuFor }: NicknameRowMenuProps) {
 export function NicknamesPage() {
   const queryClient = useQueryClient();
   const refresh = useRefresh();
-  const nicknames = useQuery({ queryKey: listKey, queryFn: listNicknames });
+  const nicknames = useQuery({ queryKey: NICKNAMES_KEY, queryFn: listNicknames });
   // A refetch clears the query's error while it runs, so keep showing the last one until the retry settles.
   const [retriedError, setRetriedError] = useState<CommandError | null>(null);
   const listError = nicknames.error ?? retriedError;
   const [onlyStale, setOnlyStale] = useState(false);
   const table = useRef<HTMLDivElement>(null);
+  const staleFilter = useRef<HTMLButtonElement>(null);
   // The button that opened a dialog; when a delete removed it, the nickname's menu or Add nickname.
   const opener = useRef<HTMLElement | null>(null);
   const addButton = useRef<HTMLButtonElement>(null);
@@ -129,14 +136,14 @@ export function NicknamesPage() {
   const toggle = useMutation({
     mutationFn: updateNickname,
     onMutate: async (request) => {
-      await queryClient.cancelQueries({ queryKey: listKey });
-      const previous = queryClient.getQueryData<Nickname[]>(listKey);
-      queryClient.setQueryData<Nickname[]>(listKey, (list) =>
+      await queryClient.cancelQueries({ queryKey: NICKNAMES_KEY });
+      const previous = queryClient.getQueryData<Nickname[]>(NICKNAMES_KEY);
+      queryClient.setQueryData<Nickname[]>(NICKNAMES_KEY, (list) =>
         list?.map((nickname) => (nickname.id === request.id ? { ...nickname, ...request } : nickname)),
       );
       return previous;
     },
-    onError: (_error, _request, previous) => queryClient.setQueryData(listKey, previous),
+    onError: (_error, _request, previous) => queryClient.setQueryData(NICKNAMES_KEY, previous),
     onSettled: refresh,
   });
   const remove = useMutation({
@@ -176,16 +183,35 @@ export function NicknamesPage() {
     (menu || addButton.current)?.focus();
   }
 
+  function ruleItems(nickname: Nickname, rule: NicknameRule): NicknameMenuItem[] {
+    return [
+      { label: "Edit rule", onSelect: (from) => openForm({ kind: "editRule", nickname, rule }, from) },
+      {
+        label: "Delete rule",
+        destructive: true,
+        disabledReason:
+          nickname.rules.length === 1 ? "A nickname needs at least one rule. Delete the nickname instead." : undefined,
+        onSelect: (from) => startDelete({ nickname, rule }, from),
+      },
+    ];
+  }
+
   async function retry() {
     if (nicknames.isFetching || !nicknames.error) return;
     setRetriedError(nicknames.error);
-    await nicknames.refetch();
+    const result = await nicknames.refetch();
     setRetriedError(null);
+    // The retry button unmounts on success, so move focus to the page heading.
+    if (result.isSuccess) document.querySelector<HTMLElement>("main h1")?.focus();
   }
 
   function status() {
     if (listError) return nicknames.isFetching ? "Retrying…" : "";
     if (nicknames.isPending) return "Loading nicknames…";
+    if (onlyStale && nicknames.data) {
+      const count = nicknames.data.filter((nickname) => nickname.stale).length;
+      return `${count} stale ${count === 1 ? "nickname" : "nicknames"} shown.`;
+    }
     return "";
   }
 
@@ -203,7 +229,7 @@ export function NicknamesPage() {
           {/* A new key remounts the alert, so a repeat failure is announced again. */}
           <CommandErrorAlert key={nicknames.errorUpdatedAt} title="Couldn't load nicknames" error={listError} />
           <Button variant="outline" onClick={retry} aria-disabled={nicknames.isFetching}>
-            Try again
+            {nicknames.isFetching ? "Trying again…" : "Try again"}
           </Button>
         </div>
       );
@@ -238,7 +264,9 @@ export function NicknamesPage() {
     return (
       <>
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <Button variant={onlyStale ? "secondary" : "outline"} aria-pressed={onlyStale} onClick={() => setOnlyStale(!onlyStale)}>
+          <Button
+            ref={staleFilter}
+            variant={onlyStale ? "secondary" : "outline"} aria-pressed={onlyStale} onClick={() => setOnlyStale(!onlyStale)}>
             Show only stale
           </Button>
           {addNickname}
@@ -250,6 +278,18 @@ export function NicknamesPage() {
                 <h2>No stale nicknames.</h2>
               </EmptyTitle>
             </EmptyHeader>
+            <EmptyContent>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setOnlyStale(false);
+                  // This button goes away with the filter, so focus the filter's toggle.
+                  staleFilter.current?.focus();
+                }}
+              >
+                Show all nicknames
+              </Button>
+            </EmptyContent>
           </Empty>
         ) : (
           <div ref={table} className="rounded-xl border" aria-busy={nicknames.isFetching}>
@@ -308,6 +348,8 @@ export function NicknamesPage() {
                         items={[
                           { label: "Rename", onSelect: (from) => openForm({ kind: "rename", nickname }, from) },
                           { label: "Add rule", onSelect: (from) => openForm({ kind: "addRule", nickname }, from) },
+                          // With one rule, its actions live here, so the nickname has one menu.
+                          ...(nickname.rules.length === 1 ? ruleItems(nickname, nickname.rules[0]) : []),
                           { label: "Delete nickname", destructive: true, onSelect: (from) => startDelete({ nickname }, from) },
                         ]}
                       />
@@ -316,32 +358,21 @@ export function NicknamesPage() {
                   {nickname.rules.map((rule) => (
                     <TableRow key={rule.id}>
                       <TableCell className="pl-6 whitespace-normal">
-                        <span className="block text-muted-foreground">
+                        <span className="block whitespace-nowrap text-muted-foreground">
                           {modeLabels[rule.mode]} · {fieldLabels[rule.field]}
                         </span>
                         <code className="font-mono text-xs wrap-anywhere">{rule.pattern}</code>
                       </TableCell>
                       <TableCell className="text-muted-foreground">
-                        <NicknameMatches count={rule.matchCount} last={rule.lastMatched} />
+                        {/* With one rule its figures are the nickname's, shown on the row above. */}
+                        {nickname.rules.length > 1 && <NicknameMatches count={rule.matchCount} last={rule.lastMatched} />}
                       </TableCell>
                       <TableCell />
                       <TableCell />
                       <TableCell>
-                        <NicknameRowMenu
-                          label={`Actions for rule ${rule.pattern}`}
-                          items={[
-                            { label: "Edit rule", onSelect: (from) => openForm({ kind: "editRule", nickname, rule }, from) },
-                            {
-                              label: "Delete rule",
-                              destructive: true,
-                              disabledReason:
-                                nickname.rules.length === 1
-                                  ? "A nickname needs at least one rule. Delete the nickname instead."
-                                  : undefined,
-                              onSelect: (from) => startDelete({ nickname, rule }, from),
-                            },
-                          ]}
-                        />
+                        {nickname.rules.length > 1 && (
+                          <NicknameRowMenu label={`Actions for rule ${rule.pattern}`} items={ruleItems(nickname, rule)} />
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -391,7 +422,7 @@ export function NicknamesPage() {
             <AlertDialogDescription className="wrap-anywhere">
               {rule
                 ? `Zeni stops matching “${rule.pattern}” (${modeLabels[rule.mode]} · ${fieldLabels[rule.field]}). Transactions it matched show the bank's text again, unless another rule matches them.`
-                : "Its rules are deleted and its transactions show their bank text again."}
+                : "Its rules are deleted and its transactions show the bank's text again."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           {remove.isError && (
@@ -424,7 +455,7 @@ function NicknameFormDialog({ target, open, onOpenChange, onCloseAutoFocus }: Ni
     target.kind === "editRule" ? { mode: target.rule.mode, field: target.rule.field, pattern: target.rule.pattern } : blankRule,
   );
   const form = useRef<HTMLFormElement>(null);
-  const nicknames = useQuery({ queryKey: listKey, queryFn: listNicknames, enabled: open && target.kind === "add" });
+  const nicknames = useQuery({ queryKey: NICKNAMES_KEY, queryFn: listNicknames, enabled: open && target.kind === "add" });
   const save = useMutation({
     mutationFn: async () => {
       if (target.kind === "add") return saveNicknameRule({ name, rule });
@@ -471,19 +502,24 @@ function NicknameFormDialog({ target, open, onOpenChange, onCloseAutoFocus }: Ni
           </DialogHeader>
           <div className="-mx-4 flex min-h-0 flex-col gap-4 overflow-y-auto px-4 py-1">
             {showName && (
-              <TextField
-                label="Nickname"
-                name="nickname"
-                aria-required="true"
-                maxLength={100}
-                value={name}
-                hint={existing && `Adds this rule to ${existing.name}.`}
-                error={field === "name" ? save.error?.message : undefined}
-                onChange={(event) => {
-                  save.reset();
-                  setName(event.target.value);
-                }}
-              />
+              <div className="flex flex-col gap-2">
+                <TextField
+                  label="Nickname"
+                  name="nickname"
+                  aria-required="true"
+                  maxLength={NICKNAME_MAX_LEN}
+                  value={name}
+                  error={field === "name" ? save.error?.message : undefined}
+                  onChange={(event) => {
+                    save.reset();
+                    setName(event.target.value);
+                  }}
+                />
+                {/* Always mounted, so screen readers announce the merge when it appears. */}
+                <p aria-live="polite" className="text-sm text-muted-foreground empty:sr-only">
+                  {existing && `Adds this rule to ${existing.name}.`}
+                </p>
+              </div>
             )}
             {showRule && (
               <NicknameRuleFields

@@ -1,7 +1,7 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { ArrowDownIcon, ArrowUpDownIcon, ArrowUpIcon, ReceiptTextIcon, SearchXIcon } from "lucide-react";
+import { ArrowDownIcon, ArrowUpDownIcon, ArrowUpIcon, ReceiptTextIcon, SearchXIcon, TagIcon } from "lucide-react";
 import { cn } from "cn";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { CommandErrorAlert } from "@/components/command-error-alert";
 import { ImportControls } from "@/components/import-controls";
 import { Page } from "@/components/page";
@@ -16,6 +16,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { listTransactions } from "@/lib/commands";
 import { formatDate } from "@/lib/dates";
 import { formatCents } from "@/lib/money";
+import { TRANSACTIONS_KEY } from "@/lib/query-keys";
 import type { Transaction } from "@/types/bindings/Transaction";
 import type { TransactionQuery } from "@/types/bindings/TransactionQuery";
 import type { TransactionSort } from "@/types/bindings/TransactionSort";
@@ -39,7 +40,7 @@ export function TransactionsPage() {
   const [range, setRange] = useState({ from: "", to: "" });
   const backwards = Boolean(range.from && range.to && range.from > range.to);
   const transactions = useQuery({
-    queryKey: ["list_transactions", query],
+    queryKey: [...TRANSACTIONS_KEY, query],
     queryFn: () => listTransactions(query),
     placeholderData: keepPreviousData,
   });
@@ -50,6 +51,7 @@ export function TransactionsPage() {
   const renamedRow = useRef<HTMLElement | null>(null);
   // The row whose nickname tooltip is open: by hover on the nickname, or while the row has keyboard focus.
   const [tooltipRow, setTooltipRow] = useState<number | null>(null);
+  const rowHintId = useId();
 
   function startRename(row: Transaction) {
     setRenaming(row);
@@ -191,11 +193,12 @@ export function TransactionsPage() {
               </TableHeader>
               <TableBody>
                 {data.rows.map((row) => (
-                  <ContextMenu key={row.id} modal={false}>
+                  <ContextMenu key={row.id}>
                     {/* Focusable, so the context-menu key or Shift+F10 opens the menu from the keyboard. */}
                     <ContextMenuTrigger asChild>
                       <TableRow
                         tabIndex={0}
+                        aria-describedby={rowHintId}
                         className="select-auto focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
                         onContextMenu={(event) => (renamedRow.current = event.currentTarget)}
                         onFocus={row.nickname ? () => setTooltipRow(row.id) : undefined}
@@ -210,7 +213,8 @@ export function TransactionsPage() {
                               onOpenChange={(open) => setTooltipRow(open ? row.id : null)}
                             >
                               <TooltipTrigger asChild>
-                                <p className="w-fit font-medium">
+                                <p className="flex w-fit items-center gap-1.5 font-medium">
+                                  <TagIcon aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
                                   {row.nickname}
                                   <span className="sr-only">
                                     , description {row.description}
@@ -251,6 +255,9 @@ export function TransactionsPage() {
             </Table>
           </TooltipProvider>
         </div>
+        <p id={rowHintId} className="sr-only">
+          Press Shift+F10 or the menu key for actions.
+        </p>
         <nav aria-label="Pages" className="flex flex-wrap items-center justify-between gap-3 text-sm">
           <p className="text-muted-foreground">
             {data.total} {data.total === 1 ? "transaction" : "transactions"}

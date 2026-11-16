@@ -3,7 +3,6 @@ use std::sync::{MutexGuard, PoisonError};
 use sqlx::{SqliteConnection, SqlitePool};
 use zeroize::Zeroizing;
 
-use crate::accounts;
 use crate::crypto::{self, invalid_recovery_code};
 #[cfg(not(test))]
 use crate::crypto::{PASSWORD_KDF, RECOVERY_KDF};
@@ -15,6 +14,7 @@ use crate::types::{
     RecoverRequest, RecoveryCodes, SecurityStatus, Session, SetupRequest, SetupResponse,
     UnlockRequest,
 };
+use crate::{accounts, db};
 
 const RECOVERY_CODE_COUNT: usize = 8;
 const MIN_PASSWORD_CHARS: usize = 12;
@@ -22,13 +22,7 @@ const MAX_PASSWORD_CHARS: usize = 1024;
 
 /// A clone of the current pool, so no lock is held across an await (a restore swaps it).
 pub fn pool(state: &AppState) -> Result<SqlitePool, AppError> {
-    state
-        .db
-        .read()
-        .unwrap_or_else(PoisonError::into_inner)
-        .as_ref()
-        .map(|database| database.pool.clone())
-        .map_err(|error| AppError::Database(error.clone()))
+    db::current(state).map(|(pool, _)| pool)
 }
 
 fn session(state: &AppState) -> MutexGuard<'_, Option<Session>> {

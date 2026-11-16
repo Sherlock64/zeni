@@ -240,11 +240,10 @@ test("nickname wrappers invoke their commands with the request", async () => {
     name: "Coffee",
     enabled: true,
     staleExempt: false,
-    createdAt: "2026-11-01 10:00:00",
     matchCount: 2,
     lastMatched: "2026-10-31",
     stale: false,
-    rules: [{ id: 4, nicknameId: 1, ...rule, createdAt: "2026-11-01 10:00:00", matchCount: 2, lastMatched: "2026-10-31" }],
+    rules: [{ id: 4, nicknameId: 1, ...rule, matchCount: 2, lastMatched: "2026-10-31" }],
   };
   const update = { id: 1, name: "Cafe", enabled: false, staleExempt: true };
   const cases: [() => Promise<unknown>, string, unknown, unknown][] = [

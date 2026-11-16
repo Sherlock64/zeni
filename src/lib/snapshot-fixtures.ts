@@ -252,9 +252,8 @@ const nicknames = [
   { name: "Water bill", matchCount: 3, lastMatched: "2026-10-28", rules: [{ mode: "exact", field: "description", pattern: "CITY WATER UTILITY", matchCount: 3, lastMatched: "2026-10-28" }] },
 ].map((nickname, index) => {
   const id = index + 1;
-  const createdAt = "2026-11-03 19:20:00";
-  const rules = nickname.rules.map((rule, ruleIndex) => ({ ...rule, id: id * 10 + ruleIndex, nicknameId: id, createdAt }));
-  return { enabled: true, staleExempt: false, stale: false, ...nickname, id, createdAt, rules };
+  const rules = nickname.rules.map((rule, ruleIndex) => ({ ...rule, id: id * 10 + ruleIndex, nicknameId: id }));
+  return { enabled: true, staleExempt: false, stale: false, ...nickname, id, rules };
 });
 
 Object.assign(fixtures, {
@@ -286,7 +285,7 @@ export function securityStatus(params: URLSearchParams) {
   }
 }
 
-// The backend's message for each error kind used with `?fail=<command>:<kind>`.
+// The backend's message for each error kind used with `?fail=<command>:<kind>`; a `<command>:<kind>` key overrides the kind's for that command.
 export const errorMessages: Record<string, string> = {
   WrongPassword: "That master password is incorrect.",
   InvalidRecoveryCode: "That recovery code isn't valid or was already used.",
@@ -294,7 +293,10 @@ export const errorMessages: Record<string, string> = {
   NotFound: "No account with that id.",
   Crypto: "A stored value failed to decrypt.",
   Validation: "Choose a different column for each role.",
-  // The restore double failure (`?fail=restore_backup:Backup`); fixtures key by kind, so the undo error snapshot shows it too, though undo never returns it.
-  Backup: "Couldn't open the restored backup (Permission denied (os error 13)), and putting your data back failed too. Your data is in the safety copy zeni-20261102-101500-safety.db in the backup folder.",
+  // The restore double failure (`?fail=restore_backup:Backup`).
+  Backup: "Couldn't open the restored backup: Permission denied (os error 13). Putting your data back failed too, so your data is in the safety copy zeni-20261102-101500-safety.db in the backup folder.",
+  "undo_restore:Backup": "That file is damaged, so it can't be restored. The restored data is still in place.",
+  // sqlx's text for a busy database, the kind `backup_settings` really returns besides Locked.
+  "backup_settings:Database": "error returned from database: (code: 5) database is locked",
   Import: "Zeni only imports US dollar statements; this file is in EUR.",
 };

@@ -1,7 +1,7 @@
-use std::sync::PoisonError;
+use std::path::PathBuf;
 
 use tauri::{AppHandle, State};
-use tauri_plugin_dialog::DialogExt;
+use tauri_plugin_dialog::{DialogExt, FilePath};
 
 use crate::keyring::SecretService;
 use crate::types::{
@@ -18,6 +18,24 @@ use crate::{accounts, backup, csv_layouts, db, imports, nicknames, security, tra
 
 const MAX_REASON_CHARS: usize = 200;
 
+/// Shows the dialog `show` opens and waits for the chosen path. `None` when the user cancels;
+/// `unreadable` when the choice isn't a local path.
+async fn picked(
+    show: impl FnOnce(Box<dyn FnOnce(Option<FilePath>) + Send>),
+    unreadable: AppError,
+) -> Result<Option<PathBuf>, AppError> {
+    // The callback form never blocks a thread; the dialog answers through the channel.
+    let (sender, mut receiver) = tauri::async_runtime::channel(1);
+    show(Box::new(move |file| {
+        // Fails only when the command was dropped, so nobody is waiting for the answer.
+        let _ = sender.try_send(file);
+    }));
+    let Some(file) = receiver.recv().await.flatten() else {
+        return Ok(None);
+    };
+    file.into_path().map(Some).map_err(|_| unreadable)
+}
+
 #[tauri::command]
 pub async fn app_info(app: AppHandle, state: State<'_, AppState>) -> Result<AppInfo, AppError> {
     let package = app.package_info();
@@ -30,15 +48,11 @@ async fn load_app_info(
     name: String,
     version: String,
 ) -> Result<AppInfo, AppError> {
-    let db_path = match &*state.db.read().unwrap_or_else(PoisonError::into_inner) {
-        Ok(database) => database.path.display().to_string(),
-        Err(error) => return Err(AppError::Database(error.clone())),
-    };
-    let pool = security::pool(state)?;
+    let (pool, db_path) = db::current(state)?;
     Ok(AppInfo {
         name,
         version,
-        db_path,
+        db_path: db_path.display().to_string(),
         migrations_applied: db::applied_migrations(&pool).await?,
     })
 }
@@ -115,21 +129,16 @@ pub async fn import_file(
 ) -> Result<Option<ImportStep>, AppError> {
     // Fails before showing the picker when the database is unavailable.
     security::pool(&state)?;
-    // The callback form never blocks a thread; the dialog answers through the channel.
-    let (sender, mut receiver) = tauri::async_runtime::channel(1);
-    app.dialog()
-        .file()
-        .add_filter("OFX, QFX or CSV files", &["ofx", "qfx", "csv"])
-        .pick_file(move |file| {
-            // Fails only when the command was dropped, so nobody is waiting for the answer.
-            let _ = sender.try_send(file);
-        });
-    let Some(file) = receiver.recv().await.flatten() else {
+    let show = |answer| {
+        app.dialog()
+            .file()
+            .add_filter("OFX, QFX or CSV files", &["ofx", "qfx", "csv"])
+            .pick_file(answer)
+    };
+    let unreadable = AppError::Import("Couldn't open the selected file.".into());
+    let Some(path) = picked(show, unreadable).await? else {
         return Ok(None);
     };
-    let path = file
-        .into_path()
-        .map_err(|_| AppError::Import("Couldn't open the selected file.".into()))?;
     imports::import_path(&state, &path).await.map(Some)
 }
 
@@ -217,16 +226,11 @@ pub async fn choose_backup_folder(
 ) -> Result<Option<BackupSettings>, AppError> {
     // Fails before showing the picker when locked or the database is unavailable.
     backup::settings(&state).await?;
-    let (sender, mut receiver) = tauri::async_runtime::channel(1);
-    app.dialog().file().pick_folder(move |folder| {
-        let _ = sender.try_send(folder);
-    });
-    let Some(folder) = receiver.recv().await.flatten() else {
+    let show = |answer| app.dialog().file().pick_folder(answer);
+    let unreadable = AppError::Backup("Couldn't open the selected folder.".into());
+    let Some(path) = picked(show, unreadable).await? else {
         return Ok(None);
     };
-    let path = folder
-        .into_path()
-        .map_err(|_| AppError::Backup("Couldn't open the selected folder.".into()))?;
     backup::set_folder(&state, &path).await.map(Some)
 }
 
@@ -255,19 +259,16 @@ pub async fn pick_restore_file(
     state: State<'_, AppState>,
 ) -> Result<Option<BackupFile>, AppError> {
     backup::settings(&state).await?;
-    let (sender, mut receiver) = tauri::async_runtime::channel(1);
-    app.dialog()
-        .file()
-        .add_filter("Zeni backups", &["db"])
-        .pick_file(move |file| {
-            let _ = sender.try_send(file);
-        });
-    let Some(file) = receiver.recv().await.flatten() else {
+    let show = |answer| {
+        app.dialog()
+            .file()
+            .add_filter("Zeni backups", &["db"])
+            .pick_file(answer)
+    };
+    let unreadable = AppError::Backup("Couldn't open the selected file.".into());
+    let Some(path) = picked(show, unreadable).await? else {
         return Ok(None);
     };
-    let path = file
-        .into_path()
-        .map_err(|_| AppError::Backup("Couldn't open the selected file.".into()))?;
     backup::pick(&state, path).await.map(Some)
 }
 
@@ -454,5 +455,29 @@ mod tests {
             pending_import: Default::default(),
         };
         assert!(matches!(app_info_for(&state), Err(AppError::Database(_))));
+    }
+
+    fn picked_with(file: Option<FilePath>) -> Result<Option<PathBuf>, AppError> {
+        let unreadable = AppError::Import("unreadable".into());
+        tauri::async_runtime::block_on(picked(move |answer| answer(file), unreadable))
+    }
+
+    #[test]
+    fn picked_returns_none_on_cancel() {
+        assert!(matches!(picked_with(None), Ok(None)));
+    }
+
+    #[test]
+    fn picked_returns_the_chosen_path() {
+        let path = PathBuf::from("/tmp/statement.ofx");
+        let result = picked_with(Some(FilePath::Path(path.clone())));
+        assert!(matches!(result, Ok(Some(p)) if p == path));
+    }
+
+    #[test]
+    fn picked_returns_the_given_error_for_a_non_file_url() {
+        let url = tauri::Url::parse("https://example.com/statement.ofx").unwrap();
+        let result = picked_with(Some(FilePath::Url(url)));
+        assert!(matches!(result, Err(AppError::Import(m)) if m == "unreadable"));
     }
 }

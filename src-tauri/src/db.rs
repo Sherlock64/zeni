@@ -1,11 +1,12 @@
 use std::fs::{self, DirBuilder, OpenOptions, Permissions};
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
+use std::sync::PoisonError;
 
 use sqlx::SqlitePool;
 use sqlx::sqlite::SqliteConnectOptions;
 
-use crate::types::{AppError, Database};
+use crate::types::{AppError, AppState, Database};
 
 /// Debug builds (`pnpm tauri dev`) keep their own database in `dev/`, so they never touch real data.
 pub fn data_dir(app_data_dir: PathBuf) -> PathBuf {
@@ -48,6 +49,14 @@ pub async fn open(path: &Path) -> Result<SqlitePool, AppError> {
     let pool = SqlitePool::connect_with(SqliteConnectOptions::new().filename(path)).await?;
     sqlx::migrate!("./migrations").run(&pool).await?;
     Ok(pool)
+}
+
+/// The current pool and database path, read under the lock once and without holding it.
+pub fn current(state: &AppState) -> Result<(SqlitePool, PathBuf), AppError> {
+    match &*state.db.read().unwrap_or_else(PoisonError::into_inner) {
+        Ok(database) => Ok((database.pool.clone(), database.path.clone())),
+        Err(error) => Err(AppError::Database(error.clone())),
+    }
 }
 
 pub async fn applied_migrations(pool: &SqlitePool) -> Result<u32, AppError> {
@@ -280,6 +289,72 @@ mod tests {
                 .await
                 .is_err()
             );
+            pool.close().await;
+        });
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn nickname_tables_enforce_their_constraints_and_cascades() {
+        let dir = temp_dir("nickname-schema");
+        let _ = fs::remove_dir_all(&dir);
+        create_private_dir(&dir).unwrap();
+        tauri::async_runtime::block_on(async {
+            let pool = open(&dir.join("zeni.db")).await.unwrap();
+            let exec = |sql: &'static str| {
+                let pool = pool.clone();
+                async move { sqlx::query(sql).execute(&pool).await }
+            };
+            let count = |sql: &'static str| {
+                let pool = pool.clone();
+                async move {
+                    sqlx::query_scalar::<_, i64>(sql)
+                        .fetch_one(&pool)
+                        .await
+                        .unwrap()
+                }
+            };
+            for sql in [
+                "INSERT INTO accounts (id, name, owner, bank_name, account_number, routing_number) \
+                 VALUES (1, 'Checking', 'Sam', 'Bank', x'00', x'00')",
+                "INSERT INTO imports (id, account_id, file_name, format, balance_check) \
+                 VALUES (1, 1, 'a.ofx', 'ofx', 'baseline')",
+                "INSERT INTO raw_transactions (id, import_id, account_id, fitid, posted_date, \
+                 amount_cents, raw_description, original_row) VALUES \
+                 (1, 1, 1, 'A1', '2026-10-01', -100, 'x', 'o'), \
+                 (2, 1, 1, 'A2', '2026-10-02', -200, 'y', 'o'), \
+                 (3, 1, 1, 'A3', '2026-10-03', -300, 'z', 'o')",
+                "INSERT INTO nicknames (id, name) VALUES (1, 'Coffee'), (2, 'Rent')",
+                "INSERT INTO nickname_rules (id, nickname_id, mode, field, pattern) VALUES \
+                 (1, 1, 'exact', 'description', 'x'), (2, 1, 'contains', 'memo', 'y'), \
+                 (3, 2, 'regex', 'description', 'z')",
+                "INSERT INTO nickname_matches (raw_transaction_id, rule_id) VALUES (1, 1), (2, 2), (3, 3)",
+            ] {
+                exec(sql).await.unwrap();
+            }
+            for sql in [
+                "INSERT INTO nickname_rules (nickname_id, mode, field, pattern) \
+                 VALUES (1, 'glob', 'description', 'x')",
+                "INSERT INTO nickname_rules (nickname_id, mode, field, pattern) \
+                 VALUES (1, 'exact', 'payee', 'x')",
+                "INSERT INTO nicknames (name) VALUES ('COFFEE')",
+            ] {
+                assert!(exec(sql).await.is_err(), "{sql}");
+            }
+
+            // Deleting a rule drops only its matches.
+            exec("DELETE FROM nickname_rules WHERE id = 1")
+                .await
+                .unwrap();
+            let matches = "SELECT COUNT(*) FROM nickname_matches";
+            assert_eq!(count(matches).await, 2);
+            // Deleting a nickname drops its rules and their matches.
+            exec("DELETE FROM nicknames WHERE id = 1").await.unwrap();
+            assert_eq!(count("SELECT COUNT(*) FROM nickname_rules").await, 1);
+            assert_eq!(count(matches).await, 1);
+            // Deleting an import drops the matches of its raw rows.
+            exec("DELETE FROM imports WHERE id = 1").await.unwrap();
+            assert_eq!(count(matches).await, 0);
             pool.close().await;
         });
         fs::remove_dir_all(&dir).unwrap();

@@ -35,7 +35,6 @@ const rule = (id: number, nicknameId: number, pattern: string, matchCount: numbe
   mode: "exact" as const,
   field: "description" as const,
   pattern,
-  createdAt: "2026-11-01 10:00:00",
   matchCount,
   lastMatched,
 });
@@ -44,7 +43,6 @@ const coffee: Nickname = {
   name: "Coffee",
   enabled: true,
   staleExempt: false,
-  createdAt: "2026-11-01 10:00:00",
   matchCount: 9,
   lastMatched: "2026-10-31",
   stale: false,
@@ -73,7 +71,10 @@ function renderPage() {
   const invalidate = vi.spyOn(client, "invalidateQueries");
   render(
     <QueryClientProvider client={client}>
-      <NicknamesPage />
+      {/* The page sits in AppShell's <main>, which retry focus targets. */}
+      <main>
+        <NicknamesPage />
+      </main>
     </QueryClientProvider>,
   );
   return invalidate;
@@ -109,7 +110,8 @@ test("shows a loading status, then each nickname with its rules, counts, dates a
   const memoRule = screen.getByText("gym", { selector: "code" }).closest("tr")!;
   expect(memoRule.textContent).toContain("Contains · Memogym");
   expect(within(memoRule).getByText("Never matched")).toBeTruthy();
-  expect(screen.getByText("CORNER COFFEE", { selector: "code" }).closest("tr")!.textContent).toContain("Exact · Description");
+  const onlyRule = screen.getByText("CORNER COFFEE", { selector: "code" }).closest("tr")!;
+  expect(onlyRule.textContent).toBe("Exact · DescriptionCORNER COFFEE");
 });
 
 test("shows a list error, retries once while busy, and announces a repeat failure", async () => {
@@ -120,16 +122,21 @@ test("shows a list error, retries once while busy, and announces a repeat failur
   expect(alert.textContent).toContain("not running in Tauri");
 
   const retry = screen.getByRole("button", { name: "Try again" });
+  retry.focus();
   fireEvent.click(retry);
   expect(retry.getAttribute("aria-disabled")).toBe("true");
+  expect(retry.textContent).toBe("Trying again…");
+  expect(document.activeElement).toBe(retry);
   fireEvent.click(retry);
   expect(screen.getByRole("status").textContent).toBe("Retrying…");
   await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("gone"));
   expect(screen.getByRole("alert")).not.toBe(alert);
+  expect(document.activeElement).toBe(screen.getByRole("button", { name: "Try again" }));
   expect(listNicknames).toHaveBeenCalledTimes(2);
 
   fireEvent.click(screen.getByRole("button", { name: "Try again" }));
   expect(await screen.findByRole("table", { name: "Nicknames" })).toBeTruthy();
+  expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Nicknames" }));
 });
 
 test("shows the empty state with an Add nickname button", async () => {
@@ -147,18 +154,34 @@ test("Show only stale filters the list and says when none are stale", async () =
   const filter = screen.getByRole("button", { name: "Show only stale" });
   fireEvent.click(filter);
   expect(filter.getAttribute("aria-pressed")).toBe("true");
+  expect(screen.getByRole("status").textContent).toBe("1 stale nickname shown.");
   expect(screen.queryByText("Coffee", { selector: "span" })).toBeNull();
   expect(screen.getByText("Gym", { selector: "span" })).toBeTruthy();
   fireEvent.click(filter);
+  expect(screen.getByRole("status").textContent).toBe("");
   expect(screen.getByText("Coffee", { selector: "span" })).toBeTruthy();
 });
 
-test("says No stale nicknames when the filter leaves nothing", async () => {
-  vi.mocked(listNicknames).mockResolvedValue([coffee]);
+test("counts several stale nicknames in the status", async () => {
+  vi.mocked(listNicknames).mockResolvedValue([coffee, gym, { ...gym, id: 3, name: "Pool" }]);
   renderPage();
   await screen.findByRole("table");
   fireEvent.click(screen.getByRole("button", { name: "Show only stale" }));
+  expect(screen.getByRole("status").textContent).toBe("2 stale nicknames shown.");
+});
+
+test("says No stale nicknames when the filter leaves nothing, and Show all nicknames turns it off", async () => {
+  vi.mocked(listNicknames).mockResolvedValue([coffee]);
+  renderPage();
+  await screen.findByRole("table");
+  const filter = screen.getByRole("button", { name: "Show only stale" });
+  fireEvent.click(filter);
   expect(screen.getByText("No stale nicknames.")).toBeTruthy();
+  expect(screen.getByRole("status").textContent).toBe("0 stale nicknames shown.");
+  fireEvent.click(screen.getByRole("button", { name: "Show all nicknames" }));
+  expect(filter.getAttribute("aria-pressed")).toBe("false");
+  expect(screen.getByText("Coffee", { selector: "span" })).toBeTruthy();
+  expect(document.activeElement).toBe(filter);
 });
 
 test("the on/off switch saves at once and refreshes the lists", async () => {
@@ -214,8 +237,11 @@ test("adds a nickname with the live count, refreshes, closes and returns focus",
   const add = screen.getByRole("button", { name: "Add nickname" });
   fireEvent.click(add);
   const dialog = screen.getByRole("dialog", { name: "Add nickname" });
+  const live = dialog.querySelector('[aria-live="polite"]')!;
+  expect(live.textContent).toBe("");
   fireEvent.change(within(dialog).getByLabelText("Nickname"), { target: { value: "coffee" } });
-  expect(within(dialog).getByText("Adds this rule to Coffee.")).toBeTruthy();
+  expect(live.textContent).toBe("Adds this rule to Coffee.");
+  expect(within(dialog).getByLabelText("Nickname").getAttribute("aria-describedby")).toBeNull();
   fireEvent.change(within(dialog).getByLabelText("Pattern"), { target: { value: "roasters" } });
   expect(await within(dialog).findByText("Matches 3 transactions")).toBeTruthy();
   fireEvent.click(within(dialog).getByRole("button", { name: "Save nickname" }));
@@ -318,15 +344,35 @@ test("edits a rule from its current values", async () => {
   expectRefreshed(invalidate);
 });
 
+test("a single-rule nickname has one menu, on its row, holding the rule's actions", async () => {
+  renderPage();
+  await screen.findByRole("table");
+  expect(screen.queryByRole("button", { name: "Actions for rule CORNER COFFEE" })).toBeNull();
+  expect(screen.getByRole("button", { name: "Actions for rule gym" })).toBeTruthy();
+  fireEvent.keyDown(screen.getByRole("button", { name: "Actions for Coffee" }), { key: "Enter" });
+  const items = await screen.findAllByRole("menuitem");
+  expect(items.map((item) => item.textContent)).toEqual([
+    "Rename",
+    "Add rule",
+    "Edit rule",
+    "Delete ruleA nickname needs at least one rule. Delete the nickname instead.",
+    "Delete nickname",
+  ]);
+  fireEvent.click(screen.getByRole("menuitem", { name: "Edit rule" }));
+  expect(await screen.findByRole("dialog", { name: "Edit a rule of Coffee" })).toBeTruthy();
+});
+
 test("the only rule can't be deleted, and the menu says why", async () => {
   renderPage();
   await screen.findByRole("table");
   const item = await (async () => {
-    fireEvent.keyDown(screen.getByRole("button", { name: "Actions for rule CORNER COFFEE" }), { key: "Enter" });
-    return screen.findByRole("menuitem", { name: /^Delete rule/ });
+    fireEvent.keyDown(screen.getByRole("button", { name: "Actions for Coffee" }), { key: "Enter" });
+    return screen.findByRole("menuitem", {
+      name: "Delete rule",
+      description: "A nickname needs at least one rule. Delete the nickname instead.",
+    });
   })();
   expect(item.getAttribute("aria-disabled")).toBe("true");
-  expect(item.textContent).toContain("A nickname needs at least one rule. Delete the nickname instead.");
   fireEvent.click(item);
   expect(screen.queryByRole("alertdialog")).toBeNull();
   expect(deleteNicknameRule).not.toHaveBeenCalled();
@@ -336,6 +382,11 @@ test("deletes one of several rules after confirming, then focuses the nickname's
   vi.mocked(deleteNicknameRule).mockResolvedValue(null);
   const invalidate = renderPage();
   await screen.findByRole("table");
+  fireEvent.keyDown(screen.getByRole("button", { name: "Actions for Gym" }), { key: "Enter" });
+  const items = await screen.findAllByRole("menuitem");
+  expect(items.map((item) => item.textContent)).toEqual(["Rename", "Add rule", "Delete nickname"]);
+  fireEvent.keyDown(items[0], { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
   await choose("Actions for rule gym", /^Delete rule/);
   const dialog = screen.getByRole("alertdialog", { name: "Delete this rule from Gym?" });
   expect(dialog.textContent).toContain("“gym” (Contains · Memo)");
@@ -347,6 +398,11 @@ test("deletes one of several rules after confirming, then focuses the nickname's
   expect(firstArg(deleteNicknameRule)).toEqual({ id: 22 });
   expectRefreshed(invalidate);
   await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "Actions for Gym" })));
+  // Down to one rule: the rule row no longer repeats the nickname's figures.
+  expect(screen.getByText("IRONWORKS GYM", { selector: "code" }).closest("tr")!.textContent).not.toContain("Never matched");
+  expect(screen.queryByRole("button", { name: "Actions for rule IRONWORKS GYM" })).toBeNull();
+  fireEvent.keyDown(screen.getByRole("button", { name: "Actions for Gym" }), { key: "Enter" });
+  expect((await screen.findAllByRole("menuitem")).map((item) => item.textContent)).toContain("Edit rule");
 });
 
 test("a failed rule delete shows the error in the dialog; Cancel deletes nothing and returns focus", async () => {
@@ -379,7 +435,7 @@ test("deletes a nickname after confirming, then focuses Add nickname", async () 
   await screen.findByRole("table");
   await choose("Actions for Coffee", "Delete nickname");
   const dialog = screen.getByRole("alertdialog", { name: "Delete Coffee?" });
-  expect(dialog.textContent).toContain("Its rules are deleted and its transactions show their bank text again.");
+  expect(dialog.textContent).toContain("Its rules are deleted and its transactions show the bank's text again.");
   vi.mocked(listNicknames).mockResolvedValue([gym]);
   fireEvent.click(within(dialog).getByRole("button", { name: "Delete nickname" }));
   await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());

@@ -724,8 +724,6 @@ pub struct NicknameRule {
     pub mode: MatchMode,
     pub field: MatchField,
     pub pattern: String,
-    /// "YYYY-MM-DD HH:MM:SS" (UTC, SQLite CURRENT_TIMESTAMP).
-    pub created_at: String,
     /// Rows where this rule won.
     pub match_count: u32,
     /// "YYYY-MM-DD", newest posted date where this rule won.
@@ -741,8 +739,6 @@ pub struct Nickname {
     pub name: String,
     pub enabled: bool,
     pub stale_exempt: bool,
-    /// "YYYY-MM-DD HH:MM:SS" (UTC).
-    pub created_at: String,
     /// Sum over its rules.
     pub match_count: u32,
     /// "YYYY-MM-DD", newest over its rules.
@@ -1213,7 +1209,6 @@ mod tests {
                 name: "Coffee".into(),
                 enabled: true,
                 stale_exempt: false,
-                created_at: "2026-11-01 10:00:00".into(),
                 match_count: 2,
                 last_matched: Some("2026-10-31".into()),
                 stale: false,
@@ -1223,7 +1218,6 @@ mod tests {
                     mode: MatchMode::Exact,
                     field: MatchField::Description,
                     pattern: "corner coffee".into(),
-                    created_at: "2026-11-01 10:00:00".into(),
                     match_count: 2,
                     last_matched: Some("2026-10-31".into()),
                 }],
@@ -1234,7 +1228,6 @@ mod tests {
                 "name": "Coffee",
                 "enabled": true,
                 "staleExempt": false,
-                "createdAt": "2026-11-01 10:00:00",
                 "matchCount": 2,
                 "lastMatched": "2026-10-31",
                 "stale": false,
@@ -1244,7 +1237,6 @@ mod tests {
                     "mode": "exact",
                     "field": "description",
                     "pattern": "corner coffee",
-                    "createdAt": "2026-11-01 10:00:00",
                     "matchCount": 2,
                     "lastMatched": "2026-10-31"
                 }]

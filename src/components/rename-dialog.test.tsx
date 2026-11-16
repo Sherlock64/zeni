@@ -40,7 +40,6 @@ const coffee: Nickname = {
   name: "Coffee",
   enabled: true,
   staleExempt: false,
-  createdAt: "2026-11-01 10:00:00",
   matchCount: 2,
   lastMatched: "2026-10-30",
   stale: false,
@@ -229,7 +228,10 @@ describe("on a row that already has a nickname", () => {
     // A changed rule is a new rule again.
     expand();
     fireEvent.click(screen.getByRole("radio", { name: "Contains" }));
-    expect(screen.getByText(/The rule starts as an exact match on “CORNER COFFEE”\. This row is currently shown as “Coffee”\./)).toBeTruthy();
+    // The description says how the rule starts; only the note says how the row is shown.
+    expect(screen.getByText(/the bank's text on every transaction the rule matches\. The rule starts as an exact match on “CORNER COFFEE”\.$/)).toBeTruthy();
+    expect(screen.getAllByText(/shown as “Coffee”/)).toHaveLength(1);
+    expect(screen.getByText("This row is shown as “Coffee”. Its rule may still win over this one.")).toBeTruthy();
   });
 
   test("Save waits while the nicknames are loading", async () => {
@@ -260,10 +262,10 @@ describe("on a row that already has a nickname", () => {
     vi.mocked(listNicknames).mockReturnValueOnce(new Promise((_, reject) => (rejectRetry = reject)));
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     await vi.waitFor(() =>
-      expect(screen.getByRole("button", { name: "Try again" }).getAttribute("aria-disabled")).toBe("true"),
+      expect(screen.getByRole("button", { name: "Trying again…" }).getAttribute("aria-disabled")).toBe("true"),
     );
     expect(screen.getByText("Couldn't load your nicknames")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    fireEvent.click(screen.getByRole("button", { name: "Trying again…" }));
     expect(listNicknames).toHaveBeenCalledTimes(2);
     rejectRetry({ kind: "Locked", message: "Unlock Zeni first." });
     await vi.waitFor(() =>

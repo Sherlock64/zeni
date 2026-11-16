@@ -199,7 +199,7 @@ async fn all(pool: &SqlitePool) -> Result<Vec<Nickname>, AppError> {
     .await?;
     let mut rules: HashMap<i64, Vec<NicknameRule>> = HashMap::new();
     for row in sqlx::query(
-        "SELECT r.id, r.nickname_id, r.mode, r.field, r.pattern, r.created_at, \
+        "SELECT r.id, r.nickname_id, r.mode, r.field, r.pattern, \
          COUNT(t.id) AS match_count, MAX(t.posted_date) AS last_matched \
          FROM nickname_rules r \
          LEFT JOIN nickname_matches m ON m.rule_id = r.id \
@@ -215,14 +215,13 @@ async fn all(pool: &SqlitePool) -> Result<Vec<Nickname>, AppError> {
             mode: row.try_get("mode")?,
             field: row.try_get("field")?,
             pattern: row.try_get("pattern")?,
-            created_at: row.try_get("created_at")?,
             match_count: row.try_get("match_count")?,
             last_matched: row.try_get("last_matched")?,
         };
         rules.entry(rule.nickname_id).or_default().push(rule);
     }
     let nicknames = sqlx::query(
-        "SELECT id, name, enabled, stale_exempt, created_at FROM nicknames \
+        "SELECT id, name, enabled, stale_exempt FROM nicknames \
          ORDER BY name COLLATE NOCASE, id",
     )
     .fetch_all(pool)
@@ -247,7 +246,6 @@ async fn all(pool: &SqlitePool) -> Result<Vec<Nickname>, AppError> {
                 name: row.try_get("name")?,
                 enabled: row.try_get("enabled")?,
                 stale_exempt,
-                created_at: row.try_get("created_at")?,
                 match_count: own.iter().map(|rule| rule.match_count).sum(),
                 last_matched,
                 stale,
@@ -1030,8 +1028,6 @@ mod tests {
         );
         assert!(bravo.rules[0].id < bravo.rules[1].id);
         assert_eq!(bravo.rules[0].nickname_id, bravo.id);
-        assert_eq!(bravo.created_at.len(), 19);
-        assert_eq!(bravo.rules[0].created_at.len(), 19);
     }
 
     #[test]

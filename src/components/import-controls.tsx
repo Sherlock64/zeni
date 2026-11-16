@@ -20,6 +20,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTr
 import { Skeleton } from "@/components/ui/skeleton";
 import { cancelImport, importFile, listImports, revertImport } from "@/lib/commands";
 import { formatCents } from "@/lib/money";
+import { TRANSACTIONS_KEY } from "@/lib/query-keys";
 import type { ImportRecord } from "@/types/bindings/ImportRecord";
 import type { ImportStep } from "@/types/bindings/ImportStep";
 import type { ImportSummary } from "@/types/bindings/ImportSummary";
@@ -32,7 +33,7 @@ const dateTime = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeS
 const importedDate = (importedAt: string) => dateTime.format(new Date(`${importedAt.replace(" ", "T")}Z`));
 
 function invalidateImports(queryClient: QueryClient) {
-  queryClient.invalidateQueries({ queryKey: ["list_transactions"] });
+  queryClient.invalidateQueries({ queryKey: TRANSACTIONS_KEY });
   queryClient.invalidateQueries({ queryKey: ["list_imports"] });
 }
 
