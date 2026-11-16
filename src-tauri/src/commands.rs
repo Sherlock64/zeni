@@ -456,4 +456,28 @@ mod tests {
         };
         assert!(matches!(app_info_for(&state), Err(AppError::Database(_))));
     }
+
+    fn picked_with(file: Option<FilePath>) -> Result<Option<PathBuf>, AppError> {
+        let unreadable = AppError::Import("unreadable".into());
+        tauri::async_runtime::block_on(picked(move |answer| answer(file), unreadable))
+    }
+
+    #[test]
+    fn picked_returns_none_on_cancel() {
+        assert!(matches!(picked_with(None), Ok(None)));
+    }
+
+    #[test]
+    fn picked_returns_the_chosen_path() {
+        let path = PathBuf::from("/tmp/statement.ofx");
+        let result = picked_with(Some(FilePath::Path(path.clone())));
+        assert!(matches!(result, Ok(Some(p)) if p == path));
+    }
+
+    #[test]
+    fn picked_returns_the_given_error_for_a_non_file_url() {
+        let url = tauri::Url::parse("https://example.com/statement.ofx").unwrap();
+        let result = picked_with(Some(FilePath::Url(url)));
+        assert!(matches!(result, Err(AppError::Import(m)) if m == "unreadable"));
+    }
 }
