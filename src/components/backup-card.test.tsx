@@ -37,6 +37,13 @@ const manual: BackupFile = {
   kind: "manual",
   createdAt: "2026-11-14 18:30:45",
 };
+const preRevert: BackupFile = {
+  ...daily,
+  fileName: "zeni-20261113-120000-pre-revert.db",
+  path: "/data/backups/zeni-20261113-120000-pre-revert.db",
+  kind: "preRevert",
+  createdAt: "2026-11-13 12:00:00",
+};
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -60,12 +67,14 @@ const liveStatus = () => screen.getAllByRole("status")[0];
 const never = () => new Promise<never>(() => {});
 
 test("lists backups with date, kind and size, and the folder in use", async () => {
+  vi.mocked(listBackups).mockResolvedValue([daily, manual, preRevert]);
   renderCard();
   expect(liveStatus().textContent).toBe("Loading backups…");
   const rows = await screen.findAllByRole("row");
   expect(rows.slice(1).map((row) => [...row.querySelectorAll("td")].slice(0, 3).map((cell) => cell.textContent))).toEqual([
     ["Nov 15, 2026 at 09:00", "Daily", "1.8 MB"],
     ["Nov 14, 2026 at 18:30", "Manual", "1.8 MB"],
+    ["Nov 13, 2026 at 12:00", "Before revert", "1.8 MB"],
   ]);
   expect(screen.getByText("/data/backups")).toBeTruthy();
   expect(screen.getByText("(default)")).toBeTruthy();
@@ -84,6 +93,42 @@ test("shows a list error with a retry", async () => {
   expect(await screen.findByText("Folder missing.")).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Try again" }));
   expect(await screen.findByText("Daily")).toBeTruthy();
+});
+
+test("retries the list, keeping the error and button up and ignoring repeat presses, then focuses the heading", async () => {
+  let finish: (value: BackupFile[]) => void = () => {};
+  vi.mocked(listBackups)
+    .mockRejectedValueOnce({ kind: "Backup", message: "Folder missing." })
+    .mockReturnValueOnce(new Promise((resolve) => (finish = resolve)));
+  renderCard();
+  const retry = await screen.findByRole("button", { name: "Try again" });
+  retry.focus();
+  fireEvent.click(retry);
+  await vi.waitFor(() => expect(retry.getAttribute("aria-disabled")).toBe("true"));
+  expect(retry.textContent).toBe("Trying again…");
+  expect(document.activeElement).toBe(retry);
+  expect(screen.getByText("Folder missing.")).toBeTruthy();
+  expect(liveStatus().textContent).toBe("Retrying…");
+  fireEvent.click(retry);
+  expect(listBackups).toHaveBeenCalledTimes(2);
+  finish([daily]);
+  expect(await screen.findByText("Daily")).toBeTruthy();
+  expect(screen.queryByText("Folder missing.")).toBeNull();
+  await vi.waitFor(() => expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Backups" })));
+});
+
+test("keeps the list's Try again button focused when the retry fails again", async () => {
+  vi.mocked(listBackups)
+    .mockRejectedValueOnce({ kind: "Backup", message: "Folder missing." })
+    .mockRejectedValueOnce({ kind: "Backup", message: "Still missing." });
+  renderCard();
+  const retry = await screen.findByRole("button", { name: "Try again" });
+  retry.focus();
+  fireEvent.click(retry);
+  expect(await screen.findByText("Still missing.")).toBeTruthy();
+  await vi.waitFor(() => expect(retry.getAttribute("aria-disabled")).toBe("false"));
+  expect(retry.textContent).toBe("Try again");
+  expect(document.activeElement).toBe(retry);
 });
 
 test("warns when today's daily backup failed", async () => {
@@ -259,6 +304,9 @@ test("shows a settings load error without the folder or keep field", async () =>
   const alert = await screen.findByRole("alert");
   expect(within(alert).getByText("Couldn't load backup settings")).toBeTruthy();
   expect(within(alert).getByText(failure.message)).toBeTruthy();
+  expect(
+    within(alert).getByText("Zeni couldn't read its settings just now. Try again; if it keeps failing, restart Zeni."),
+  ).toBeTruthy();
   expect(screen.queryByText("Folder")).toBeNull();
   expect(screen.queryByLabelText("Automatic backups to keep")).toBeNull();
 });
@@ -311,7 +359,7 @@ test("names each restore button with the backup's kind and date", async () => {
   expect(names).toEqual([
     "Restore the manual backup from Nov 15, 2026 at 09:01",
     "Restore the daily backup from Nov 15, 2026 at 09:02",
-    "Restore the pre-revert backup from Nov 15, 2026 at 09:03",
+    "Restore the before-revert backup from Nov 15, 2026 at 09:03",
     "Restore the safety copy from Nov 15, 2026 at 09:04",
     "Restore the backup from Nov 15, 2026 at 09:05",
   ]);
@@ -328,6 +376,8 @@ test("retries loading the settings, ignoring repeat presses, and moves focus to 
   fireEvent.click(retry);
   // The last error and its button stay up while the retry runs.
   await vi.waitFor(() => expect(retry.getAttribute("aria-disabled")).toBe("true"));
+  expect(retry.textContent).toBe("Trying again…");
+  expect(document.activeElement).toBe(retry);
   expect(screen.getByText("Couldn't load backup settings")).toBeTruthy();
   expect(liveStatus().textContent).toBe("Retrying…");
   fireEvent.click(retry);

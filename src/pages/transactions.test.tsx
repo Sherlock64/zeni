@@ -280,7 +280,7 @@ test("the search placeholder mentions nicknames", async () => {
 });
 
 test("right-clicking a row offers Rename it, which opens the rename dialog and returns focus to the row", async () => {
-  vi.mocked(listTransactions).mockResolvedValue({ rows: [row], total: 1 });
+  vi.mocked(listTransactions).mockResolvedValue({ rows: [row, { ...row, id: 2, description: "PAYROLL", memo: null }], total: 2 });
   vi.mocked(listNicknames).mockResolvedValue([]);
   vi.mocked(countRuleMatches).mockResolvedValue(3);
   renderPage();
@@ -289,6 +289,8 @@ test("right-clicking a row offers Rename it, which opens the rename dialog and r
   expect(tableRow.tabIndex).toBe(0);
   const hint = document.getElementById(tableRow.getAttribute("aria-describedby")!);
   expect(hint?.textContent).toBe("Press Shift+F10 or the menu key for actions.");
+  expect(screen.getByText("PAYROLL").closest("tr")!.getAttribute("aria-describedby")).toBe(hint!.id);
+  expect(screen.getAllByText("Press Shift+F10 or the menu key for actions.")).toHaveLength(1);
 
   fireEvent.contextMenu(tableRow);
   fireEvent.click(await screen.findByRole("menuitem", { name: "Rename it" }));

@@ -204,6 +204,12 @@ function NicknamesCard() {
     if (valid) save.mutate({ staleDays });
   }
 
+  function settingsStatus() {
+    if (settingsError) return settings.isFetching ? "Retrying…" : "";
+    if (settings.isPending) return "Loading nickname settings…";
+    return "";
+  }
+
   async function retrySettings() {
     if (settings.isFetching || !settings.error) return;
     setRetriedError(settings.error);
@@ -226,12 +232,16 @@ function NicknamesCard() {
         </CardDescription>
       </CardHeader>
       <CardContent>
+        {/* Always mounted, so screen readers announce each change to its text. */}
+        <p role="status" className="sr-only">
+          {settingsStatus()}
+        </p>
         {settingsError ? (
           <div className="flex flex-col items-start gap-3">
             {/* A new key remounts the alert, so a repeat failure is announced again. */}
             <CommandErrorAlert key={settings.errorUpdatedAt} title="Couldn't load nickname settings" error={settingsError} />
             <Button variant="outline" onClick={retrySettings} aria-disabled={settings.isFetching}>
-              Try again
+              {settings.isFetching ? "Trying again…" : "Try again"}
             </Button>
           </div>
         ) : settings.isPending ? (

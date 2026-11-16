@@ -86,7 +86,7 @@ export function UnlockPage() {
             }}
           />
         )}
-        <p role="status" className="text-sm empty:hidden">
+        <p role="status" className="text-sm empty:sr-only">
           {undone && "Restore undone. Your previous data is back."}
         </p>
       </CardContent>

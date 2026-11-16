@@ -296,5 +296,7 @@ export const errorMessages: Record<string, string> = {
   // The restore double failure (`?fail=restore_backup:Backup`).
   Backup: "Couldn't open the restored backup: Permission denied (os error 13). Putting your data back failed too, so your data is in the safety copy zeni-20261102-101500-safety.db in the backup folder.",
   "undo_restore:Backup": "That file is damaged, so it can't be restored. The restored data is still in place.",
+  // sqlx's text for a busy database, the kind `backup_settings` really returns besides Locked.
+  "backup_settings:Database": "error returned from database: (code: 5) database is locked",
   Import: "Zeni only imports US dollar statements; this file is in EUR.",
 };

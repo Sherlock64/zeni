@@ -42,7 +42,6 @@ export type RecoveryCodesProps = { codes: string[]; onContinue: () => void };
 
 export type SetupPageProps = { defaultOwner: string };
 
-
 export type UndoRestoreProps = { onUndone: () => void };
 
 export type GateScreenProps = { children: ReactNode };

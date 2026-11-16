@@ -54,6 +54,18 @@ V5.1 closes the 36 open `factory-bug` issues filed after V4, v4.0.2 and V5: Back
 - **V5.1-R35 (#26, low):** `?fail=` picks the error message per command, so `?fail=undo_restore:Backup` shows undo's own message.
 - **V5.1-R36 (#35, medium):** Snapshot steps gain `?contextmenu=<row text>`; `?click=` also matches `aria-label` and `role=menuitem`; one fixture can be overridden, e.g. `?nicknames=empty`.
 
+### Council follow-ups
+- **V5.1-R38:** The file-dialog helper in `commands.rs` has a test for cancel, an unreadable pick and a picked path.
+- **V5.1-R39:** The Transactions test proves the row hint is one shared element (two rows share the id; the text appears once).
+- **V5.1-R40:** The "Adds this rule to X." hints in the rename and Add nickname dialogs use a gap, not a negative margin.
+- **V5.1-R41:** A single-rule nickname has one actions menu, on the nickname row, holding its rule's actions too (Edit rule, and Delete rule disabled with its reason per R14).
+- **V5.1-R42:** At 800 px the rule's mode · field label doesn't wrap mid-phrase.
+- **V5.1-R43:** The Backups card names the pre-revert kind one way everywhere: "before-revert backup" (Kind column "Before revert").
+- **V5.1-R44:** Every load-error Try again (Nicknames page, Settings Nicknames card, backup settings, backups list) reads "Trying again…" while it refetches, keeps focus on the button, and ignores repeat clicks.
+- **V5.1-R45:** The Unlock undo success live region stays in the accessibility tree while empty.
+- **V5.1-R46:** The snapshot mock gives `backup_settings` a realistic load-error message.
+- **V5.1-R47:** `src/types/ui.ts` has no doubled blank line.
+
 ### Private hardening
 - **V5.1-R37:** Fix all SB tasks.
 
@@ -69,7 +81,7 @@ New features, schema changes, and any change to imported data or backups on disk
 
 ## Acceptance Criteria
 
-1. Every requirement above has a UI or Rust test, except R19, R21, R33 and R34 (checked by reading the code) and R35, R36 (checked by running `scripts/snapshot.sh` with the new parameters; `RUNTIME`).
+1. Every requirement above has a UI or Rust test, except R19, R21, R33, R34, R40, R45 and R47 (checked by reading the code) and R35, R36, R42, R46 (checked by running `scripts/snapshot.sh`; `RUNTIME`).
 2. R20 is checked in the running app (`RUNTIME`): nicknamed rows show the tag, raw rows don't.
 3. `scripts/check.sh integration` passes and bindings are fresh.
 4. The PR closes #15 to #26 and #30 to #53.

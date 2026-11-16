@@ -93,23 +93,25 @@ export function RenameDialog({ transaction, open, onOpenChange, onCloseAutoFocus
                 : `The rule starts as an exact match on “${transaction.description.trim()}”.`}
             </DialogDescription>
           </DialogHeader>
-          <TextField
-            label="Nickname"
-            name="nickname"
-            ref={nameInput}
-            aria-required="true"
-            maxLength={NICKNAME_MAX_LEN}
-            value={name}
-            error={field === "name" ? save.error?.message : undefined}
-            onChange={(event) => {
-              save.reset();
-              setName(event.target.value);
-            }}
-          />
-          {/* Live regions stay mounted so their text changes are announced. */}
-          <p aria-live="polite" className="-mt-2 text-sm text-muted-foreground empty:sr-only">
-            {existing && `Adds this rule to ${existing.name}.`}
-          </p>
+          <div className="flex flex-col gap-2">
+            <TextField
+              label="Nickname"
+              name="nickname"
+              ref={nameInput}
+              aria-required="true"
+              maxLength={NICKNAME_MAX_LEN}
+              value={name}
+              error={field === "name" ? save.error?.message : undefined}
+              onChange={(event) => {
+                save.reset();
+                setName(event.target.value);
+              }}
+            />
+            {/* Live regions stay mounted so their text changes are announced. */}
+            <p aria-live="polite" className="text-sm text-muted-foreground empty:sr-only">
+              {existing && `Adds this rule to ${existing.name}.`}
+            </p>
+          </div>
           <Collapsible open={expanded} onOpenChange={setExpanded} className="flex flex-col gap-4">
             <CollapsibleTrigger asChild>
               <Button type="button" variant="ghost" size="sm" className="self-start">

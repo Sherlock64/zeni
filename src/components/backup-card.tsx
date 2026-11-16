@@ -46,7 +46,7 @@ const kindLabels: Record<BackupKind, string> = {
 const kindNouns: Record<BackupKind, string> = {
   manual: "manual backup",
   daily: "daily backup",
-  preRevert: "pre-revert backup",
+  preRevert: "before-revert backup",
   safety: "safety copy",
   other: "backup",
 };
@@ -59,6 +59,8 @@ export function BackupCard() {
   // A refetch clears the query's error while it runs, so keep showing the last one until the retry settles.
   const [retriedSettingsError, setRetriedSettingsError] = useState<CommandError | null>(null);
   const settingsError = settings.error ?? retriedSettingsError;
+  const [retriedListError, setRetriedListError] = useState<CommandError | null>(null);
+  const listError = backups.error ?? retriedListError;
   const [keep, setKeep] = useState<string | null>(null);
   const [target, setTarget] = useState<RestoreTarget | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -104,6 +106,15 @@ export function BackupCard() {
     if (result.isSuccess) heading.current?.focus();
   }
 
+  async function retryList() {
+    if (backups.isFetching || !backups.error) return;
+    setRetriedListError(backups.error);
+    const result = await backups.refetch();
+    setRetriedListError(null);
+    // The retry button unmounts on success, so move focus to the card heading.
+    if (result.isSuccess) heading.current?.focus();
+  }
+
   // A finished action's message goes stale once another action in the card starts.
   function clearStatus() {
     for (const mutation of [folder, retention, backUp, restore]) if (mutation.isSuccess) mutation.reset();
@@ -144,7 +155,7 @@ export function BackupCard() {
       : "";
 
   function status() {
-    if (retriedSettingsError) return "Retrying…";
+    if (retriedSettingsError || retriedListError) return "Retrying…";
     if (backups.isPending) return "Loading backups…";
     if (restoredLine) return restoredLine;
     if (folder.data) return "Backup folder changed.";
@@ -181,9 +192,14 @@ export function BackupCard() {
 
         {settingsError ? (
           <div className="flex flex-col items-start gap-3">
-            <CommandErrorAlert key={settings.errorUpdatedAt} title="Couldn't load backup settings" error={settingsError} />
+            <CommandErrorAlert
+              key={settings.errorUpdatedAt}
+              title="Couldn't load backup settings"
+              error={settingsError}
+              nextStep="Zeni couldn't read its settings just now. Try again; if it keeps failing, restart Zeni."
+            />
             <Button variant="outline" onClick={retrySettings} aria-disabled={settings.isFetching}>
-              Try again
+              {settings.isFetching ? "Trying again…" : "Try again"}
             </Button>
           </div>
         ) : !settings.data ? (
@@ -285,11 +301,11 @@ export function BackupCard() {
               <AlertDescription>{restoredLine}</AlertDescription>
             </Alert>
           )}
-          {backups.error ? (
+          {listError ? (
             <div className="flex flex-col items-start gap-3">
-              <CommandErrorAlert key={backups.errorUpdatedAt} title="Couldn't list backups" error={backups.error} />
-              <Button variant="outline" onClick={() => !backups.isFetching && backups.refetch()} aria-disabled={backups.isFetching}>
-                Try again
+              <CommandErrorAlert key={backups.errorUpdatedAt} title="Couldn't list backups" error={listError} />
+              <Button variant="outline" onClick={retryList} aria-disabled={backups.isFetching}>
+                {backups.isFetching ? "Trying again…" : "Try again"}
               </Button>
             </div>
           ) : !backups.data ? (
