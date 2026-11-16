@@ -16,9 +16,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { recover, resetSecurity, undoRestore, unlock } from "@/lib/commands";
+import { useSecurityStatus } from "@/hooks/use-security-status";
 import { masterPasswordErrors } from "@/lib/validation";
 import type { LockReason } from "@/types/bindings/LockReason";
-import type { FieldErrors, UndoRestoreProps, UnlockPageProps } from "@/types/ui";
+import type { FieldErrors, UndoRestoreProps } from "@/types/ui";
 
 const reasons: Record<LockReason, string> = {
   keyringLocked: "Your system keyring is locked, so Zeni can't read its key from it.",
@@ -29,9 +30,14 @@ const reasons: Record<LockReason, string> = {
 // Same rules as the backend: uppercase, drop spaces and dashes, then 20 Crockford base32 characters.
 export const recoveryCodeValid = (code: string) => /^[0-9A-HJKMNP-TV-Z]{20}$/.test(code.toUpperCase().replace(/[\s-]/g, ""));
 
-export function UnlockPage({ reason, canUndoRestore }: UnlockPageProps) {
+export function UnlockPage() {
+  const status = useSecurityStatus();
   const [mode, setMode] = useState<"password" | "recovery">("password");
+  const [undone, setUndone] = useState(false);
   const heading = useRef<HTMLHeadingElement>(null);
+  // AppShell shows this page only while the status is locked.
+  if (status.data?.state !== "locked") return null;
+  const { reason, canUndoRestore } = status.data;
 
   function switchTo(next: typeof mode) {
     flushSync(() => setMode(next));
@@ -52,7 +58,9 @@ export function UnlockPage({ reason, canUndoRestore }: UnlockPageProps) {
             ? canUndoRestore
               ? `${reasons[reason]} You just restored a backup: enter the master password you used when that backup was made, use a recovery code from then, or undo the restore.`
               : `${reasons[reason]} Enter your master password to unlock.`
-            : "Enter one of your saved recovery codes and choose a new master password. The code then stops working."}
+            : `Enter one of your saved recovery codes and choose a new master password. The code then stops working.${
+                canUndoRestore ? " Use a recovery code that was valid when this backup was made." : ""
+              }`}
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-6">
@@ -70,7 +78,17 @@ export function UnlockPage({ reason, canUndoRestore }: UnlockPageProps) {
           <ResetDialog />
         </div>
         {/* The undo button goes away once it worked, so focus moves to the heading if Zeni stays locked. */}
-        {canUndoRestore && <UndoRestore onUndone={() => heading.current?.focus()} />}
+        {canUndoRestore && (
+          <UndoRestore
+            onUndone={() => {
+              setUndone(true);
+              heading.current?.focus();
+            }}
+          />
+        )}
+        <p role="status" className="text-sm empty:hidden">
+          {undone && "Restore undone. Your previous data is back."}
+        </p>
       </CardContent>
     </Card>
   );
@@ -261,7 +279,7 @@ function UndoRestore({ onUndone }: UndoRestoreProps) {
         <CommandErrorAlert
           title="Couldn't undo the restore"
           error={mutation.error}
-          nextStep="The backup folder keeps every safety copy."
+          nextStep="Try again, or unlock and restore a safety copy from Settings. The backup folder keeps every safety copy."
         />
       )}
     </div>

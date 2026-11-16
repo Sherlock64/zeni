@@ -4,10 +4,6 @@ import type { MatchMode } from "./MatchMode";
 
 export type NicknameRule = { id: number, nicknameId: number, mode: MatchMode, field: MatchField, pattern: string, 
 /**
- * "YYYY-MM-DD HH:MM:SS" (UTC, SQLite CURRENT_TIMESTAMP).
- */
-createdAt: string, 
-/**
  * Rows where this rule won.
  */
 matchCount: number, 

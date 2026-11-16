@@ -38,10 +38,10 @@ Check what you built by looking at it, not by reading the code. Tests prove beha
 
 - `snapshot.html` loads the real app in a plain browser with IPC answered by `src/snapshot.ts` from the fake responses in `src/lib/snapshot-fixtures.ts`, keyed by command name. Add a fixture for every command your pages call, using the contract's response type. Query parameters pick the state:
   - `?status=needsSetup|locked|unlocked` (default `unlocked`), `?reason=<LockReason>` for `locked` (default `keyringLocked`), `?keyringSaved=false`, `?codesLeft=<n>` (default 8).
-  - `?accounts=empty`, `?imports=empty`, `?layouts=empty` and `?transactions=empty` answer `list_accounts`, `list_imports`, `list_csv_layouts` and `list_transactions` with no rows. `?balances=1` adds running balances to `list_transactions`.
+  - `?accounts=empty`, `?imports=empty`, `?layouts=empty`, `?nicknames=empty` and `?transactions=empty` answer `list_accounts`, `list_imports`, `list_csv_layouts`, `list_nicknames` and `list_transactions` with no rows. `?balances=1` adds running balances to `list_transactions`.
   - `?import=cancel` answers `import_file` with `null` (picker cancelled); `?import=mapping|review|csv|mismatch` answers it with the CSV mapping dialog, the duplicate review dialog, or a CSV summary whose running balance passed or mismatched.
-  - `?fail=<command>[:<Kind>]` makes that command reject with that `AppError` kind (default `Sample`). Repeatable.
-  - `?fill=<input name>=<value>` and `?click=<button text>` run in URL order after load, to reach states behind a form submit or dialog.
+  - `?fail=<command>[:<Kind>]` makes that command reject with that `AppError` kind (default `Sample`). Repeatable. The message is `errorMessages["<command>:<Kind>"]` in `snapshot-fixtures.ts` when present, else `errorMessages["<Kind>"]`.
+  - `?fill=<input name>=<value>`, `?click=<text>` and `?contextmenu=<row text>` run in URL order after load, to reach states behind a form submit, dialog or menu. `?click=` matches a button or `role=menuitem` by text or `aria-label` (it opens Radix dropdown triggers too); `?contextmenu=` right-clicks the first table row containing the text.
 - The organizer keeps `pnpm dev` running on port 1420. Don't start or stop it; if `scripts/snapshot.sh` says Vite isn't running, report `BLOCKED`.
 - Capture only the states your task changed (success, empty, error; loading if it is visible for long):
   `scripts/snapshot.sh 'snapshot.html?fail=app_info#/settings' snapshots/V<n>/<task>-settings-error.png`

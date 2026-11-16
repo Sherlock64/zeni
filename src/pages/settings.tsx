@@ -24,6 +24,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAppInfo } from "@/hooks/use-app-info";
 import { useSecurityStatus } from "@/hooks/use-security-status";
 import { nicknameSettings, regenerateRecoveryCodes, sampleError, setNicknameStaleDays } from "@/lib/commands";
+import { STALE_DAYS_MAX, STALE_DAYS_MIN } from "@/lib/nickname-limits";
+import { NICKNAMES_KEY } from "@/lib/query-keys";
 import type { CommandError } from "@/types/command";
 import type { InfoRowProps } from "@/types/ui";
 
@@ -175,16 +177,21 @@ function NicknamesCard() {
   const settings = useQuery({ queryKey: ["nickname_settings"], queryFn: nicknameSettings });
   const [days, setDays] = useState<string | null>(null);
   const [rangeError, setRangeError] = useState(false);
+  const heading = useRef<HTMLHeadingElement>(null);
+  // A refetch clears the query's error while it runs, so keep showing the last one until the retry settles.
+  const [retriedError, setRetriedError] = useState<CommandError | null>(null);
+  const settingsError = settings.error ?? retriedError;
   const save = useMutation({
     mutationFn: setNicknameStaleDays,
     onSuccess: (saved) => {
       queryClient.setQueryData(["nickname_settings"], saved);
       // The stale badges depend on this setting.
-      queryClient.invalidateQueries({ queryKey: ["list_nicknames"] });
+      queryClient.invalidateQueries({ queryKey: NICKNAMES_KEY });
     },
   });
   const value = days ?? String(settings.data?.staleDays ?? "");
-  const rangeMessage = "Stale days must be 1 to 3650.";
+  const range = `${STALE_DAYS_MIN} to ${STALE_DAYS_MAX}`;
+  const rangeMessage = `Stale days must be ${range}.`;
   const fieldError = rangeError ? rangeMessage : save.error?.kind === "Validation" ? save.error.message : undefined;
 
   function submit(event: FormEvent) {
@@ -192,24 +199,41 @@ function NicknamesCard() {
     if (save.isPending) return;
     // Mirrors the backend's range; a fraction or negative number would not reach it as a whole number of days.
     const staleDays = Number(value);
-    const valid = value.trim() !== "" && Number.isInteger(staleDays) && staleDays >= 1 && staleDays <= 3650;
+    const valid = value.trim() !== "" && Number.isInteger(staleDays) && staleDays >= STALE_DAYS_MIN && staleDays <= STALE_DAYS_MAX;
     setRangeError(!valid);
     if (valid) save.mutate({ staleDays });
+  }
+
+  async function retrySettings() {
+    if (settings.isFetching || !settings.error) return;
+    setRetriedError(settings.error);
+    const result = await settings.refetch();
+    setRetriedError(null);
+    // The retry button unmounts on success, so move focus to the card heading.
+    if (result.isSuccess) heading.current?.focus();
   }
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>
-          <h2>Nicknames</h2>
+          <h2 ref={heading} tabIndex={-1}>
+            Nicknames
+          </h2>
         </CardTitle>
         <CardDescription>
           A nickname is flagged as stale when it hasn't matched for this many days before your newest transaction.
         </CardDescription>
       </CardHeader>
       <CardContent>
-        {settings.isError ? (
-          <CommandErrorAlert title="Couldn't load nickname settings" error={settings.error} />
+        {settingsError ? (
+          <div className="flex flex-col items-start gap-3">
+            {/* A new key remounts the alert, so a repeat failure is announced again. */}
+            <CommandErrorAlert key={settings.errorUpdatedAt} title="Couldn't load nickname settings" error={settingsError} />
+            <Button variant="outline" onClick={retrySettings} aria-disabled={settings.isFetching}>
+              Try again
+            </Button>
+          </div>
         ) : settings.isPending ? (
           <Skeleton aria-hidden="true" className="h-16 w-64" />
         ) : (
@@ -219,11 +243,11 @@ function NicknamesCard() {
               name="staleDays"
               type="number"
               inputMode="numeric"
-              min={1}
-              max={3650}
+              min={STALE_DAYS_MIN}
+              max={STALE_DAYS_MAX}
               className="w-32"
               value={value}
-              hint="Between 1 and 3650."
+              hint={`Between ${STALE_DAYS_MIN} and ${STALE_DAYS_MAX}.`}
               error={fieldError}
               announce
               onChange={(event) => {

@@ -247,6 +247,9 @@ test("shows the nickname instead of the description, with the raw text in a tool
   expect(screen.getByText("PAYROLL")).toBeTruthy();
   expect(screen.queryByText("CORNER COFFEE")).toBeNull();
   expect(screen.queryByText("Card purchase")).toBeNull();
+  // A decorative tag marks the nicknamed row only.
+  expect(nickname.querySelector("svg.lucide-tag")?.getAttribute("aria-hidden")).toBe("true");
+  expect(screen.getByText("PAYROLL").closest("tr")!.querySelector("svg.lucide-tag")).toBeNull();
   // Screen readers get the raw text without the tooltip.
   expect(nickname.textContent).toBe("Coffee, description CORNER COFFEE, memo Card purchase");
 
@@ -282,8 +285,10 @@ test("right-clicking a row offers Rename it, which opens the rename dialog and r
   vi.mocked(countRuleMatches).mockResolvedValue(3);
   renderPage();
   const tableRow = (await screen.findByText("CORNER COFFEE")).closest("tr")!;
-  // Focusable, so the keyboard's context-menu key reaches it.
+  // Focusable, so the keyboard's context-menu key reaches it, and described by the shared hint saying so.
   expect(tableRow.tabIndex).toBe(0);
+  const hint = document.getElementById(tableRow.getAttribute("aria-describedby")!);
+  expect(hint?.textContent).toBe("Press Shift+F10 or the menu key for actions.");
 
   fireEvent.contextMenu(tableRow);
   fireEvent.click(await screen.findByRole("menuitem", { name: "Rename it" }));

@@ -3,10 +3,6 @@ import type { NicknameRule } from "./NicknameRule";
 
 export type Nickname = { id: number, name: string, enabled: boolean, staleExempt: boolean, 
 /**
- * "YYYY-MM-DD HH:MM:SS" (UTC).
- */
-createdAt: string, 
-/**
  * Sum over its rules.
  */
 matchCount: number, 

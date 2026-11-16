@@ -77,26 +77,21 @@ fn backup_error(context: &str) -> impl FnOnce(AppError) -> AppError {
     move |error| AppError::Backup(format!("{context}: {error}"))
 }
 
+/// `error` as a sentence: ends with one full stop.
+fn sentence(error: impl std::fmt::Display) -> String {
+    let text = error.to_string();
+    let stop = if text.ends_with('.') { "" } else { "." };
+    format!("{text}{stop}")
+}
+
 /// Ends the error with `data_state_note` (`UNCHANGED` or `STILL_RESTORED`) as its own sentence.
 fn with_data_state(data_state_note: &str) -> impl Fn(AppError) -> AppError {
-    move |error| {
-        let text = error.to_string();
-        let stop = if text.ends_with('.') { "" } else { "." };
-        AppError::Backup(format!("{text}{stop}{data_state_note}"))
-    }
+    move |error| AppError::Backup(format!("{}{data_state_note}", sentence(error)))
 }
 
-/// The current pool and database path, without holding the lock.
-fn current(state: &AppState) -> Result<(SqlitePool, PathBuf), AppError> {
-    match &*state.db.read().unwrap_or_else(PoisonError::into_inner) {
-        Ok(database) => Ok((database.pool.clone(), database.path.clone())),
-        Err(error) => Err(AppError::Database(error.clone())),
-    }
-}
-
-/// Like `current`, but only while Zeni is unlocked; a missing database is reported first.
+/// Like `db::current`, but only while Zeni is unlocked; a missing database is reported first.
 fn unlocked(state: &AppState) -> Result<(SqlitePool, PathBuf), AppError> {
-    let current = current(state)?;
+    let current = db::current(state)?;
     security::session_key(state)?;
     Ok(current)
 }
@@ -385,7 +380,7 @@ pub async fn daily_backup(state: &AppState) {
 }
 
 async fn run_daily(state: &AppState) -> Result<(), AppError> {
-    let (pool, db_path) = current(state)?;
+    let (pool, db_path) = db::current(state)?;
     let today: String = sqlx::query_scalar("SELECT date('now','localtime')")
         .fetch_one(&pool)
         .await?;
@@ -400,7 +395,7 @@ async fn run_daily(state: &AppState) -> Result<(), AppError> {
 
 /// The backup `imports::revert` takes first. A prune failure afterwards doesn't stop the revert.
 pub async fn before_revert(state: &AppState) -> Result<(), AppError> {
-    let (pool, db_path) = current(state)?;
+    let (pool, db_path) = db::current(state)?;
     let folder = async {
         let folder = ready_folder(&pool, &db_path).await?;
         write(&pool, &folder, BackupKind::PreRevert).await?;
@@ -516,6 +511,15 @@ fn swap(temp: &Path, db_path: &Path) -> Result<(), AppError> {
     Ok(fs::rename(temp, db_path)?)
 }
 
+/// `swap`, removing the staged file when it fails.
+fn swap_or_discard(temp: &Path, db_path: &Path) -> Result<(), AppError> {
+    let result = swap(temp, db_path);
+    if result.is_err() {
+        let _ = fs::remove_file(temp);
+    }
+    result
+}
+
 async fn reopen(db_path: &Path) -> Result<Database, AppError> {
     Ok(Database {
         pool: db::open(db_path).await?,
@@ -548,8 +552,7 @@ async fn replace(
         return Err(kept(error));
     }
     pool.close().await;
-    if let Err(error) = swap(&temp, db_path) {
-        let _ = fs::remove_file(&temp);
+    if let Err(error) = swap_or_discard(&temp, db_path) {
         set_db(state, reopen(db_path).await);
         return Err(kept(backup_error("Couldn't restore that backup")(error)));
     }
@@ -562,30 +565,28 @@ async fn replace(
             let Some(safety) = fallback else {
                 set_db(state, Err(AppError::Backup(error.to_string())));
                 return Err(AppError::Backup(format!(
-                    "Couldn't open your previous data ({error}), so Zeni can't open its database. \
-                     Your previous data is still in the safety copy in the backup folder."
+                    "Couldn't open your previous data: {} Zeni can't open its database. \
+                     Your previous data is still in the safety copy in the backup folder.",
+                    sentence(&error)
                 )));
             };
             let back = async {
-                let temp = stage(safety, data_dir(db_path))?;
-                if let Err(error) = swap(&temp, db_path) {
-                    let _ = fs::remove_file(&temp);
-                    return Err(error);
-                }
+                swap_or_discard(&stage(safety, data_dir(db_path))?, db_path)?;
                 reopen(db_path).await
             }
             .await;
+            let error = sentence(&error);
             let message = if back.is_ok() {
-                format!("Couldn't open the restored backup ({error}), so your data was put back.")
+                format!("Couldn't open the restored backup: {error} Your data was put back.")
             } else {
-                // The file name only: a path could reveal more than the user expects to share.
+                // The file name only: the safety copy is always in the backup folder Settings shows.
                 let name = safety
                     .file_name()
                     .map(|name| name.to_string_lossy())
                     .unwrap_or_default();
                 format!(
-                    "Couldn't open the restored backup ({error}), and putting your data back \
-                     failed too. Your data is in the safety copy {name} in the backup folder."
+                    "Couldn't open the restored backup: {error} Putting your data back failed \
+                     too, so your data is in the safety copy {name} in the backup folder."
                 )
             };
             set_db(state, back);
@@ -649,7 +650,7 @@ pub async fn restore(state: &AppState, request: RestoreBackupRequest) -> Result<
 
 /// Puts the safety copy of the last restore back. Allowed while locked.
 pub async fn undo_restore(state: &AppState) -> Result<(), AppError> {
-    let (pool, db_path) = current(state)?;
+    let (pool, db_path) = db::current(state)?;
     let undo = state
         .backup
         .undo_path
@@ -887,6 +888,23 @@ mod tests {
         };
         let database = |result: Result<(), AppError>| kind(result.unwrap_err());
         assert_eq!(database(run(settings(&missing)).map(drop)), "Database");
+        assert_eq!(
+            database(run(set_folder(&missing, &f.dir)).map(drop)),
+            "Database"
+        );
+        let keep = SetBackupRetentionRequest { keep_automatic: 3 };
+        assert_eq!(
+            database(run(set_retention(&missing, keep)).map(drop)),
+            "Database"
+        );
+        assert_eq!(
+            database(run(pick(&missing, f.dir.join("zeni.db"))).map(drop)),
+            "Database"
+        );
+        let request = RestoreBackupRequest {
+            source: RestoreSource::PickedFile,
+        };
+        assert_eq!(database(run(restore(&missing, request))), "Database");
         assert_eq!(database(run(back_up_now(&missing)).map(drop)), "Database");
         assert_eq!(database(run(list(&missing)).map(drop)), "Database");
         assert_eq!(database(run(undo_restore(&missing))), "Database");
@@ -942,12 +960,58 @@ mod tests {
             elsewhere.to_str().unwrap(),
         ))
         .unwrap();
-        let request = SetBackupRetentionRequest { keep_automatic: 3 };
+        for keep_automatic in [1, 365, 3] {
+            let request = SetBackupRetentionRequest { keep_automatic };
+            assert_eq!(
+                run(set_retention(&f.state, request))
+                    .unwrap()
+                    .keep_automatic,
+                keep_automatic
+            );
+        }
+    }
+
+    #[test]
+    fn set_folder_reports_a_folder_it_cannot_write() {
+        let f = fixture("read-only");
+        f.setup(PASSWORD, "Checking");
+        let read_only = f.dir.join("read-only");
+        fs::create_dir(&read_only).unwrap();
+        fs::set_permissions(&read_only, Permissions::from_mode(0o500)).unwrap();
+        let result = run(set_folder(&f.state, &read_only));
+        fs::set_permissions(&read_only, Permissions::from_mode(0o700)).unwrap();
+        let error = message(result);
+        assert!(
+            error.starts_with(&format!("Zeni can't write to {}: ", read_only.display())),
+            "{error}"
+        );
+        assert_eq!(fs::read_dir(&read_only).unwrap().count(), 0);
+        let defaults = run(settings(&f.state)).unwrap();
+        assert!(defaults.is_default_folder, "the folder wasn't stored");
+    }
+
+    #[test]
+    fn retention_change_prunes_old_automatic_backups() {
+        let f = fixture("retention-prune");
+        f.setup(PASSWORD, "Checking");
+        fs::create_dir_all(f.folder()).unwrap();
+        for name in [
+            "zeni-20261113-090000-daily.db",
+            "zeni-20261112-090000-pre-revert.db",
+            "zeni-20261111-090000-daily.db",
+            "zeni-20261101-090000-manual.db",
+        ] {
+            fs::write(f.folder().join(name), b"").unwrap();
+        }
+        let request = SetBackupRetentionRequest { keep_automatic: 1 };
+        run(set_retention(&f.state, request)).unwrap();
+        let left: Vec<_> = f.backups().into_iter().map(|(name, _)| name).collect();
         assert_eq!(
-            run(set_retention(&f.state, request))
-                .unwrap()
-                .keep_automatic,
-            3
+            left,
+            [
+                "zeni-20261113-090000-daily.db",
+                "zeni-20261101-090000-manual.db"
+            ]
         );
     }
 
@@ -1058,6 +1122,31 @@ mod tests {
         assert_eq!(f.undo_path(), None);
         assert!(safety.exists(), "the safety copy stays in the folder");
         assert_eq!(f.status()["state"], "unlocked");
+    }
+
+    #[test]
+    fn restore_by_name_accepts_a_safety_copy() {
+        let f = fixture("restore-safety");
+        f.setup(PASSWORD, "Checking");
+        let old = f.back_up();
+        run(sqlx::query(
+            "INSERT INTO accounts (name, owner, bank_name, account_number, routing_number) \
+             VALUES ('Savings', 'Sam', 'Bank', x'00', x'00')",
+        )
+        .execute(&f.pool()))
+        .unwrap();
+        f.restore(by_name(&old)).unwrap();
+        assert_eq!(f.accounts(), ["Checking"]);
+        assert_eq!(f.status()["state"], "unlocked");
+        let (safety, _) = f
+            .backups()
+            .into_iter()
+            .find(|(_, kind)| *kind == BackupKind::Safety)
+            .unwrap();
+
+        f.restore(RestoreSource::Backup { file_name: safety })
+            .unwrap();
+        assert_eq!(f.accounts(), ["Checking", "Savings"]);
     }
 
     #[test]
@@ -1172,10 +1261,11 @@ mod tests {
 
         let error = message(f.restore(by_name(&broken)));
         assert!(
-            error.starts_with("Couldn't open the restored backup (while executing migration"),
+            error.starts_with("Couldn't open the restored backup: while executing migration"),
             "{error}"
         );
-        assert!(error.ends_with("), so your data was put back."), "{error}");
+        assert!(error.ends_with(". Your data was put back."), "{error}");
+        assert!(!error.contains(".."), "{error}");
         assert_eq!(f.accounts(), ["Changed"]);
         assert_eq!(f.undo_path(), None);
     }
@@ -1197,12 +1287,12 @@ mod tests {
             UNCHANGED,
         )));
         assert!(
-            error.starts_with("Couldn't open the restored backup ("),
+            error.starts_with("Couldn't open the restored backup: "),
             "{error}"
         );
         assert!(
             error.ends_with(
-                "), and putting your data back failed too. Your data is in the safety copy \
+                ". Putting your data back failed too, so your data is in the safety copy \
                  zeni-20260101-000000-safety.db in the backup folder."
             ),
             "{error}"
@@ -1218,12 +1308,12 @@ mod tests {
         *f.state.backup.undo_path.lock().unwrap() = Some(PathBuf::from(&broken.path));
         let error = message(run(undo_restore(&f.state)));
         assert!(
-            error.starts_with("Couldn't open your previous data ("),
+            error.starts_with("Couldn't open your previous data: "),
             "{error}"
         );
         assert!(
             error.ends_with(
-                "), so Zeni can't open its database. Your previous data is still in the \
+                ". Zeni can't open its database. Your previous data is still in the \
                  safety copy in the backup folder."
             ),
             "{error}"
@@ -1291,6 +1381,22 @@ mod tests {
         assert_eq!(f.undo_path(), None);
         assert!(security::session_key(&f.state).is_ok());
         assert!(!f.dir.join(".zeni-restore.tmp").exists());
+    }
+
+    #[test]
+    fn a_failed_swap_removes_the_staged_copy() {
+        let f = fixture("swap-discard");
+        f.setup(PASSWORD, "Checking");
+        let db_path = f.dir.join("zeni.db");
+        let before = fs::read(&db_path).unwrap();
+        let temp = stage(&valid_copy(&f, "good.db"), &f.dir).unwrap();
+        // A directory at -shm can't be removed as a file, so the swap fails.
+        let shm = f.dir.join("zeni.db-shm");
+        fs::create_dir(&shm).unwrap();
+        fs::write(shm.join("x"), b"").unwrap();
+        assert!(swap_or_discard(&temp, &db_path).is_err());
+        assert!(!temp.exists());
+        assert_eq!(fs::read(&db_path).unwrap(), before);
     }
 
     #[test]

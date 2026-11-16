@@ -306,10 +306,57 @@ test("marks Save busy while saving and ignores repeat presses", async () => {
   expect(setNicknameStaleDays).toHaveBeenCalledTimes(1);
 });
 
-test("shows an error when the stale days setting can't load", async () => {
+test.each(["1", "3650"])("saves the boundary value %s", async (value) => {
   vi.mocked(appInfo).mockResolvedValue(info);
-  vi.mocked(nicknameSettings).mockRejectedValue(invokeError);
+  vi.mocked(setNicknameStaleDays).mockResolvedValue({ staleDays: Number(value) });
+  renderPage();
+  fireEvent.change(await staleField(), { target: { value } });
+  fireEvent.click(nicknamesCard().getByRole("button", { name: "Save" }));
+  expect(await nicknamesCard().findByText("Saved.")).toBeTruthy();
+  expect(vi.mocked(setNicknameStaleDays).mock.calls[0][0]).toEqual({ staleDays: Number(value) });
+});
+
+test("shows no stale days field or Save while the setting loads", async () => {
+  vi.mocked(appInfo).mockResolvedValue(info);
+  vi.mocked(nicknameSettings).mockReturnValue(new Promise(() => {}));
+  renderPage();
+  await screen.findByText("/data/zeni.db");
+  expect(screen.queryByLabelText("Flag nicknames as stale after (days)")).toBeNull();
+  expect(nicknamesCard().queryByRole("button", { name: "Save" })).toBeNull();
+});
+
+test("shows an error when the stale days setting can't load, retries once while busy, then focuses the card", async () => {
+  vi.mocked(appInfo).mockResolvedValue(info);
+  let resolveRetry: (value: { staleDays: number }) => void = () => {};
+  vi.mocked(nicknameSettings)
+    .mockRejectedValueOnce(invokeError)
+    .mockReturnValueOnce(new Promise((resolve) => (resolveRetry = resolve)));
   renderPage();
   expect((await screen.findByText("Couldn't load nickname settings")).closest("[role=alert]")).toBeTruthy();
   expect(screen.queryByLabelText("Flag nicknames as stale after (days)")).toBeNull();
+
+  const retry = nicknamesCard().getByRole("button", { name: "Try again" });
+  fireEvent.click(retry);
+  await vi.waitFor(() => expect(retry.getAttribute("aria-disabled")).toBe("true"));
+  expect(retry.hasAttribute("disabled")).toBe(false);
+  expect(nicknamesCard().getByText("Couldn't load nickname settings")).toBeTruthy();
+  fireEvent.click(retry);
+  expect(nicknameSettings).toHaveBeenCalledTimes(2);
+
+  resolveRetry({ staleDays: 90 });
+  expect(((await staleField()) as HTMLInputElement).value).toBe("90");
+  expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Nicknames" }));
+});
+
+test("remounts the nickname settings alert when a retry fails again", async () => {
+  vi.mocked(appInfo).mockResolvedValue(info);
+  vi.mocked(nicknameSettings).mockRejectedValue(invokeError);
+  renderPage();
+  const firstAlert = (await screen.findByText("Couldn't load nickname settings")).closest("[role=alert]");
+  fireEvent.click(nicknamesCard().getByRole("button", { name: "Try again" }));
+  await vi.waitFor(() =>
+    expect(nicknamesCard().getByText("Couldn't load nickname settings").closest("[role=alert]")).not.toBe(firstAlert),
+  );
+  expect(nicknameSettings).toHaveBeenCalledTimes(2);
+  expect(nicknamesCard().getByRole("button", { name: "Try again" }).getAttribute("aria-disabled")).toBe("false");
 });

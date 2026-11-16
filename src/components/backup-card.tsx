@@ -27,10 +27,11 @@ import {
   restoreBackup,
   setBackupRetention,
 } from "@/lib/commands";
-import { formatDate } from "@/lib/dates";
+import { formatBackupDate, formatSize } from "@/lib/backup-format";
 import type { BackupFile } from "@/types/bindings/BackupFile";
 import type { BackupKind } from "@/types/bindings/BackupKind";
 import type { BackupSettings } from "@/types/bindings/BackupSettings";
+import type { CommandError } from "@/types/command";
 import type { RestoreTarget } from "@/types/ui";
 
 const kindLabels: Record<BackupKind, string> = {
@@ -41,24 +42,23 @@ const kindLabels: Record<BackupKind, string> = {
   other: "Other file",
 };
 
-// "2026-11-15 14:03:22" (local) -> "Nov 15, 2026 at 14:03".
-export const formatBackupDate = (createdAt: string) => `${formatDate(createdAt.slice(0, 10))} at ${createdAt.slice(11, 16)}`;
-
-export function formatSize(bytes: number) {
-  const units = ["B", "KB", "MB", "GB"];
-  let size = bytes;
-  let unit = 0;
-  while (size >= 1024 && unit < units.length - 1) {
-    size /= 1024;
-    unit++;
-  }
-  return unit === 0 ? `${size} B` : `${size.toFixed(1)} ${units[unit]}`;
-}
+// The kind in a restore button's name: "Restore the safety copy from …".
+const kindNouns: Record<BackupKind, string> = {
+  manual: "manual backup",
+  daily: "daily backup",
+  preRevert: "pre-revert backup",
+  safety: "safety copy",
+  other: "backup",
+};
 
 export function BackupCard() {
   const queryClient = useQueryClient();
   const settings = useQuery({ queryKey: ["backup_settings"], queryFn: backupSettings });
   const backups = useQuery({ queryKey: ["list_backups"], queryFn: listBackups });
+  const heading = useRef<HTMLHeadingElement>(null);
+  // A refetch clears the query's error while it runs, so keep showing the last one until the retry settles.
+  const [retriedSettingsError, setRetriedSettingsError] = useState<CommandError | null>(null);
+  const settingsError = settings.error ?? retriedSettingsError;
   const [keep, setKeep] = useState<string | null>(null);
   const [target, setTarget] = useState<RestoreTarget | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -95,7 +95,22 @@ export function BackupCard() {
     },
   });
 
+  async function retrySettings() {
+    if (settings.isFetching || !settings.error) return;
+    setRetriedSettingsError(settings.error);
+    const result = await settings.refetch();
+    setRetriedSettingsError(null);
+    // The retry button unmounts on success, so move focus to the card heading.
+    if (result.isSuccess) heading.current?.focus();
+  }
+
+  // A finished action's message goes stale once another action in the card starts.
+  function clearStatus() {
+    for (const mutation of [folder, retention, backUp, restore]) if (mutation.isSuccess) mutation.reset();
+  }
+
   function openConfirm(next: RestoreTarget) {
+    clearStatus();
     restore.reset();
     setTarget(next);
     setConfirmOpen(true);
@@ -108,6 +123,7 @@ export function BackupCard() {
 
   function pickFile(event: MouseEvent<HTMLButtonElement>) {
     if (pick.isPending) return;
+    clearStatus();
     opener.current = event.currentTarget;
     pick.mutate();
   }
@@ -116,6 +132,7 @@ export function BackupCard() {
     event.preventDefault();
     // The backend checks the range and answers with a Validation error, shown on the field.
     if (retention.isPending || keep === null) return;
+    clearStatus();
     retention.mutate({ keepAutomatic: Number(keep) });
   }
 
@@ -127,9 +144,9 @@ export function BackupCard() {
       : "";
 
   function status() {
+    if (retriedSettingsError) return "Retrying…";
     if (backups.isPending) return "Loading backups…";
     if (restoredLine) return restoredLine;
-    if (retention.isSuccess) return `Saved. Zeni keeps ${retention.data.keepAutomatic} automatic backups.`;
     if (folder.data) return "Backup folder changed.";
     return "";
   }
@@ -138,7 +155,9 @@ export function BackupCard() {
     <Card>
       <CardHeader>
         <CardTitle>
-          <h2>Backups</h2>
+          <h2 ref={heading} tabIndex={-1}>
+            Backups
+          </h2>
         </CardTitle>
         <CardDescription>
           Copies of your Zeni data. Zeni backs up on the first start of each day and before every import revert.
@@ -160,8 +179,13 @@ export function BackupCard() {
           </Alert>
         )}
 
-        {settings.error ? (
-          <CommandErrorAlert title="Couldn't load backup settings" error={settings.error} />
+        {settingsError ? (
+          <div className="flex flex-col items-start gap-3">
+            <CommandErrorAlert key={settings.errorUpdatedAt} title="Couldn't load backup settings" error={settingsError} />
+            <Button variant="outline" onClick={retrySettings} aria-disabled={settings.isFetching}>
+              Try again
+            </Button>
+          </div>
         ) : !settings.data ? (
           <div aria-hidden="true" className="flex flex-col gap-3">
             <Skeleton className="h-10 w-full" />
@@ -177,7 +201,15 @@ export function BackupCard() {
                   {settings.data.isDefaultFolder && <span className="text-muted-foreground"> (default)</span>}
                 </dd>
               </dl>
-              <Button variant="outline" onClick={() => !folder.isPending && folder.mutate()} aria-disabled={folder.isPending}>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  if (folder.isPending) return;
+                  clearStatus();
+                  folder.mutate();
+                }}
+                aria-disabled={folder.isPending}
+              >
                 {folder.isPending ? "Choosing…" : "Change folder…"}
               </Button>
               {folder.isError && <CommandErrorAlert title="Couldn't change the backup folder" error={folder.error} />}
@@ -195,21 +227,37 @@ export function BackupCard() {
                 announce
                 hint="Between 1 and 365. Older daily and before-revert backups are deleted; manual backups and safety copies are always kept."
                 value={keep ?? String(settings.data.keepAutomatic)}
-                onChange={(event) => setKeep(event.target.value)}
+                onChange={(event) => {
+                  // An edit makes "Saved." stale; a save in flight keeps its busy state.
+                  if (!retention.isPending) retention.reset();
+                  setKeep(event.target.value);
+                }}
                 error={keepError}
               />
               {retention.isError && !keepError && (
                 <CommandErrorAlert title="Couldn't save the setting" error={retention.error} />
               )}
-              <Button type="submit" variant="outline" aria-disabled={retention.isPending}>
-                {retention.isPending ? "Saving…" : "Save"}
-              </Button>
+              <div className="flex items-center gap-3">
+                <Button type="submit" variant="outline" aria-disabled={retention.isPending}>
+                  {retention.isPending ? "Saving…" : "Save"}
+                </Button>
+                <p aria-live="polite" className="text-sm text-muted-foreground">
+                  {retention.isSuccess ? "Saved." : ""}
+                </p>
+              </div>
             </form>
           </>
         )}
 
         <div className="flex flex-col items-start gap-3">
-          <Button onClick={() => !backUp.isPending && backUp.mutate()} aria-disabled={backUp.isPending}>
+          <Button
+            onClick={() => {
+              if (backUp.isPending) return;
+              clearStatus();
+              backUp.mutate();
+            }}
+            aria-disabled={backUp.isPending}
+          >
             {backUp.isPending ? "Backing up…" : "Back up now"}
           </Button>
           {/* A wrapper status announces the result politely; the Alert's own role is assertive. */}
@@ -285,7 +333,7 @@ export function BackupCard() {
                           variant="outline"
                           size="sm"
                           onClick={(event) => restoreRow(file, event)}
-                          aria-label={`Restore the backup from ${formatBackupDate(file.createdAt)}`}
+                          aria-label={`Restore the ${kindNouns[file.kind]} from ${formatBackupDate(file.createdAt)}`}
                         >
                           Restore
                         </Button>
@@ -314,12 +362,14 @@ export function BackupCard() {
               <AlertDialogTitle>
                 Restore the backup from {target && formatBackupDate(target.file.createdAt)}?
               </AlertDialogTitle>
-              <AlertDialogDescription asChild>
-                <div className="flex flex-col gap-2">
-                  <p>Your current data will be replaced. A safety copy is kept first.</p>
-                  {target?.source.kind === "pickedFile" && <p className="font-mono text-xs break-all">{target.file.path}</p>}
-                </div>
+              <AlertDialogDescription>
+                {target?.source.kind === "pickedFile" && `Zeni will restore ${target.file.fileName}. `}
+                Your current data will be replaced. A safety copy is kept first.
               </AlertDialogDescription>
+              {/* Outside the description, so screen readers don't read the full path as part of the dialog. */}
+              {target?.source.kind === "pickedFile" && (
+                <p className="font-mono text-xs break-all text-muted-foreground">{target.file.path}</p>
+              )}
             </AlertDialogHeader>
             {restore.isError && (
               <CommandErrorAlert

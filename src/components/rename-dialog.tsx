@@ -9,18 +9,13 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { listNicknames, saveNicknameRule, updateNickname } from "@/lib/commands";
 import { focusFirstInvalid } from "@/lib/focus";
+import { errorField } from "@/lib/nickname-errors";
+import { NICKNAME_MAX_LEN } from "@/lib/nickname-limits";
+import { NICKNAMES_KEY, TRANSACTIONS_KEY } from "@/lib/query-keys";
 import type { Nickname } from "@/types/bindings/Nickname";
 import type { RuleInput } from "@/types/bindings/RuleInput";
 import type { CommandError } from "@/types/command";
 import type { RenameDialogProps } from "@/types/ui";
-
-// Which field a save_nickname_rule or update_nickname Validation message belongs to, by the backend's wording.
-function errorField(error: CommandError | null) {
-  if (error?.kind !== "Validation") return null;
-  if (/^(Enter a nickname|Nicknames can be|A nickname named)/.test(error.message)) return "name";
-  if (/^(Enter a pattern|Patterns can be|That regex isn't valid)/.test(error.message)) return "pattern";
-  return null;
-}
 
 const sameName = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
@@ -35,7 +30,7 @@ export function RenameDialog({ transaction, open, onOpenChange, onCloseAutoFocus
   const [rule, setRule] = useState(initialRule);
   const [expanded, setExpanded] = useState(false);
   const form = useRef<HTMLFormElement>(null);
-  const nicknames = useQuery({ queryKey: ["list_nicknames"], queryFn: listNicknames });
+  const nicknames = useQuery({ queryKey: NICKNAMES_KEY, queryFn: listNicknames });
   // A refetch clears the query's error while it runs, so keep showing the last one until the retry settles.
   const [retriedError, setRetriedError] = useState<CommandError | null>(null);
   const listError = nicknames.error ?? retriedError;
@@ -53,8 +48,8 @@ export function RenameDialog({ transaction, open, onOpenChange, onCloseAutoFocus
   const save = useMutation({
     mutationFn: (send: () => Promise<Nickname>) => send(),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["list_transactions"] });
-      queryClient.invalidateQueries({ queryKey: ["list_nicknames"] });
+      queryClient.invalidateQueries({ queryKey: TRANSACTIONS_KEY });
+      queryClient.invalidateQueries({ queryKey: NICKNAMES_KEY });
       onOpenChange(false);
     },
     // The pattern field may be inside the closed expander.
@@ -92,11 +87,10 @@ export function RenameDialog({ transaction, open, onOpenChange, onCloseAutoFocus
           <DialogHeader>
             <DialogTitle>What's its nickname?</DialogTitle>
             <DialogDescription className="break-words">
-              Zeni shows the nickname instead of the bank's description on every transaction the rule matches.{" "}
+              Zeni shows the nickname instead of the bank's text on every transaction the rule matches.{" "}
               {renaming
                 ? `This row is shown as “${current}”. A new name renames ${current} on every transaction its rules match. To name only transactions like this one, change the match options.`
                 : `The rule starts as an exact match on “${transaction.description.trim()}”.`}
-              {current && !renaming && ` This row is currently shown as “${current}”.`}
             </DialogDescription>
           </DialogHeader>
           <TextField
@@ -104,7 +98,7 @@ export function RenameDialog({ transaction, open, onOpenChange, onCloseAutoFocus
             name="nickname"
             ref={nameInput}
             aria-required="true"
-            maxLength={100}
+            maxLength={NICKNAME_MAX_LEN}
             value={name}
             error={field === "name" ? save.error?.message : undefined}
             onChange={(event) => {
@@ -118,7 +112,7 @@ export function RenameDialog({ transaction, open, onOpenChange, onCloseAutoFocus
           </p>
           <Collapsible open={expanded} onOpenChange={setExpanded} className="flex flex-col gap-4">
             <CollapsibleTrigger asChild>
-              <Button type="button" variant="ghost" size="sm" className="-mx-2.5 self-start">
+              <Button type="button" variant="ghost" size="sm" className="self-start">
                 Match options
                 <ChevronDownIcon aria-hidden="true" className={expanded ? "rotate-180" : ""} />
               </Button>
@@ -131,12 +125,11 @@ export function RenameDialog({ transaction, open, onOpenChange, onCloseAutoFocus
                   setRule(next);
                 }}
                 error={field === "pattern" ? save.error?.message : undefined}
-                showCount={false}
               />
             </CollapsibleContent>
           </Collapsible>
-          {/* Outside the expander, so the prefilled rule's count shows while it is collapsed. */}
-          <RuleMatchCount rule={rule} />
+          {/* The closed expander unmounts the fields and their count, so the prefilled rule's count shows here instead. */}
+          {!expanded && <RuleMatchCount rule={rule} />}
           <p aria-live="polite" className="text-sm text-muted-foreground empty:sr-only">
             {current && !renaming && `This row is shown as “${current}”. Its rule may still win over this one.`}
           </p>
@@ -150,7 +143,7 @@ export function RenameDialog({ transaction, open, onOpenChange, onCloseAutoFocus
                 nextStep="Zeni needs them to tell a rename from a new rule. Try again, or change the match options to add a rule."
               />
               <Button type="button" variant="outline" onClick={retryList} aria-disabled={nicknames.isFetching}>
-                Try again
+                {nicknames.isFetching ? "Trying again…" : "Try again"}
               </Button>
             </div>
           )}
