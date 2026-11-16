@@ -21,6 +21,8 @@ To import bank transactions from OFX, QFX or CSV files: [docs/importing.md](docs
 
 To back up and restore your data: [docs/backup.md](docs/backup.md).
 
+To give transactions short names: [docs/nicknames.md](docs/nicknames.md).
+
 ## Commands
 
 ```sh

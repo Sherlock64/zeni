@@ -15,7 +15,7 @@ use crate::types::{
     ParsedStatement, ParsedTransaction, PendingImport, PendingStep, RevertImportRequest, ReviewRow,
     SaveCsvLayoutRequest, SuspectedDuplicate,
 };
-use crate::{backup, csv_import, csv_layouts, ofx, security};
+use crate::{backup, csv_import, csv_layouts, nicknames, ofx, security};
 
 const MAX_FILE_BYTES: u64 = 10 * 1024 * 1024;
 /// Data rows shown while mapping a CSV.
@@ -413,6 +413,7 @@ async fn import_statement(
         .bind(import_id)
         .execute(&mut *tx)
         .await?;
+    nicknames::match_import(&mut tx, import_id).await?;
     tx.commit().await?;
 
     Ok(ImportSummary {
@@ -789,6 +790,83 @@ mod tests {
                 let error = revert(&state, RevertImportRequest { import_id: id }).await;
                 assert!(matches!(error, Err(AppError::NotFound(_))));
             }
+        });
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// V5: commit fills the nickname lookup for its new rows; duplicates add none; revert cascades.
+    #[test]
+    fn nickname_matches_follow_commit_and_revert() {
+        use crate::types::{MatchField, MatchMode, RuleInput, SaveNicknameRuleRequest};
+        let (dir, state) = state("imports-nicknames", true);
+        tauri::async_runtime::block_on(async {
+            let pool = security::pool(&state).unwrap();
+            let lookup = || async {
+                let rows: Vec<(i64,)> =
+                    sqlx::query_as("SELECT raw_transaction_id FROM nickname_matches ORDER BY 1")
+                        .fetch_all(&pool)
+                        .await
+                        .unwrap();
+                rows.into_iter().map(|(id,)| id).collect::<Vec<_>>()
+            };
+            nicknames::save_rule(
+                &state,
+                SaveNicknameRuleRequest {
+                    name: "Coffee".into(),
+                    rule: RuleInput {
+                        mode: MatchMode::Contains,
+                        field: MatchField::Description,
+                        pattern: "coffee".into(),
+                    },
+                },
+            )
+            .await
+            .unwrap();
+            let coffee = || nicknames::list(&state);
+            let first = statement(
+                None,
+                vec![
+                    row(Some("A"), "2026-10-01", -1, "COFFEE ONE"),
+                    row(Some("B"), "2026-10-02", -1, "TEA"),
+                ],
+            );
+            let first = import(&state, &first).await;
+            assert_eq!(lookup().await, [1]);
+            let second = statement(None, vec![row(Some("C"), "2026-10-05", -1, "coffee two")]);
+            import(&state, &second).await;
+            assert_eq!(lookup().await, [1, 3]);
+            let n = &coffee().await.unwrap()[0];
+            assert_eq!(
+                (n.match_count, n.last_matched.as_deref()),
+                (2, Some("2026-10-05"))
+            );
+
+            // An all-duplicate re-import adds no rows and no lookup rows.
+            assert_eq!(counts(&import(&state, &second).await), (0, 1));
+            assert_eq!(lookup().await, [1, 3]);
+
+            // Revert cascades; count and last matched fall back to what remains.
+            revert(&state, RevertImportRequest { import_id: 2 })
+                .await
+                .unwrap();
+            assert_eq!(lookup().await, [1]);
+            let n = &coffee().await.unwrap()[0];
+            assert_eq!(
+                (n.match_count, n.last_matched.as_deref()),
+                (1, Some("2026-10-01"))
+            );
+            revert(
+                &state,
+                RevertImportRequest {
+                    import_id: first.import_id,
+                },
+            )
+            .await
+            .unwrap();
+            assert!(lookup().await.is_empty());
+            let n = &coffee().await.unwrap()[0];
+            assert_eq!((n.match_count, n.last_matched.as_deref()), (0, None));
+            assert!(n.stale);
         });
         std::fs::remove_dir_all(&dir).unwrap();
     }

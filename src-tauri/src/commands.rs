@@ -7,12 +7,14 @@ use crate::keyring::SecretService;
 use crate::types::{
     Account, AccountNumbers, AppError, AppInfo, AppState, BackupFile, BackupSettings,
     CommitImportRequest, CsvLayout, CsvMapping, CsvPreviewRow, DeleteCsvLayoutRequest,
-    ImportRecord, ImportStep, ImportSummary, RecoverRequest, RecoveryCodes, RestoreBackupRequest,
-    RevealAccountNumbersRequest, RevertImportRequest, SampleErrorRequest, SaveCsvLayoutRequest,
-    SecurityStatus, SetBackupRetentionRequest, SetupRequest, SetupResponse, TransactionPage,
-    TransactionQuery, UnlockRequest, UpdateCsvLayoutRequest,
+    DeleteNicknameRequest, DeleteNicknameRuleRequest, ImportRecord, ImportStep, ImportSummary,
+    Nickname, NicknameSettings, RecoverRequest, RecoveryCodes, RestoreBackupRequest,
+    RevealAccountNumbersRequest, RevertImportRequest, RuleInput, SampleErrorRequest,
+    SaveCsvLayoutRequest, SaveNicknameRuleRequest, SecurityStatus, SetBackupRetentionRequest,
+    SetupRequest, SetupResponse, TransactionPage, TransactionQuery, UnlockRequest,
+    UpdateCsvLayoutRequest, UpdateNicknameRequest, UpdateNicknameRuleRequest,
 };
-use crate::{accounts, backup, csv_layouts, db, imports, security, transactions};
+use crate::{accounts, backup, csv_layouts, db, imports, nicknames, security, transactions};
 
 const MAX_REASON_CHARS: usize = 200;
 
@@ -280,6 +282,72 @@ pub async fn restore_backup(
 #[tauri::command]
 pub async fn undo_restore(state: State<'_, AppState>) -> Result<(), AppError> {
     backup::undo_restore(&state).await
+}
+
+#[tauri::command]
+pub async fn list_nicknames(state: State<'_, AppState>) -> Result<Vec<Nickname>, AppError> {
+    nicknames::list(&state).await
+}
+
+#[tauri::command]
+pub async fn save_nickname_rule(
+    state: State<'_, AppState>,
+    request: SaveNicknameRuleRequest,
+) -> Result<Nickname, AppError> {
+    nicknames::save_rule(&state, request).await
+}
+
+#[tauri::command]
+pub async fn count_rule_matches(
+    state: State<'_, AppState>,
+    request: RuleInput,
+) -> Result<u32, AppError> {
+    nicknames::count_matches(&state, request).await
+}
+
+#[tauri::command]
+pub async fn update_nickname(
+    state: State<'_, AppState>,
+    request: UpdateNicknameRequest,
+) -> Result<Nickname, AppError> {
+    nicknames::update(&state, request).await
+}
+
+#[tauri::command]
+pub async fn delete_nickname(
+    state: State<'_, AppState>,
+    request: DeleteNicknameRequest,
+) -> Result<(), AppError> {
+    nicknames::delete(&state, request).await
+}
+
+#[tauri::command]
+pub async fn update_nickname_rule(
+    state: State<'_, AppState>,
+    request: UpdateNicknameRuleRequest,
+) -> Result<Nickname, AppError> {
+    nicknames::update_rule(&state, request).await
+}
+
+#[tauri::command]
+pub async fn delete_nickname_rule(
+    state: State<'_, AppState>,
+    request: DeleteNicknameRuleRequest,
+) -> Result<(), AppError> {
+    nicknames::delete_rule(&state, request).await
+}
+
+#[tauri::command]
+pub async fn nickname_settings(state: State<'_, AppState>) -> Result<NicknameSettings, AppError> {
+    nicknames::settings(&state).await
+}
+
+#[tauri::command]
+pub async fn set_nickname_stale_days(
+    state: State<'_, AppState>,
+    request: NicknameSettings,
+) -> Result<NicknameSettings, AppError> {
+    nicknames::set_stale_days(&state, request).await
 }
 
 #[cfg(test)]

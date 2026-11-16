@@ -23,3 +23,12 @@ Schema detail for backend work. The rules (location, permissions, migrations, im
 ## Backup settings
 
 `app_meta` holds `backup_folder` (the chosen folder; absent means `<data dir>/backups`), `backup_keep` (automatic backups kept, 1-365, default 14) and `last_daily_backup` (local date, `YYYY-MM-DD`, of the last successful daily backup). Behaviour: [backup.md](backup.md).
+
+## Nicknames
+
+- `nicknames`: one row per nickname; `name` is unique ignoring case, `enabled` and `stale_exempt` are 0/1.
+- `nickname_rules`: `mode` (`exact`, `contains`, `regex`), `field` (`description`, `memo`) and `pattern`, trimmed. `ON DELETE CASCADE` from `nicknames`.
+- `nickname_matches`: derived, one row per raw transaction with the winning rule. `ON DELETE CASCADE` from both `raw_transactions` and `nickname_rules`, so reverting an import or deleting a rule removes its rows. Raw rows are never changed.
+- Rebuilt in full, in one SQL transaction, after any nickname or rule create, update or delete (`nicknames::rebuild`). `commit_import` fills it for the new rows only (`nicknames::match_import`). A restore brings it back with the database.
+- `app_meta.nickname_stale_days`: days before a nickname is stale; absent means 90.
+- Matching and precedence: [nicknames.md](nicknames.md#when-several-rules-match).

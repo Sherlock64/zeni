@@ -12,4 +12,8 @@ amountCents: number,
 /**
  * The raw description.
  */
-description: string, memo: string | null, transactionType: string | null, runningBalanceCents: number | null, };
+description: string, memo: string | null, transactionType: string | null, runningBalanceCents: number | null, 
+/**
+ * The winning rule's nickname name; `None` when unmapped.
+ */
+nickname: string | null, };

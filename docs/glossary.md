@@ -17,6 +17,14 @@ Zeni's domain terms as the code uses them. One line each; details live in the li
 - **CSV layout**: a saved CSV column mapping, reused for files with the same header fingerprint (`csv_layouts.rs`).
 - **Header fingerprint**: a CSV header's names, each whitespace-collapsed and lowercased, joined with `\n` (`csv_import::fingerprint`).
 
+## Nicknames
+
+- **Nickname**: a short name shown in place of a transaction's bank text; one row in `nicknames`, with one or more rules ([nicknames.md](nicknames.md)).
+- **Rule**: a mode, a field and a pattern that decide which transactions get a nickname (`nickname_rules`).
+- **Match mode**: `exact`, `contains` or `regex` (`MatchMode`).
+- **Precedence**: which rule wins when several match: exact, then contains, then regex; then the longer pattern; then the older rule ([nicknames.md](nicknames.md#when-several-rules-match)).
+- **Stale**: a nickname that never matched, or whose last match is more than `nickname_stale_days` before the newest transaction; stale-exempt nicknames are never stale.
+
 ## Security
 
 - **Master password**: the user's password; an Argon2id key derived from it wraps the data key.

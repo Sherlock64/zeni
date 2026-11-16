@@ -1,7 +1,18 @@
 import { focusManager, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
-import { appInfo, completeSetup, listAccounts, listCsvLayouts, listImports, listTransactions, securityStatus, unlock } from "@/lib/commands";
+import {
+  appInfo,
+  completeSetup,
+  listAccounts,
+  listCsvLayouts,
+  listImports,
+  listNicknames,
+  listTransactions,
+  nicknameSettings,
+  securityStatus,
+  unlock,
+} from "@/lib/commands";
 import { routeTree } from "@/router";
 
 // The backup card has its own tests.
@@ -26,6 +37,15 @@ vi.mock("@/lib/commands", () => ({
   listImports: vi.fn(),
   revertImport: vi.fn(),
   listTransactions: vi.fn(),
+  listNicknames: vi.fn(),
+  saveNicknameRule: vi.fn(),
+  countRuleMatches: vi.fn(),
+  updateNickname: vi.fn(),
+  deleteNickname: vi.fn(),
+  updateNicknameRule: vi.fn(),
+  deleteNicknameRule: vi.fn(),
+  nicknameSettings: vi.fn(),
+  setNicknameStaleDays: vi.fn(),
 }));
 beforeEach(() => {
   vi.resetAllMocks();
@@ -34,6 +54,7 @@ beforeEach(() => {
   vi.mocked(listTransactions).mockResolvedValue({ rows: [], total: 0 });
   vi.mocked(listImports).mockResolvedValue([]);
   vi.mocked(listCsvLayouts).mockResolvedValue([]);
+  vi.mocked(nicknameSettings).mockResolvedValue({ staleDays: 90 });
 });
 
 // jsdom lacks matchMedia (the sidebar's mobile check) and scrollTo (the router's scroll reset).
@@ -66,12 +87,23 @@ test("redirects to Transactions and navigates with the sidebar", async () => {
   expect(nav.getByRole("link", { name: "Transactions" }).getAttribute("aria-current")).toBeNull();
 });
 
-test("lists Accounts between Transactions and Settings and opens the page", async () => {
+test("lists Nicknames after Transactions and opens the page", async () => {
+  vi.mocked(listNicknames).mockResolvedValue([]);
+  renderApp();
+  await screen.findByRole("heading", { level: 1, name: "Transactions" });
+  const nav = within(screen.getByRole("navigation", { name: "Main" }));
+  expect(nav.getAllByRole("link").map((link) => link.textContent)).toEqual(["Transactions", "Nicknames", "Accounts", "Settings"]);
+
+  fireEvent.click(nav.getByRole("link", { name: "Nicknames" }));
+  expect(await screen.findByRole("heading", { level: 1, name: "Nicknames" })).toBeTruthy();
+  expect(nav.getByRole("link", { name: "Nicknames" }).getAttribute("aria-current")).toBe("page");
+});
+
+test("lists Accounts between Nicknames and Settings and opens the page", async () => {
   vi.mocked(listAccounts).mockResolvedValue([]);
   renderApp();
   await screen.findByRole("heading", { level: 1, name: "Transactions" });
   const nav = within(screen.getByRole("navigation", { name: "Main" }));
-  expect(nav.getAllByRole("link").map((link) => link.textContent)).toEqual(["Transactions", "Accounts", "Settings"]);
 
   fireEvent.click(nav.getByRole("link", { name: "Accounts" }));
   expect(await screen.findByRole("heading", { level: 1, name: "Accounts" })).toBeTruthy();

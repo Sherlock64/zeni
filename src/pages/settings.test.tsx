@@ -1,6 +1,13 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, within } from "@testing-library/react";
-import { appInfo, regenerateRecoveryCodes, sampleError, securityStatus } from "@/lib/commands";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  appInfo,
+  nicknameSettings,
+  regenerateRecoveryCodes,
+  sampleError,
+  securityStatus,
+  setNicknameStaleDays,
+} from "@/lib/commands";
 import { SettingsPage } from "@/pages/settings";
 import type { AppInfo } from "@/types/bindings/AppInfo";
 
@@ -12,10 +19,13 @@ vi.mock("@/lib/commands", () => ({
   sampleError: vi.fn(),
   securityStatus: vi.fn(),
   regenerateRecoveryCodes: vi.fn(),
+  nicknameSettings: vi.fn(),
+  setNicknameStaleDays: vi.fn(),
 }));
 beforeEach(() => {
   vi.resetAllMocks();
   vi.mocked(securityStatus).mockResolvedValue({ state: "unlocked", keyringSaved: true, recoveryCodesLeft: 8 });
+  vi.mocked(nicknameSettings).mockResolvedValue({ staleDays: 90 });
 });
 
 const info = { name: "Zeni", version: "0.1.0", dbPath: "/data/zeni.db", migrationsApplied: 1 };
@@ -234,4 +244,72 @@ test("cancelling clears the password", async () => {
   await vi.waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
   fireEvent.click(screen.getByRole("button", { name: "Generate new recovery codes" }));
   expect(((await screen.findByLabelText("Master password")) as HTMLInputElement).value).toBe("");
+});
+
+const staleField = () => screen.findByLabelText("Flag nicknames as stale after (days)");
+const nicknamesCard = () => within(screen.getByRole("heading", { name: "Nicknames" }).closest<HTMLElement>("[data-slot=card]")!);
+
+test("shows the stale days setting and saves a new value", async () => {
+  vi.mocked(appInfo).mockResolvedValue(info);
+  vi.mocked(setNicknameStaleDays).mockResolvedValue({ staleDays: 30 });
+  const invalidate = renderPage();
+  const field = (await staleField()) as HTMLInputElement;
+  expect(field.value).toBe("90");
+  fireEvent.change(field, { target: { value: "30" } });
+  fireEvent.click(nicknamesCard().getByRole("button", { name: "Save" }));
+  expect(await nicknamesCard().findByText("Saved.")).toBeTruthy();
+  expect(vi.mocked(setNicknameStaleDays).mock.calls[0][0]).toEqual({ staleDays: 30 });
+  expect(invalidate).toHaveBeenCalledWith({ queryKey: ["list_nicknames"] });
+  expect(field.value).toBe("30");
+});
+
+test.each(["0", "3651", "1.5", ""])("rejects %j inline without saving", async (value) => {
+  vi.mocked(appInfo).mockResolvedValue(info);
+  renderPage();
+  const field = await staleField();
+  fireEvent.change(field, { target: { value } });
+  fireEvent.click(nicknamesCard().getByRole("button", { name: "Save" }));
+  expect(field.getAttribute("aria-invalid")).toBe("true");
+  expect(nicknamesCard().getByRole("alert").textContent).toBe("Stale days must be 1 to 3650.");
+  expect(setNicknameStaleDays).not.toHaveBeenCalled();
+  fireEvent.change(field, { target: { value: "5" } });
+  expect(field.getAttribute("aria-invalid")).toBeNull();
+});
+
+test("shows a backend validation error under the field and other errors in an alert", async () => {
+  vi.mocked(appInfo).mockResolvedValue(info);
+  vi.mocked(setNicknameStaleDays)
+    .mockRejectedValueOnce({ kind: "Validation", message: "Stale days must be 1 to 3650." })
+    .mockRejectedValueOnce(invokeError);
+  renderPage();
+  const field = await staleField();
+  const save = nicknamesCard().getByRole("button", { name: "Save" });
+  fireEvent.click(save);
+  await waitFor(() => expect(field.getAttribute("aria-invalid")).toBe("true"));
+
+  fireEvent.click(save);
+  const alert = await nicknamesCard().findByText("Couldn't save the setting");
+  expect(alert.closest("[role=alert]")?.textContent).toContain(invokeHint);
+  expect(field.getAttribute("aria-invalid")).toBeNull();
+  expect(nicknamesCard().queryByText("Saved.")).toBeNull();
+});
+
+test("marks Save busy while saving and ignores repeat presses", async () => {
+  vi.mocked(appInfo).mockResolvedValue(info);
+  vi.mocked(setNicknameStaleDays).mockReturnValue(new Promise(() => {}));
+  renderPage();
+  await staleField();
+  fireEvent.click(nicknamesCard().getByRole("button", { name: "Save" }));
+  const busy = await nicknamesCard().findByRole("button", { name: "Saving…" });
+  expect(busy.getAttribute("aria-disabled")).toBe("true");
+  fireEvent.click(busy);
+  expect(setNicknameStaleDays).toHaveBeenCalledTimes(1);
+});
+
+test("shows an error when the stale days setting can't load", async () => {
+  vi.mocked(appInfo).mockResolvedValue(info);
+  vi.mocked(nicknameSettings).mockRejectedValue(invokeError);
+  renderPage();
+  expect((await screen.findByText("Couldn't load nickname settings")).closest("[role=alert]")).toBeTruthy();
+  expect(screen.queryByLabelText("Flag nicknames as stale after (days)")).toBeNull();
 });

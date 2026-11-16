@@ -1,5 +1,5 @@
 import { Link, Outlet, useLocation, useRouterState } from "@tanstack/react-router";
-import { LandmarkIcon, ReceiptTextIcon, SettingsIcon } from "lucide-react";
+import { LandmarkIcon, ReceiptTextIcon, SettingsIcon, TagIcon } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { CommandErrorAlert } from "@/components/command-error-alert";
 import {
@@ -26,6 +26,7 @@ import type { GateScreenProps } from "@/types/ui";
 
 const navItems = [
   { to: "/transactions", label: "Transactions", icon: ReceiptTextIcon },
+  { to: "/nicknames", label: "Nicknames", icon: TagIcon },
   { to: "/accounts", label: "Accounts", icon: LandmarkIcon },
   { to: "/settings", label: "Settings", icon: SettingsIcon },
 ] as const;
