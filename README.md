@@ -23,6 +23,8 @@ To back up and restore your data: [docs/backup.md](docs/backup.md).
 
 To give transactions short names: [docs/nicknames.md](docs/nicknames.md).
 
+How the app fits together: [docs/architecture.md](docs/architecture.md). How the Claude Code agents build it: [docs/workflow.md](docs/workflow.md).
+
 ## Commands
 
 ```sh

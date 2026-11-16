@@ -13,6 +13,8 @@ First read `.claude/skills/build-version/dev-contract.md` and follow it. Your fi
 - `CLAUDE.md`: instructions for coding agents. Keep it to rules, layout, commands and database facts. Add a rule only when the PRD or the user sets one; keep every existing rule unless the user removes it.
 - `README.md`: for a developer on Pop!_OS. Cover prerequisites, install, dev run, tests, release build, and where the data lives.
 - `docs/`: user-facing guides for features the user operates, written for a non-developer. Create a guide only when the version adds such a feature.
+- `docs/architecture.md`: the Mermaid component and flow diagrams. Update them when modules, pages, data stores or the main flows change.
+- `docs/glossary.md`: add the PRD's `New Terms` as the code names them.
 
 ## Rules
 
