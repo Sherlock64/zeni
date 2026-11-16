@@ -59,13 +59,13 @@ One major change per version; each version gets its own PRD, written from this r
 - Match count, last matched date, stale flag, stale-flag exempt option, on/off switch.
 - Nicknames management page.
 
-## V6: Categorisation
+## V6: Categorization
 
 - Flat categories table with an editable starter list and descriptions; category editor.
 - Transaction overlay table: category, note, set by (model or user), reviewed.
 - Ollama integration: detect Ollama, list installed models, choose a base model.
 - Prompts constrained to the category list; out-of-list answers rejected.
-- "Categorize now", "Categorize all" and "Recategorize all" (skips user-set rows).
+- "Categorize now" and "Recategorize all" (skips user- and nickname-set rows).
 - Batch review screen grouped by category, with a "Looks good" button.
 - Model builds: up to N reviewed examples per category, Modelfile generation, builds table, choose the active build.
 - Nickname default category skips the model.
