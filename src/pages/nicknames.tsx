@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { EllipsisIcon, PlusIcon, TagIcon } from "lucide-react";
 import { type FormEvent, useEffect, useId, useRef, useState } from "react";
+import { CategorySelect } from "@/components/category-select";
 import { CommandErrorAlert } from "@/components/command-error-alert";
 import { NicknameRuleFields } from "@/components/nickname-rule-fields";
 import { Page } from "@/components/page";
@@ -35,7 +36,13 @@ import { formatDate } from "@/lib/dates";
 import { focusFirstInvalid } from "@/lib/focus";
 import { errorField } from "@/lib/nickname-errors";
 import { NICKNAME_MAX_LEN } from "@/lib/nickname-limits";
-import { NICKNAMES_KEY, TRANSACTIONS_KEY } from "@/lib/query-keys";
+import {
+  CATEGORIES_KEY,
+  NICKNAMES_KEY,
+  REVIEW_GROUPS_KEY,
+  TRANSACTIONS_KEY,
+  UNREVIEWED_COUNT_KEY,
+} from "@/lib/query-keys";
 import type { Nickname } from "@/types/bindings/Nickname";
 import type { NicknameRule } from "@/types/bindings/NicknameRule";
 import type { RuleInput } from "@/types/bindings/RuleInput";
@@ -55,11 +62,17 @@ const fieldLabels = { description: "Description", memo: "Memo" } as const;
 function useRefresh() {
   const queryClient = useQueryClient();
   return () =>
-    Promise.all([
-      queryClient.invalidateQueries({ queryKey: NICKNAMES_KEY }),
-      queryClient.invalidateQueries({ queryKey: TRANSACTIONS_KEY }),
-    ]);
+    Promise.all(
+      [NICKNAMES_KEY, TRANSACTIONS_KEY, REVIEW_GROUPS_KEY, UNREVIEWED_COUNT_KEY, CATEGORIES_KEY].map((queryKey) =>
+        queryClient.invalidateQueries({ queryKey }),
+      ),
+    );
 }
+
+// The whole nickname goes back on every update, so a save never clears its default category by accident.
+// The request omits a null default, which clears it.
+const updateRequest = ({ id, name, enabled, staleExempt, defaultCategoryId }: Nickname) =>
+  updateNickname({ id, name, enabled, staleExempt, defaultCategoryId: defaultCategoryId ?? undefined });
 
 // Last matched date over the match count, so the table fits a narrow window.
 function NicknameMatches({ count, last }: NicknameMatchesProps) {
@@ -122,6 +135,7 @@ export function NicknamesPage() {
   const [onlyStale, setOnlyStale] = useState(false);
   const table = useRef<HTMLDivElement>(null);
   const staleFilter = useRef<HTMLButtonElement>(null);
+  const hintId = useId();
   // The button that opened a dialog; when a delete removed it, the nickname's menu or Add nickname.
   const opener = useRef<HTMLElement | null>(null);
   const addButton = useRef<HTMLButtonElement>(null);
@@ -134,7 +148,7 @@ export function NicknamesPage() {
 
   // Switches and checkboxes change at once and go back if the save fails.
   const toggle = useMutation({
-    mutationFn: updateNickname,
+    mutationFn: updateRequest,
     onMutate: async (request) => {
       await queryClient.cancelQueries({ queryKey: NICKNAMES_KEY });
       const previous = queryClient.getQueryData<Nickname[]>(NICKNAMES_KEY);
@@ -156,10 +170,9 @@ export function NicknamesPage() {
     },
   });
 
-  function setFlag(nickname: Nickname, change: Pick<Nickname, "enabled"> | Pick<Nickname, "staleExempt">) {
+  function setFlag(nickname: Nickname, change: Partial<Pick<Nickname, "enabled" | "staleExempt" | "defaultCategoryId">>) {
     if (toggle.isPending) return;
-    const { id, name, enabled, staleExempt } = nickname;
-    toggle.mutate({ id, name, enabled, staleExempt, ...change });
+    toggle.mutate({ ...nickname, ...change });
   }
 
   function openForm(next: NicknameDialogTarget, from: HTMLElement) {
@@ -292,94 +305,114 @@ export function NicknamesPage() {
             </EmptyContent>
           </Empty>
         ) : (
-          <div ref={table} className="rounded-xl border" aria-busy={nicknames.isFetching}>
-            {/* Fixed column widths, so the columns don't shift when the filter changes the rows. */}
-            <Table aria-label="Nicknames" className="table-fixed">
-              <TableHeader>
-                <TableRow>
-                  <TableHead scope="col">Nickname and rules</TableHead>
-                  <TableHead scope="col" className="w-32">
-                    Last matched
-                  </TableHead>
-                  <TableHead scope="col" className="w-14">
-                    On
-                  </TableHead>
-                  <TableHead scope="col" className="w-24 whitespace-normal">
-                    Don't flag as stale
-                  </TableHead>
-                  <TableHead scope="col" className="w-11">
-                    <span className="sr-only">Actions</span>
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              {shown.map((nickname) => (
-                <TableBody key={nickname.id} className="border-b last:border-b-0 [&_tr]:border-b-0">
+          <>
+            <p id={hintId} className="text-sm text-muted-foreground">
+              Default category: rows this nickname matches get this category without asking the model.
+            </p>
+            <div ref={table} className="rounded-xl border" aria-busy={nicknames.isFetching}>
+              {/* Fixed column widths, so the columns don't shift when the filter changes the rows. */}
+              {/* A minimum width keeps the name column readable; a narrow window scrolls the table sideways. */}
+              <Table aria-label="Nicknames" className="min-w-[42rem] table-fixed">
+                <TableHeader>
                   <TableRow>
-                    <TableCell className={nickname.enabled ? "whitespace-normal" : "whitespace-normal text-muted-foreground"}>
-                      <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                        <span className="font-medium wrap-anywhere">{nickname.name}</span>
-                        {nickname.stale && <Badge variant="secondary">Stale</Badge>}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <NicknameMatches count={nickname.matchCount} last={nickname.lastMatched} />
-                    </TableCell>
-                    <TableCell>
-                      <Switch
-                        aria-label={`${nickname.name} on`}
-                        checked={nickname.enabled}
-                        aria-disabled={toggle.isPending}
-                        onCheckedChange={(enabled) => setFlag(nickname, { enabled })}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Checkbox
-                        aria-label={`Don't flag ${nickname.name} as stale`}
-                        className="border-muted-foreground"
-                        checked={nickname.staleExempt}
-                        aria-disabled={toggle.isPending}
-                        onCheckedChange={(checked) => setFlag(nickname, { staleExempt: checked === true })}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <NicknameRowMenu
-                        label={`Actions for ${nickname.name}`}
-                        menuFor={nickname.id}
-                        items={[
-                          { label: "Rename", onSelect: (from) => openForm({ kind: "rename", nickname }, from) },
-                          { label: "Add rule", onSelect: (from) => openForm({ kind: "addRule", nickname }, from) },
-                          // With one rule, its actions live here, so the nickname has one menu.
-                          ...(nickname.rules.length === 1 ? ruleItems(nickname, nickname.rules[0]) : []),
-                          { label: "Delete nickname", destructive: true, onSelect: (from) => startDelete({ nickname }, from) },
-                        ]}
-                      />
-                    </TableCell>
+                    <TableHead scope="col">Nickname and rules</TableHead>
+                    <TableHead scope="col" className="w-32">
+                      Last matched
+                    </TableHead>
+                    <TableHead scope="col" className="w-14">
+                      On
+                    </TableHead>
+                    <TableHead scope="col" className="w-24 whitespace-normal">
+                      Don't flag as stale
+                    </TableHead>
+                    <TableHead scope="col" className="w-40">
+                      Default category
+                    </TableHead>
+                    <TableHead scope="col" className="w-11">
+                      <span className="sr-only">Actions</span>
+                    </TableHead>
                   </TableRow>
-                  {nickname.rules.map((rule) => (
-                    <TableRow key={rule.id}>
-                      <TableCell className="pl-6 whitespace-normal">
-                        <span className="block whitespace-nowrap text-muted-foreground">
-                          {modeLabels[rule.mode]} · {fieldLabels[rule.field]}
+                </TableHeader>
+                {shown.map((nickname) => (
+                  <TableBody key={nickname.id} className="border-b last:border-b-0 [&_tr]:border-b-0">
+                    <TableRow>
+                      <TableCell className={nickname.enabled ? "whitespace-normal" : "whitespace-normal text-muted-foreground"}>
+                        <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                          <span className="font-medium wrap-anywhere">{nickname.name}</span>
+                          {nickname.stale && <Badge variant="secondary">Stale</Badge>}
                         </span>
-                        <code className="font-mono text-xs wrap-anywhere">{rule.pattern}</code>
                       </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {/* With one rule its figures are the nickname's, shown on the row above. */}
-                        {nickname.rules.length > 1 && <NicknameMatches count={rule.matchCount} last={rule.lastMatched} />}
-                      </TableCell>
-                      <TableCell />
-                      <TableCell />
                       <TableCell>
-                        {nickname.rules.length > 1 && (
-                          <NicknameRowMenu label={`Actions for rule ${rule.pattern}`} items={ruleItems(nickname, rule)} />
-                        )}
+                        <NicknameMatches count={nickname.matchCount} last={nickname.lastMatched} />
+                      </TableCell>
+                      <TableCell>
+                        <Switch
+                          aria-label={`${nickname.name} on`}
+                          checked={nickname.enabled}
+                          aria-disabled={toggle.isPending}
+                          onCheckedChange={(enabled) => setFlag(nickname, { enabled })}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Checkbox
+                          aria-label={`Don't flag ${nickname.name} as stale`}
+                          className="border-muted-foreground"
+                          checked={nickname.staleExempt}
+                          aria-disabled={toggle.isPending}
+                          onCheckedChange={(checked) => setFlag(nickname, { staleExempt: checked === true })}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <CategorySelect
+                          aria-label={`${nickname.name} default category`}
+                          aria-describedby={hintId}
+                          aria-disabled={toggle.isPending}
+                          value={nickname.defaultCategoryId}
+                          onChange={(defaultCategoryId) => setFlag(nickname, { defaultCategoryId })}
+                          uncategorizedLabel="No default"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <NicknameRowMenu
+                          label={`Actions for ${nickname.name}`}
+                          menuFor={nickname.id}
+                          items={[
+                            { label: "Rename", onSelect: (from) => openForm({ kind: "rename", nickname }, from) },
+                            { label: "Add rule", onSelect: (from) => openForm({ kind: "addRule", nickname }, from) },
+                            // With one rule, its actions live here, so the nickname has one menu.
+                            ...(nickname.rules.length === 1 ? ruleItems(nickname, nickname.rules[0]) : []),
+                            { label: "Delete nickname", destructive: true, onSelect: (from) => startDelete({ nickname }, from) },
+                          ]}
+                        />
                       </TableCell>
                     </TableRow>
-                  ))}
-                </TableBody>
-              ))}
-            </Table>
-          </div>
+                    {nickname.rules.map((rule) => (
+                      <TableRow key={rule.id}>
+                        <TableCell className="pl-6 whitespace-normal">
+                          <span className="block whitespace-nowrap text-muted-foreground">
+                            {modeLabels[rule.mode]} · {fieldLabels[rule.field]}
+                          </span>
+                          <code className="font-mono text-xs wrap-anywhere">{rule.pattern}</code>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {/* With one rule its figures are the nickname's, shown on the row above. */}
+                          {nickname.rules.length > 1 && <NicknameMatches count={rule.matchCount} last={rule.lastMatched} />}
+                        </TableCell>
+                        <TableCell />
+                        <TableCell />
+                        <TableCell />
+                        <TableCell>
+                          {nickname.rules.length > 1 && (
+                            <NicknameRowMenu label={`Actions for rule ${rule.pattern}`} items={ruleItems(nickname, rule)} />
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                ))}
+              </Table>
+            </div>
+          </>
         )}
       </>
     );
@@ -458,11 +491,13 @@ function NicknameFormDialog({ target, open, onOpenChange, onCloseAutoFocus }: Ni
   const nicknames = useQuery({ queryKey: NICKNAMES_KEY, queryFn: listNicknames, enabled: open && target.kind === "add" });
   const save = useMutation({
     mutationFn: async () => {
-      if (target.kind === "add") return saveNicknameRule({ name, rule });
-      if (target.kind === "addRule") return saveNicknameRule({ name: target.nickname.name, rule });
+      // A rule added to an existing nickname keeps its default category; the request omits a null one, which clears it.
+      if (target.kind === "add") return saveNicknameRule({ name, rule, defaultCategoryId: existing?.defaultCategoryId ?? undefined });
+      if (target.kind === "addRule") {
+        return saveNicknameRule({ name: target.nickname.name, rule, defaultCategoryId: target.nickname.defaultCategoryId ?? undefined });
+      }
       if (target.kind === "editRule") return updateNicknameRule({ id: target.rule.id, rule });
-      const { id, enabled, staleExempt } = target.nickname;
-      return updateNickname({ id, name, enabled, staleExempt });
+      return updateRequest({ ...target.nickname, name });
     },
     // Close once the list shows the change, so focus can go back to a button that still exists.
     onSuccess: async () => {
@@ -489,7 +524,8 @@ function NicknameFormDialog({ target, open, onOpenChange, onCloseAutoFocus }: Ni
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    if (!save.isPending) save.mutate();
+    // Adding to an existing name keeps its default, so wait for the list that holds it.
+    if (!save.isPending && !(target.kind === "add" && !nicknames.data)) save.mutate();
   }
 
   return (

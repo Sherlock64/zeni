@@ -1,5 +1,6 @@
 //! The transaction list: sorting, date filtering, search and paging in SQLite.
 
+use sqlx::sqlite::SqliteRow;
 use sqlx::{QueryBuilder, Row, Sqlite};
 
 use crate::security;
@@ -10,17 +11,32 @@ use crate::types::{
 
 const MAX_PAGE_SIZE: u32 = 200;
 const MAX_SEARCH_CHARS: usize = 200;
-/// Each raw row plus its winning nickname, if any; `nickname_matches` holds at most one row per transaction.
-const TRANSACTIONS_WITH_NICKNAME: &str = " FROM raw_transactions r \
-     LEFT JOIN nickname_matches m ON m.raw_transaction_id = r.id \
-     LEFT JOIN nickname_rules nr ON nr.id = m.rule_id \
-     LEFT JOIN nicknames n ON n.id = nr.nickname_id AND n.enabled = 1";
+/// Each raw row plus its view row (nickname, effective category, set by, reviewed, note; one per raw row) and category name.
+// Macros, not consts, so callers can `concat!` static queries from them.
+macro_rules! transactions_from {
+    () => {
+        " FROM raw_transactions r \
+         JOIN effective_categories e ON e.raw_transaction_id = r.id \
+         LEFT JOIN categories c ON c.id = e.category_id"
+    };
+}
+/// The columns `transaction_from_row` reads, over `transactions_from!`.
+macro_rules! transaction_columns {
+    () => {
+        "SELECT r.id, r.import_id, r.posted_date, r.amount_cents, r.raw_description, r.memo, \
+         r.transaction_type, r.running_balance_cents, e.nickname, e.category_id, \
+         c.name AS category, e.set_by, e.reviewed, e.note"
+    };
+}
+pub(crate) use {transaction_columns, transactions_from};
 
 /// Validated filters: dates are strict "YYYY-MM-DD", search is a LIKE pattern with wildcards escaped.
 struct Filters {
     from: Option<String>,
     to: Option<String>,
     pattern: Option<String>,
+    category_id: Option<i64>,
+    uncategorized: bool,
 }
 
 /// One page of the checking account's raw transactions.
@@ -28,21 +44,17 @@ pub async fn list(state: &AppState, query: TransactionQuery) -> Result<Transacti
     let filters = validate(&query)?;
     let pool = &security::pool(state)?;
 
-    let mut count = QueryBuilder::<Sqlite>::new("SELECT COUNT(*)");
-    count.push(TRANSACTIONS_WITH_NICKNAME);
+    let mut count = QueryBuilder::<Sqlite>::new(concat!("SELECT COUNT(*)", transactions_from!()));
     push_filters(&mut count, &filters);
     let total: u32 = count.build_query_scalar().fetch_one(pool).await?;
 
-    let mut select = QueryBuilder::<Sqlite>::new(
-        "SELECT r.id, r.import_id, r.posted_date, r.amount_cents, r.raw_description, r.memo, \
-         r.transaction_type, r.running_balance_cents, n.name AS nickname",
-    );
-    select.push(TRANSACTIONS_WITH_NICKNAME);
+    let mut select =
+        QueryBuilder::<Sqlite>::new(concat!(transaction_columns!(), transactions_from!()));
     push_filters(&mut select, &filters);
     let column = match query.sort {
         TransactionSort::Date => "r.posted_date",
         TransactionSort::Amount => "r.amount_cents",
-        TransactionSort::Description => "COALESCE(n.name, r.raw_description) COLLATE NOCASE",
+        TransactionSort::Description => "COALESCE(e.nickname, r.raw_description) COLLATE NOCASE",
     };
     let direction = match query.direction {
         SortDirection::Asc => "ASC",
@@ -62,41 +74,43 @@ pub async fn list(state: &AppState, query: TransactionQuery) -> Result<Transacti
         .fetch_all(pool)
         .await?
         .into_iter()
-        .map(|row| Transaction {
-            id: row.get("id"),
-            import_id: row.get("import_id"),
-            posted_date: row.get("posted_date"),
-            amount_cents: row.get("amount_cents"),
-            description: row.get("raw_description"),
-            memo: row.get("memo"),
-            transaction_type: row.get("transaction_type"),
-            running_balance_cents: row.get("running_balance_cents"),
-            nickname: row.get("nickname"),
-        })
+        .map(|row| transaction_from_row(&row))
         .collect();
     Ok(TransactionPage { rows, total })
 }
 
+/// One row selected with `transaction_columns!`.
+pub(crate) fn transaction_from_row(row: &SqliteRow) -> Transaction {
+    Transaction {
+        id: row.get("id"),
+        import_id: row.get("import_id"),
+        posted_date: row.get("posted_date"),
+        amount_cents: row.get("amount_cents"),
+        description: row.get("raw_description"),
+        memo: row.get("memo"),
+        transaction_type: row.get("transaction_type"),
+        running_balance_cents: row.get("running_balance_cents"),
+        nickname: row.get("nickname"),
+        category_id: row.get("category_id"),
+        category: row.get("category"),
+        set_by: row.get("set_by"),
+        reviewed: row.get("reviewed"),
+        note: row.get("note"),
+    }
+}
+
 fn validate(query: &TransactionQuery) -> Result<Filters, AppError> {
+    let uncategorized = query.uncategorized == Some(true);
+    if query.category_id.is_some() && uncategorized {
+        return Err(AppError::Validation("Pick one category filter.".into()));
+    }
     if !(1..=MAX_PAGE_SIZE).contains(&query.page_size) {
         return Err(AppError::Validation(format!(
             "pageSize must be 1 to {MAX_PAGE_SIZE}"
         )));
     }
-    let date = |field: &str, value: &Option<String>| match value {
-        Some(text) if !is_date(text) => Err(AppError::Validation(format!(
-            "{field} must be a date in YYYY-MM-DD form"
-        ))),
-        _ => Ok(value.clone()),
-    };
-    let from = date("from", &query.from)?;
-    let to = date("to", &query.to)?;
-    if let (Some(from), Some(to)) = (&from, &to) {
-        // Same fixed-width form, so text order is date order.
-        if from > to {
-            return Err(AppError::Validation("from must not be after to".into()));
-        }
-    }
+    validate_range(query.from.as_deref(), query.to.as_deref())?;
+    let (from, to) = (query.from.clone(), query.to.clone());
     let search = query.search.as_deref().map(str::trim).unwrap_or("");
     if search.chars().count() > MAX_SEARCH_CHARS {
         return Err(AppError::Validation(format!(
@@ -110,7 +124,31 @@ fn validate(query: &TransactionQuery) -> Result<Filters, AppError> {
             .replace('_', "\\_");
         format!("%{escaped}%")
     });
-    Ok(Filters { from, to, pattern })
+    Ok(Filters {
+        from,
+        to,
+        pattern,
+        category_id: query.category_id,
+        uncategorized,
+    })
+}
+
+/// Optional inclusive bounds: each a strict "YYYY-MM-DD" date, and `from` not after `to`.
+pub(crate) fn validate_range(from: Option<&str>, to: Option<&str>) -> Result<(), AppError> {
+    for (field, value) in [("from", from), ("to", to)] {
+        if value.is_some_and(|text| !is_date(text)) {
+            return Err(AppError::Validation(format!(
+                "{field} must be a date in YYYY-MM-DD form"
+            )));
+        }
+    }
+    // Same fixed-width form, so text order is date order.
+    if let (Some(from), Some(to)) = (from, to)
+        && from > to
+    {
+        return Err(AppError::Validation("from must not be after to".into()));
+    }
+    Ok(())
 }
 
 /// A real calendar date in strict "YYYY-MM-DD" form, year 0001 or later.
@@ -138,7 +176,7 @@ pub(crate) fn is_date(text: &str) -> bool {
     year > 0 && (1..=days).contains(&day)
 }
 
-/// The WHERE clause shared by the count and the page (both over `TRANSACTIONS_WITH_NICKNAME`): the checking account (lowest id) plus filters.
+/// The WHERE clause shared by the count and the page (both over `transactions_from!`): the checking account (lowest id) plus filters.
 fn push_filters(builder: &mut QueryBuilder<Sqlite>, filters: &Filters) {
     builder.push(" WHERE r.account_id = (SELECT MIN(id) FROM accounts)");
     if let Some(from) = &filters.from {
@@ -151,14 +189,22 @@ fn push_filters(builder: &mut QueryBuilder<Sqlite>, filters: &Filters) {
             .push(" AND r.posted_date <= ")
             .push_bind(to.as_str());
     }
+    if let Some(category_id) = filters.category_id {
+        builder.push(" AND e.category_id = ").push_bind(category_id);
+    }
+    if filters.uncategorized {
+        builder.push(" AND e.category_id IS NULL");
+    }
     if let Some(pattern) = &filters.pattern {
         // LIKE is case-insensitive for ASCII only (SQLite without ICU).
         builder
-            .push(" AND (n.name LIKE ")
+            .push(" AND (e.nickname LIKE ")
             .push_bind(pattern.as_str())
             .push(" ESCAPE '\\' OR r.raw_description LIKE ")
             .push_bind(pattern.as_str())
             .push(" ESCAPE '\\' OR r.memo LIKE ")
+            .push_bind(pattern.as_str())
+            .push(" ESCAPE '\\' OR e.note LIKE ")
             .push_bind(pattern.as_str())
             .push(" ESCAPE '\\')");
     }
@@ -170,6 +216,7 @@ mod tests {
 
     use super::*;
     use crate::db;
+    use crate::types::SetBy;
 
     struct Fixture {
         state: AppState,
@@ -204,6 +251,7 @@ mod tests {
             session: Default::default(),
             backup: Default::default(),
             pending_import: Default::default(),
+            jobs: Default::default(),
         };
         let pool = &security::pool(&state).unwrap();
         run(async {
@@ -264,6 +312,8 @@ mod tests {
             direction: SortDirection::Asc,
             page: 0,
             page_size: 200,
+            category_id: None,
+            uncategorized: None,
         }
     }
 
@@ -423,6 +473,102 @@ mod tests {
         assert_eq!(search("hidden"), (vec![], 0));
     }
 
+    /// Row 1: user Groceries (4) with a note; row 2: model Dining out (5), unreviewed;
+    /// row 3: nickname default Housing (1), with the user's note only.
+    fn add_categories(f: &Fixture) {
+        let pool = &security::pool(&f.state).unwrap();
+        run(async {
+            for sql in [
+                "INSERT INTO nicknames (id, name, enabled, default_category_id) VALUES (1, 'Rent Co', 1, 1)",
+                "INSERT INTO nickname_rules (id, nickname_id, mode, field, pattern)
+                 VALUES (1, 1, 'exact', 'description', 'grocery store')",
+                "INSERT INTO nickname_matches (raw_transaction_id, rule_id) VALUES (3, 1)",
+                "INSERT INTO model_builds (id, name, base_model, example_count, sent)
+                 VALUES (1, 'zeni-1', 'base', 0, '{}')",
+                "INSERT INTO transaction_categories (raw_transaction_id, user_category_id, note)
+                 VALUES (1, 4, 'Birthday Treat'), (3, NULL, 'shared 100%')",
+                "INSERT INTO transaction_categories (raw_transaction_id, model_category_id, model_build_id)
+                 VALUES (2, 5, 1)",
+            ] {
+                sqlx::query(sql).execute(pool).await.unwrap();
+            }
+        });
+    }
+
+    #[test]
+    fn maps_the_effective_category() {
+        let f = fixture("category-map");
+        add_categories(&f);
+        let page = run(list(&f.state, query())).unwrap();
+        let got: Vec<_> = page
+            .rows
+            .iter()
+            .take(4)
+            .map(|row| {
+                (
+                    row.category_id,
+                    row.category.as_deref(),
+                    row.set_by,
+                    row.reviewed,
+                    row.note.as_deref(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            got,
+            [
+                (
+                    Some(4),
+                    Some("Groceries"),
+                    Some(SetBy::User),
+                    true,
+                    Some("Birthday Treat")
+                ),
+                (Some(5), Some("Dining out"), Some(SetBy::Model), false, None),
+                (
+                    Some(1),
+                    Some("Housing"),
+                    Some(SetBy::Nickname),
+                    true,
+                    Some("shared 100%")
+                ),
+                (None, None, None, false, None),
+            ]
+        );
+        assert_eq!(page.rows[2].nickname.as_deref(), Some("Rent Co"));
+    }
+
+    #[test]
+    fn filters_by_category_or_uncategorized() {
+        let f = fixture("category-filter");
+        add_categories(&f);
+        assert_eq!(ids(&f, |q| q.category_id = Some(5)), (vec![2], 1));
+        assert_eq!(ids(&f, |q| q.category_id = Some(1)), (vec![3], 1));
+        assert_eq!(ids(&f, |q| q.category_id = Some(9)), (vec![], 0));
+        assert_eq!(
+            ids(&f, |q| q.uncategorized = Some(true)),
+            (vec![4, 5, 6], 3)
+        );
+        assert_eq!(ids(&f, |q| q.uncategorized = Some(false)).1, 6);
+        let both = ids(&f, |q| {
+            q.category_id = Some(4);
+            q.uncategorized = Some(false);
+        });
+        assert_eq!(both, (vec![1], 1));
+    }
+
+    #[test]
+    fn search_matches_notes() {
+        let f = fixture("note-search");
+        add_categories(&f);
+        let search = |text: &str| ids(&f, |q| q.search = Some(text.into()));
+        assert_eq!(search("birthday treat"), (vec![1], 1));
+        assert_eq!(search("SHARED"), (vec![3], 1));
+        // "0%" is literal: row 3's note and memo, row 5's description.
+        assert_eq!(search("0%"), (vec![3, 5], 2));
+        assert_eq!(search("rent"), (vec![3], 1));
+    }
+
     #[test]
     fn pages_with_total_of_all_matches() {
         let f = fixture("paging");
@@ -500,6 +646,21 @@ mod tests {
             error(|q| q.search = Some("a".repeat(201))),
             "search must be at most 200 characters"
         );
+        assert_eq!(
+            error(|q| {
+                q.category_id = Some(4);
+                q.uncategorized = Some(true);
+            }),
+            "Pick one category filter."
+        );
+        assert!(
+            validate(&TransactionQuery {
+                category_id: Some(4),
+                uncategorized: Some(false),
+                ..query()
+            })
+            .is_ok()
+        );
     }
 
     #[test]
@@ -509,6 +670,7 @@ mod tests {
             session: Default::default(),
             backup: Default::default(),
             pending_import: Default::default(),
+            jobs: Default::default(),
         };
         assert!(matches!(
             run(list(&state, query())),

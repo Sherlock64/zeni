@@ -11,4 +11,8 @@ notPosted: number,
 /**
  * Rows skipped as "Yes, duplicate" in review.
  */
-reviewSkipped: number, fileBalanceCheck: FileBalanceCheck, };
+reviewSkipped: number, fileBalanceCheck: FileBalanceCheck, 
+/**
+ * Why categorizing the new rows didn't start; `None` when it started or wasn't due.
+ */
+categorizeNotice: string | null, };

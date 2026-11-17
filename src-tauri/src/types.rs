@@ -8,11 +8,13 @@ use zeroize::Zeroizing;
 /// Managed Tauri state. `db` holds the startup result, so the app still runs when the database can't open.
 /// `session` holds the unlocked data key until the app exits. `pending_import` holds the one import
 /// waiting for a CSV mapping or a duplicate review. A restore swaps `db`, so read it through `security::pool`.
+/// `jobs` holds the one Ollama job (a categorize run, a download or a build).
 pub struct AppState {
     pub db: std::sync::RwLock<Result<Database, String>>,
     pub session: std::sync::Mutex<Option<Session>>,
     pub pending_import: std::sync::Mutex<Option<PendingImport>>,
     pub backup: BackupState,
+    pub jobs: Jobs,
 }
 
 /// Backup and restore state that lives until the app quits (Rust only).
@@ -372,6 +374,8 @@ pub struct ImportSummary {
     /// Rows skipped as "Yes, duplicate" in review.
     pub review_skipped: u32,
     pub file_balance_check: FileBalanceCheck,
+    /// Why categorizing the new rows didn't start; `None` when it started or wasn't due.
+    pub categorize_notice: Option<String>,
 }
 
 #[derive(Debug, Serialize, TS, sqlx::FromRow)]
@@ -431,8 +435,16 @@ pub struct TransactionQuery {
     pub from: Option<String>,
     /// Inclusive "YYYY-MM-DD".
     pub to: Option<String>,
-    /// Case-insensitive substring of nickname, description or memo; trimmed, empty means none, at most 200 chars.
+    /// Case-insensitive substring of nickname, description, memo or note; trimmed, empty means none, at most 200 chars.
     pub search: Option<String>,
+    /// Only rows whose effective category is this one.
+    #[serde(default)]
+    #[ts(optional, type = "number")]
+    pub category_id: Option<i64>,
+    /// `true`: only rows with no effective category. Not together with `category_id`.
+    #[serde(default)]
+    #[ts(optional)]
+    pub uncategorized: Option<bool>,
     pub sort: TransactionSort,
     pub direction: SortDirection,
     /// 0-based.
@@ -462,6 +474,15 @@ pub struct Transaction {
     pub running_balance_cents: Option<i64>,
     /// The winning rule's nickname name; `None` when unmapped.
     pub nickname: Option<String>,
+    /// The effective category; `None` when uncategorized.
+    #[ts(type = "number | null")]
+    pub category_id: Option<i64>,
+    /// The effective category's name.
+    pub category: Option<String>,
+    pub set_by: Option<SetBy>,
+    /// Set by the user or a nickname, or a model answer marked reviewed.
+    pub reviewed: bool,
+    pub note: Option<String>,
 }
 
 #[derive(Debug, Serialize, TS)]
@@ -617,6 +638,12 @@ pub enum AppError {
     /// Backup folder, backup write, restore validation and restore failures.
     #[error("{0}")]
     Backup(String),
+    /// Another Ollama job is running, or a category edit waits for categorizing to finish.
+    #[error("{0}")]
+    Busy(String),
+    /// Ollama is unreachable, returned an error, or no base model is picked.
+    #[error("{0}")]
+    Ollama(String),
 }
 
 /// What made a backup file. `Other` is a picked file whose name doesn't match the backup pattern.
@@ -746,6 +773,8 @@ pub struct Nickname {
     pub stale: bool,
     /// Ordered by id ascending; never empty.
     pub rules: Vec<NicknameRule>,
+    #[ts(type = "number | null")]
+    pub default_category_id: Option<i64>,
 }
 
 /// A rule as the user typed it; shared by the nickname requests.
@@ -766,6 +795,10 @@ pub struct SaveNicknameRuleRequest {
     /// Trimmed, 1..=100 chars; an existing name (case-insensitive) gets the rule added.
     pub name: String,
     pub rule: RuleInput,
+    /// Always applied, also to an existing nickname: `None` clears it.
+    #[serde(default)]
+    #[ts(optional, type = "number")]
+    pub default_category_id: Option<i64>,
 }
 
 #[derive(Debug, Deserialize, TS)]
@@ -777,6 +810,10 @@ pub struct UpdateNicknameRequest {
     pub name: String,
     pub enabled: bool,
     pub stale_exempt: bool,
+    /// Always applied: `None` clears it.
+    #[serde(default)]
+    #[ts(optional, type = "number")]
+    pub default_category_id: Option<i64>,
 }
 
 #[derive(Debug, Deserialize, TS)]
@@ -811,6 +848,392 @@ pub struct DeleteNicknameRuleRequest {
 pub struct NicknameSettings {
     /// 1..=3650; stored as `app_meta` `nickname_stale_days`, absent means 90.
     pub stale_days: u32,
+}
+
+/// What a category's rows count as in spending.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, sqlx::Type)]
+#[serde(rename_all = "camelCase")]
+#[sqlx(rename_all = "lowercase")]
+#[ts(export)]
+pub enum CategoryKind {
+    Spending,
+    Income,
+    /// Counts in neither spending nor income.
+    Transfer,
+}
+
+/// Who set a row's effective category.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS, sqlx::Type)]
+#[serde(rename_all = "camelCase")]
+#[sqlx(rename_all = "lowercase")]
+#[ts(export)]
+pub enum SetBy {
+    Model,
+    Nickname,
+    User,
+}
+
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct Category {
+    #[ts(type = "number")]
+    pub id: i64,
+    /// Trimmed, 1..=40 chars, unique ignoring case.
+    pub name: String,
+    /// Trimmed, 0..=200 chars.
+    pub description: String,
+    pub kind: CategoryKind,
+    pub sort_order: u32,
+    /// Rows whose effective category is this one.
+    pub row_count: u32,
+    /// Nicknames defaulting to it.
+    pub nickname_count: u32,
+}
+
+#[derive(Debug, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct NewCategory {
+    pub name: String,
+    pub description: String,
+    pub kind: CategoryKind,
+}
+
+#[derive(Debug, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct UpdateCategoryRequest {
+    #[ts(type = "number")]
+    pub id: i64,
+    pub name: String,
+    pub description: String,
+    pub kind: CategoryKind,
+}
+
+#[derive(Debug, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ReorderCategoriesRequest {
+    /// Every category id exactly once, in the new order.
+    #[ts(type = "number[]")]
+    pub ids: Vec<i64>,
+}
+
+#[derive(Debug, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct DeleteCategoryRequest {
+    #[ts(type = "number")]
+    pub id: i64,
+    /// Where its rows and nicknames move; `None` leaves them uncategorized.
+    #[ts(type = "number | null")]
+    pub replacement_id: Option<i64>,
+}
+
+#[derive(Debug, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct SetTransactionCategoryRequest {
+    #[ts(type = "number")]
+    pub transaction_id: i64,
+    /// The user's category; `None` clears it.
+    #[ts(type = "number | null")]
+    pub category_id: Option<i64>,
+    /// 1..=500 chars after trimming; `None` clears it.
+    pub note: Option<String>,
+}
+
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct OllamaSettings {
+    /// `app_meta` `ollama_port`, absent means 11434.
+    pub port: u16,
+    /// `app_meta` `ollama_base_model`; `None` until one is picked.
+    pub base_model: Option<String>,
+    /// `app_meta` `auto_categorize`, absent means on.
+    pub auto_categorize: bool,
+    /// `app_meta` `build_examples`, 1..=20, absent means 5.
+    pub examples_per_category: u32,
+}
+
+#[derive(Debug, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct SetOllamaPortRequest {
+    /// 1..=65535.
+    pub port: u32,
+}
+
+#[derive(Debug, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct SetBaseModelRequest {
+    /// An installed model; ":latest" equals no tag.
+    pub name: String,
+}
+
+#[derive(Debug, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct SetAutoCategorizeRequest {
+    pub enabled: bool,
+}
+
+#[derive(Debug, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct SetExamplesPerCategoryRequest {
+    /// 1..=20.
+    pub count: u32,
+}
+
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct InstalledModel {
+    pub name: String,
+    #[ts(type = "number")]
+    pub size_bytes: u64,
+}
+
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct RecommendedModel {
+    pub name: String,
+    #[ts(type = "number")]
+    pub size_bytes: u64,
+    pub note: String,
+    pub installed: bool,
+}
+
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct OllamaStatus {
+    pub reachable: bool,
+    pub version: Option<String>,
+    pub installed: Vec<InstalledModel>,
+    pub recommended: Vec<RecommendedModel>,
+}
+
+#[derive(Debug, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct StartModelDownloadRequest {
+    /// One of the recommended names.
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum JobKind {
+    CategorizeNow,
+    RecategorizeAll,
+    AfterImport,
+    Download,
+    Build,
+}
+
+#[derive(Debug, Clone, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct RunningJob {
+    pub kind: JobKind,
+    /// For example "Categorize now" or "Download phi4-mini".
+    pub label: String,
+    /// Rows, or bytes for a download.
+    #[ts(type = "number")]
+    pub done: u64,
+    /// 0 means unknown.
+    #[ts(type = "number")]
+    pub total: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct RunSummary {
+    pub categorized: u32,
+    pub couldnt_categorize: u32,
+    pub not_reached: u32,
+}
+
+#[derive(Debug, Clone, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct JobOutcome {
+    pub kind: JobKind,
+    pub label: String,
+    pub cancelled: bool,
+    pub error: Option<String>,
+    /// Categorize runs only.
+    pub summary: Option<RunSummary>,
+}
+
+#[derive(Debug, Clone, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct JobStatus {
+    pub running: Option<RunningJob>,
+    /// The last finished job, until `clear_job_outcome`.
+    pub last: Option<JobOutcome>,
+}
+
+/// The one Ollama job slot (Rust only); clones share it. Never hold its lock across an await.
+#[derive(Clone, Default)]
+pub struct Jobs(pub std::sync::Arc<std::sync::Mutex<JobSlot>>);
+
+/// What `Jobs` guards (Rust only).
+#[derive(Default)]
+pub struct JobSlot {
+    pub running: Option<RunningJob>,
+    /// The running job's cancel flag; each job gets a fresh one.
+    pub cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    /// The running job's task, until it ends or `stop_and_wait` takes it.
+    pub handle: Option<tauri::async_runtime::JoinHandle<()>>,
+    pub last: Option<JobOutcome>,
+}
+
+/// Handed to a job's work: reports progress and reads the cancel flag (Rust only).
+#[derive(Clone)]
+pub struct JobCtx {
+    pub jobs: Jobs,
+    pub cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum CategorizeScope {
+    /// Rows with no effective category.
+    Uncategorized,
+    /// Rows not set by the user or a nickname.
+    NotUserSet,
+}
+
+#[derive(Debug, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct StartCategorizeRequest {
+    pub scope: CategorizeScope,
+}
+
+/// Which rows a categorize run takes (Rust only).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RunTarget {
+    /// Rows with no effective category.
+    Uncategorized,
+    /// Rows not set by the user or a nickname.
+    NotUserSet,
+    /// The uncategorized rows of this import.
+    Import(i64),
+}
+
+/// One row as the model sees it (Rust only).
+#[derive(Debug, sqlx::FromRow)]
+pub struct PromptRow {
+    pub id: i64,
+    pub nickname: Option<String>,
+    pub description: String,
+    pub memo: Option<String>,
+    /// Negative means money out.
+    pub amount_cents: i64,
+    pub bank_category: Option<String>,
+}
+
+/// One category as the model sees it (Rust only).
+#[derive(Debug, sqlx::FromRow)]
+pub struct PromptCategory {
+    pub id: i64,
+    pub name: String,
+    pub kind: CategoryKind,
+    pub description: String,
+}
+
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ReviewGroup {
+    #[ts(type = "number")]
+    pub category_id: i64,
+    pub category: String,
+    /// Newest first.
+    pub rows: Vec<Transaction>,
+}
+
+#[derive(Debug, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct MarkReviewedRequest {
+    #[ts(type = "number[]")]
+    pub transaction_ids: Vec<i64>,
+}
+
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ModelBuild {
+    #[ts(type = "number")]
+    pub id: i64,
+    /// `zeni-<id>`.
+    pub name: String,
+    pub base_model: String,
+    /// SQLite `CURRENT_TIMESTAMP`, UTC "YYYY-MM-DD HH:MM:SS".
+    pub created_at: String,
+    pub example_count: u32,
+    pub active: bool,
+    /// A category changed since it was built.
+    pub out_of_date: bool,
+}
+
+#[derive(Debug, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct BuildRequest {
+    #[ts(type = "number")]
+    pub id: i64,
+}
+
+#[derive(Debug, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct SpendingQuery {
+    /// Inclusive "YYYY-MM-DD".
+    pub from: String,
+    /// Inclusive "YYYY-MM-DD".
+    pub to: String,
+}
+
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct CategorySpending {
+    #[ts(type = "number")]
+    pub category_id: i64,
+    pub name: String,
+    pub kind: CategoryKind,
+    pub count: u32,
+    /// Minus the sum of amounts in a spending category; a refund reduces it.
+    #[ts(type = "number")]
+    pub spending_cents: i64,
+    /// The sum of amounts in an income category.
+    #[ts(type = "number")]
+    pub income_cents: i64,
+}
+
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct SpendingSummary {
+    pub categories: Vec<CategorySpending>,
+    pub uncategorized_count: u32,
+    /// The sum of amounts of uncategorized rows.
+    #[ts(type = "number")]
+    pub uncategorized_cents: i64,
 }
 
 impl From<sqlx::Error> for AppError {
@@ -934,6 +1357,7 @@ mod tests {
                 not_posted: 1,
                 review_skipped: 2,
                 file_balance_check: FileBalanceCheck::Passed,
+                categorize_notice: None,
             })
             .unwrap(),
             serde_json::json!({
@@ -947,7 +1371,8 @@ mod tests {
                 "expectedBalanceCents": -150,
                 "notPosted": 1,
                 "reviewSkipped": 2,
-                "fileBalanceCheck": "passed"
+                "fileBalanceCheck": "passed",
+                "categorizeNotice": null
             })
         );
         assert_eq!(
@@ -1135,6 +1560,11 @@ mod tests {
                     transaction_type: Some("DEBIT".into()),
                     running_balance_cents: None,
                     nickname: Some("Coffee".into()),
+                    category_id: None,
+                    category: None,
+                    set_by: None,
+                    reviewed: false,
+                    note: None,
                 }],
                 total: 57,
             })
@@ -1149,7 +1579,12 @@ mod tests {
                     "memo": null,
                     "transactionType": "DEBIT",
                     "runningBalanceCents": null,
-                    "nickname": "Coffee"
+                    "nickname": "Coffee",
+                    "categoryId": null,
+                    "category": null,
+                    "setBy": null,
+                    "reviewed": false,
+                    "note": null
                 }],
                 "total": 57
             })
@@ -1221,6 +1656,7 @@ mod tests {
                     match_count: 2,
                     last_matched: Some("2026-10-31".into()),
                 }],
+                default_category_id: None,
             })
             .unwrap(),
             serde_json::json!({
@@ -1239,7 +1675,8 @@ mod tests {
                     "pattern": "corner coffee",
                     "matchCount": 2,
                     "lastMatched": "2026-10-31"
-                }]
+                }],
+                "defaultCategoryId": null
             })
         );
     }

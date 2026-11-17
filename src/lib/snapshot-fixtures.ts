@@ -35,6 +35,7 @@ export const csvSummary = {
   notPosted: 1,
   reviewSkipped: 2,
   fileBalanceCheck: "passed",
+  categorizeNotice: null,
 };
 
 // import_file answers for `?import=mapping|review|csv|mismatch`.
@@ -108,6 +109,7 @@ export const fixtures: Record<string, unknown> = {
       notPosted: 0,
       reviewSkipped: 0,
       fileBalanceCheck: "notChecked",
+      categorizeNotice: null,
     },
   },
   list_imports: [
@@ -185,18 +187,18 @@ export const fixtures: Record<string, unknown> = {
   ],
   list_transactions: {
     rows: [
-      { id: 101, importId: 1, postedDate: "2026-10-31", amountCents: -1850, description: "CORNER COFFEE ROASTERS", memo: "Card purchase 1234", transactionType: "POS", runningBalanceCents: null, nickname: "Corner Coffee" },
-      { id: 100, importId: 1, postedDate: "2026-10-30", amountCents: 245000, description: "ACME CORP PAYROLL", memo: "Direct deposit", transactionType: "DIRECTDEP", runningBalanceCents: null, nickname: "Paycheck" },
-      { id: 99, importId: 1, postedDate: "2026-10-29", amountCents: -8642, description: "GREENLEAF MARKET #42", memo: null, transactionType: null, runningBalanceCents: null, nickname: null },
-      { id: 98, importId: 1, postedDate: "2026-10-28", amountCents: -12000, description: "CITY WATER UTILITY", memo: "Autopay ref 88213", transactionType: null, runningBalanceCents: null, nickname: "Water bill" },
-      { id: 97, importId: 1, postedDate: "2026-10-27", amountCents: -4599, description: "STREAMFLIX SUBSCRIPTION", memo: null, transactionType: null, runningBalanceCents: null, nickname: "Streamflix" },
-      { id: 96, importId: 1, postedDate: "2026-10-26", amountCents: -6000, description: "ATM WITHDRAWAL 5TH AVE", memo: "Fee waived", transactionType: null, runningBalanceCents: null, nickname: null },
-      { id: 95, importId: 1, postedDate: "2026-10-24", amountCents: 1525, description: "REFUND PAPER & INK CO", memo: null, transactionType: null, runningBalanceCents: null, nickname: null },
-      { id: 94, importId: 1, postedDate: "2026-10-22", amountCents: -185000, description: "MAPLE STREET APARTMENTS", memo: "Rent October", transactionType: null, runningBalanceCents: null, nickname: "Rent" },
-      { id: 93, importId: 1, postedDate: "2026-10-20", amountCents: -3275, description: "SHELL FUEL 0193", memo: null, transactionType: null, runningBalanceCents: null, nickname: null },
-      { id: 92, importId: 1, postedDate: "2026-10-18", amountCents: -2210, description: "PIZZERIA NAPOLI", memo: null, transactionType: null, runningBalanceCents: null, nickname: null },
-      { id: 91, importId: 1, postedDate: "2026-10-16", amountCents: -15000, description: "TRANSFER TO SAVINGS", memo: "Online transfer", transactionType: null, runningBalanceCents: null, nickname: null },
-      { id: 90, importId: 1, postedDate: "2026-10-15", amountCents: 312, description: "INTEREST PAYMENT", memo: null, transactionType: null, runningBalanceCents: null, nickname: null },
+      { id: 101, importId: 1, postedDate: "2026-10-31", amountCents: -1850, description: "CORNER COFFEE ROASTERS", memo: "Card purchase 1234", transactionType: "POS", runningBalanceCents: null, nickname: "Corner Coffee", categoryId: 5, category: "Dining out", setBy: "model", reviewed: false, note: null },
+      { id: 100, importId: 1, postedDate: "2026-10-30", amountCents: 245000, description: "ACME CORP PAYROLL", memo: "Direct deposit", transactionType: "DIRECTDEP", runningBalanceCents: null, nickname: "Paycheck", categoryId: 19, category: "Paycheck", setBy: "nickname", reviewed: true, note: null },
+      { id: 99, importId: 1, postedDate: "2026-10-29", amountCents: -8642, description: "GREENLEAF MARKET #42", memo: null, transactionType: null, runningBalanceCents: null, nickname: null, categoryId: 4, category: "Groceries", setBy: "model", reviewed: false, note: null },
+      { id: 98, importId: 1, postedDate: "2026-10-28", amountCents: -12000, description: "CITY WATER UTILITY", memo: "Autopay ref 88213", transactionType: null, runningBalanceCents: null, nickname: "Water bill", categoryId: 2, category: "Utilities", setBy: "nickname", reviewed: true, note: null },
+      { id: 97, importId: 1, postedDate: "2026-10-27", amountCents: -4599, description: "STREAMFLIX SUBSCRIPTION", memo: null, transactionType: null, runningBalanceCents: null, nickname: "Streamflix", categoryId: 9, category: "Subscriptions", setBy: "nickname", reviewed: true, note: null },
+      { id: 96, importId: 1, postedDate: "2026-10-26", amountCents: -6000, description: "ATM WITHDRAWAL 5TH AVE", memo: "Fee waived", transactionType: null, runningBalanceCents: null, nickname: null, categoryId: 17, category: "Cash and checks", setBy: "user", reviewed: true, note: "Cash for the farmers market" },
+      { id: 95, importId: 1, postedDate: "2026-10-24", amountCents: 1525, description: "REFUND PAPER & INK CO", memo: null, transactionType: null, runningBalanceCents: null, nickname: null, categoryId: 8, category: "Shopping", setBy: "model", reviewed: true, note: null },
+      { id: 94, importId: 1, postedDate: "2026-10-22", amountCents: -185000, description: "MAPLE STREET APARTMENTS", memo: "Rent October", transactionType: null, runningBalanceCents: null, nickname: "Rent", categoryId: 1, category: "Housing", setBy: "nickname", reviewed: true, note: null },
+      { id: 93, importId: 1, postedDate: "2026-10-20", amountCents: -3275, description: "SHELL FUEL 0193", memo: null, transactionType: null, runningBalanceCents: null, nickname: null, categoryId: 6, category: "Gas and fuel", setBy: "model", reviewed: false, note: null },
+      { id: 92, importId: 1, postedDate: "2026-10-18", amountCents: -2210, description: "PIZZERIA NAPOLI", memo: null, transactionType: null, runningBalanceCents: null, nickname: null, categoryId: 5, category: "Dining out", setBy: "model", reviewed: false, note: null },
+      { id: 91, importId: 1, postedDate: "2026-10-16", amountCents: -15000, description: "TRANSFER TO SAVINGS", memo: "Online transfer", transactionType: null, runningBalanceCents: null, nickname: null, categoryId: 21, category: "Savings transfer", setBy: "user", reviewed: true, note: null },
+      { id: 90, importId: 1, postedDate: "2026-10-15", amountCents: 312, description: "INTEREST PAYMENT", memo: null, transactionType: null, runningBalanceCents: null, nickname: null, categoryId: null, category: null, setBy: null, reviewed: false, note: null },
     ],
     total: 57,
   },
@@ -240,6 +242,7 @@ const nicknames = [
   { name: "Parking", matchCount: 0, lastMatched: null, stale: true, rules: [{ mode: "regex", field: "description", pattern: "^park(ing)? \\d+", matchCount: 0, lastMatched: null }] },
   {
     name: "Paycheck",
+    defaultCategoryId: 19,
     matchCount: 3,
     lastMatched: "2026-10-30",
     rules: [
@@ -247,13 +250,13 @@ const nicknames = [
       { mode: "contains", field: "memo", pattern: "direct deposit", matchCount: 1, lastMatched: "2026-09-30" },
     ],
   },
-  { name: "Rent", matchCount: 3, lastMatched: "2026-10-22", rules: [{ mode: "exact", field: "description", pattern: "MAPLE STREET APARTMENTS", matchCount: 3, lastMatched: "2026-10-22" }] },
-  { name: "Streamflix", matchCount: 3, lastMatched: "2026-10-27", rules: [{ mode: "contains", field: "description", pattern: "streamflix", matchCount: 3, lastMatched: "2026-10-27" }] },
-  { name: "Water bill", matchCount: 3, lastMatched: "2026-10-28", rules: [{ mode: "exact", field: "description", pattern: "CITY WATER UTILITY", matchCount: 3, lastMatched: "2026-10-28" }] },
+  { name: "Rent", defaultCategoryId: 1, matchCount: 3, lastMatched: "2026-10-22", rules: [{ mode: "exact", field: "description", pattern: "MAPLE STREET APARTMENTS", matchCount: 3, lastMatched: "2026-10-22" }] },
+  { name: "Streamflix", defaultCategoryId: 9, matchCount: 3, lastMatched: "2026-10-27", rules: [{ mode: "contains", field: "description", pattern: "streamflix", matchCount: 3, lastMatched: "2026-10-27" }] },
+  { name: "Water bill", defaultCategoryId: 2, matchCount: 3, lastMatched: "2026-10-28", rules: [{ mode: "exact", field: "description", pattern: "CITY WATER UTILITY", matchCount: 3, lastMatched: "2026-10-28" }] },
 ].map((nickname, index) => {
   const id = index + 1;
   const rules = nickname.rules.map((rule, ruleIndex) => ({ ...rule, id: id * 10 + ruleIndex, nicknameId: id }));
-  return { enabled: true, staleExempt: false, stale: false, ...nickname, id, rules };
+  return { enabled: true, staleExempt: false, stale: false, defaultCategoryId: null, ...nickname, id, rules };
 });
 
 Object.assign(fixtures, {
@@ -267,6 +270,150 @@ Object.assign(fixtures, {
   nickname_settings: { staleDays: 90 },
   set_nickname_stale_days: { staleDays: 90 },
 });
+
+// The 22 starter categories, with fake row counts; the nicknames above default to Housing, Utilities, Subscriptions and Paycheck.
+const starterCategories: [string, string, string, number][] = [
+  ["Housing", "spending", "Rent or mortgage, HOA fees, renter's or home insurance", 3],
+  ["Utilities", "spending", "Electricity, gas, water, sewer and trash", 3],
+  ["Phone and internet", "spending", "Mobile phone, home internet and cable", 2],
+  ["Groceries", "spending", "Supermarkets and grocery stores; food to cook at home", 8],
+  ["Dining out", "spending", "Restaurants, cafes, coffee shops, takeout and delivery", 11],
+  ["Gas and fuel", "spending", "Gas stations and EV charging", 4],
+  ["Transportation", "spending", "Car payments, auto insurance, repairs, parking, tolls, transit, rideshare", 1],
+  ["Shopping", "spending", "General merchandise, online orders, clothing, electronics, household goods", 5],
+  ["Subscriptions", "spending", "Streaming, music, software and other recurring memberships", 3],
+  ["Entertainment", "spending", "Movies, events, games and hobbies", 0],
+  ["Health and fitness", "spending", "Doctor, dentist, pharmacy and gym memberships", 2],
+  ["Personal care", "spending", "Haircuts, cosmetics and toiletries", 0],
+  ["Insurance", "spending", "Health, life and other premiums not tied to home or car", 1],
+  ["Travel", "spending", "Flights, hotels and vacation rentals", 0],
+  ["Gifts and donations", "spending", "Presents and charitable giving", 1],
+  ["Fees and interest", "spending", "Bank fees, ATM fees, late fees and interest charges", 1],
+  ["Cash and checks", "spending", "ATM withdrawals and checks whose purpose is unknown", 2],
+  ["Other spending", "spending", "Spending that fits no other category", 0],
+  ["Paycheck", "income", "Salary and wages from an employer", 3],
+  ["Other income", "income", "Interest, dividends, tax refunds and money received", 1],
+  ["Savings transfer", "transfer", "Money moved to or from your own savings account", 2],
+  ["Credit card payment", "transfer", "Payments to your own credit card account", 0],
+];
+const categories = starterCategories.map(([name, kind, description, rowCount], index) => ({
+  id: index + 1,
+  name,
+  description,
+  kind,
+  sortOrder: index + 1,
+  rowCount,
+  nicknameCount: nicknames.filter((nickname) => nickname.defaultCategoryId === index + 1).length,
+}));
+
+const transactionRows = (fixtures.list_transactions as { rows: { id: number }[] }).rows;
+const row = (id: number) => transactionRows.find((r) => r.id === id);
+// The model's unreviewed answers, grouped in category sort order, newest first.
+const reviewGroups = [
+  {
+    categoryId: 4,
+    category: "Groceries",
+    rows: [
+      row(99),
+      { id: 60, importId: 1, postedDate: "2026-10-12", amountCents: -5630, description: "FRESH MART #12", memo: null, transactionType: null, runningBalanceCents: null, nickname: null, categoryId: 4, category: "Groceries", setBy: "model", reviewed: false, note: null },
+    ],
+  },
+  { categoryId: 5, category: "Dining out", rows: [row(101), row(92)] },
+  { categoryId: 6, category: "Gas and fuel", rows: [row(93)] },
+];
+
+const recommended = [
+  { name: "phi4-mini", sizeBytes: 2491876774, note: "Best pick: 51 of 52 sample rows right, about 0.4 s a row.", installed: true },
+  { name: "qwen2.5:3b", sizeBytes: 1929912432, note: "Smallest download: 46 of 52 right, about 0.4 s a row.", installed: false },
+  { name: "gemma3:4b", sizeBytes: 3350272403, note: "Slower alternative: 44 of 52 right, about 1.8 s a row.", installed: false },
+];
+const ollamaSettings = { port: 11434, baseModel: "phi4-mini", autoCategorize: true, examplesPerCategory: 5 };
+const idleJob = { running: null, last: null };
+const categorizing = { running: { kind: "categorizeNow", label: "Categorize now", done: 18, total: 42 }, last: null };
+
+Object.assign(fixtures, {
+  list_categories: categories,
+  add_category: { ...categories[21], id: 23, name: "Pets", description: "Food, vet and grooming", kind: "spending", sortOrder: 23, rowCount: 0, nicknameCount: 0 },
+  update_category: categories[3],
+  reorder_categories: categories,
+  delete_category: null,
+  set_transaction_category: null,
+  ollama_settings: ollamaSettings,
+  set_ollama_port: ollamaSettings,
+  set_base_model: ollamaSettings,
+  set_auto_categorize: ollamaSettings,
+  set_examples_per_category: ollamaSettings,
+  ollama_status: {
+    reachable: true,
+    version: "0.12.6",
+    installed: [
+      { name: "phi4-mini:latest", sizeBytes: 2491876774 },
+      { name: "zeni-2:latest", sizeBytes: 2491877102 },
+    ],
+    recommended,
+  },
+  start_model_download: { running: { kind: "download", label: "Download qwen2.5:3b", done: 0, total: 1929912432 }, last: null },
+  job_status: idleJob,
+  cancel_job: null,
+  clear_job_outcome: null,
+  start_categorize: categorizing,
+  review_groups: reviewGroups,
+  unreviewed_count: 5,
+  mark_reviewed: null,
+  list_builds: [
+    { id: 2, name: "zeni-2", baseModel: "phi4-mini", createdAt: "2026-11-10 19:22:04", exampleCount: 41, active: true, outOfDate: true },
+    { id: 1, name: "zeni-1", baseModel: "phi4-mini", createdAt: "2026-11-03 08:15:47", exampleCount: 27, active: false, outOfDate: true },
+  ],
+  start_build: { running: { kind: "build", label: "Build zeni-3", done: 0, total: 0 }, last: null },
+  activate_build: null,
+  delete_build: null,
+  spending_summary: {
+    categories: [
+      { categoryId: 1, name: "Housing", kind: "spending", count: 1, spendingCents: 185000, incomeCents: 0 },
+      { categoryId: 4, name: "Groceries", kind: "spending", count: 2, spendingCents: 14272, incomeCents: 0 },
+      { categoryId: 19, name: "Paycheck", kind: "income", count: 1, spendingCents: 0, incomeCents: 245000 },
+      { categoryId: 21, name: "Savings transfer", kind: "transfer", count: 1, spendingCents: 0, incomeCents: 0 },
+    ],
+    uncategorizedCount: 1,
+    uncategorizedCents: 312,
+  },
+});
+
+// Alternative answers, picked with `?<param>=<value>` (snapshot.ts applies them over the fixtures above).
+export const variants: Record<string, Record<string, Record<string, unknown>>> = {
+  categories: { empty: { list_categories: [] } },
+  review: { empty: { review_groups: [], unreviewed_count: 0 } },
+  builds: { empty: { list_builds: [] } },
+  job: {
+    categorizing: { job_status: categorizing },
+    recategorizing: { job_status: { running: { kind: "recategorizeAll", label: "Recategorize all", done: 120, total: 310 }, last: null } },
+    afterImport: { job_status: { running: { kind: "afterImport", label: "Categorizing new rows", done: 4, total: 25 }, last: null } },
+    download: { job_status: fixtures.start_model_download },
+    downloadHalf: { job_status: { running: { kind: "download", label: "Download qwen2.5:3b", done: 812000000, total: 1929912432 }, last: null } },
+    build: { job_status: fixtures.start_build },
+    summary: {
+      job_status: { running: null, last: { kind: "categorizeNow", label: "Categorize now", cancelled: false, error: null, summary: { categorized: 38, couldntCategorize: 3, notReached: 0 } } },
+    },
+    cancelled: {
+      job_status: { running: null, last: { kind: "recategorizeAll", label: "Recategorize all", cancelled: true, error: null, summary: { categorized: 120, couldntCategorize: 2, notReached: 188 } } },
+    },
+    failed: {
+      job_status: {
+        running: null,
+        last: { kind: "categorizeNow", label: "Categorize now", cancelled: false, error: "Ollama isn't running on port 11434. Start it with `ollama serve`.", summary: { categorized: 12, couldntCategorize: 0, notReached: 30 } },
+      },
+    },
+    downloaded: { job_status: { running: null, last: { kind: "download", label: "Download qwen2.5:3b", cancelled: false, error: null, summary: null } } },
+  },
+  ollama: {
+    unreachable: { ollama_status: { reachable: false, version: null, installed: [], recommended: recommended.map((model) => ({ ...model, installed: false })) } },
+    noModel: { ollama_settings: { ...ollamaSettings, baseModel: null } },
+    autoOff: { ollama_settings: { ...ollamaSettings, autoCategorize: false } },
+  },
+  notice: {
+    ollama: { commit_import: { ...csvSummary, categorizeNotice: "Imported. Categorizing didn't start: Ollama isn't running." } },
+  },
+};
 
 // The backend returns the updated layout; the UI only refetches the list.
 fixtures.update_csv_layout = (fixtures.list_csv_layouts as unknown[])[0];
@@ -299,4 +446,12 @@ export const errorMessages: Record<string, string> = {
   // sqlx's text for a busy database, the kind `backup_settings` really returns besides Locked.
   "backup_settings:Database": "error returned from database: (code: 5) database is locked",
   Import: "Zeni only imports US dollar statements; this file is in EUR.",
+  Busy: "Categorize now is running. Wait for it to finish or cancel it.",
+  "update_category:Busy": "Wait for categorizing to finish.",
+  Ollama: "Ollama isn't running on port 11434. Start it with `ollama serve`.",
+  "start_categorize:Ollama": "Pick a model in Settings first.",
+  "add_category:Validation": "Enter a category name.",
+  "set_transaction_category:NotFound": "That category no longer exists.",
+  "update_nickname:NotFound": "That category no longer exists.",
+  "save_nickname_rule:NotFound": "That category no longer exists.",
 };

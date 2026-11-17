@@ -63,9 +63,12 @@ On the unlock screen, choose **Can't unlock?**, then **Erase and set up again**.
 - the data key from your keyring, if the keyring is unlocked,
 - the record of which key Zeni uses,
 - your accounts, including their names and banks,
-- your imported transactions and the import history.
+- your imported transactions and the import history,
+- your model builds (each build kept a copy of the example transactions it was trained on).
 
 Zeni then returns to first-run setup, where you choose a new master password and enter your account details again, then import your bank files again. This can't be undone.
+
+The `zeni-<n>` models that Zeni created stay in Ollama's own model store, outside Zeni's data folder. They contain example transactions. List them with `ollama list` and remove each with `ollama rm zeni-<n>`.
 
 Zeni keeps your backup files. A backup made before the erase still opens with the master password or recovery codes you had then: [Restoring a backup made before a security reset](backup.md#restoring-a-backup-made-before-a-security-reset).
 

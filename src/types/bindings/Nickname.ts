@@ -13,4 +13,4 @@ lastMatched: string | null, stale: boolean,
 /**
  * Ordered by id ascending; never empty.
  */
-rules: Array<NicknameRule>, };
+rules: Array<NicknameRule>, defaultCategoryId: number | null, };

@@ -336,6 +336,8 @@ pub async fn reset(state: &AppState, keyring: &impl Keyring) -> Result<(), AppEr
         "DELETE FROM raw_transactions",
         "DELETE FROM imports",
         "DELETE FROM accounts",
+        // `sent` holds a copy of the example rows.
+        "DELETE FROM model_builds",
     ] {
         sqlx::query(statement).execute(&mut *transaction).await?;
     }
@@ -449,6 +451,7 @@ pub(crate) mod tests {
                 session: Default::default(),
                 backup: Default::default(),
                 pending_import: Default::default(),
+                jobs: Default::default(),
             },
             keyring: FakeKeyring::default(),
             dir,
@@ -639,6 +642,7 @@ pub(crate) mod tests {
             session: Default::default(),
             backup: Default::default(),
             pending_import: Default::default(),
+            jobs: Default::default(),
         };
         let keyring = FakeKeyring::default();
         let setup = |password: &str, account: NewAccount| {
@@ -667,6 +671,7 @@ pub(crate) mod tests {
             session: Default::default(),
             backup: Default::default(),
             pending_import: Default::default(),
+            jobs: Default::default(),
         };
         let keyring = FakeKeyring::default();
         let password = || UnlockRequest {
@@ -902,6 +907,20 @@ pub(crate) mod tests {
             .execute(&f.pool())
             .await
             .unwrap();
+            sqlx::query(
+                "INSERT INTO model_builds (id, name, base_model, example_count, sent)
+                 VALUES (1, 'zeni-1', 'phi4-mini', 1, '{\"rows\":\"COFFEE\"}')",
+            )
+            .execute(&f.pool())
+            .await
+            .unwrap();
+            sqlx::query(
+                "INSERT INTO transaction_categories (raw_transaction_id, model_category_id, model_build_id)
+                 SELECT id, 1, 1 FROM raw_transactions",
+            )
+            .execute(&f.pool())
+            .await
+            .unwrap();
         });
         assert_eq!(f.count("SELECT COUNT(*) FROM raw_transactions"), 1);
 
@@ -909,6 +928,8 @@ pub(crate) mod tests {
         assert_eq!(f.count("SELECT COUNT(*) FROM raw_transactions"), 0);
         assert_eq!(f.count("SELECT COUNT(*) FROM imports"), 0);
         assert_eq!(f.count("SELECT COUNT(*) FROM accounts"), 0);
+        assert_eq!(f.count("SELECT COUNT(*) FROM model_builds"), 0);
+        assert_eq!(f.count("SELECT COUNT(*) FROM transaction_categories"), 0);
     }
 
     #[test]

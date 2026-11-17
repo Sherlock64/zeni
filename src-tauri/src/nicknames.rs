@@ -105,6 +105,17 @@ fn rule_not_found() -> AppError {
     AppError::NotFound("That rule no longer exists.".into())
 }
 
+async fn check_category(conn: &mut SqliteConnection, id: Option<i64>) -> Result<(), AppError> {
+    let Some(id) = id else { return Ok(()) };
+    let found: Option<i64> = sqlx::query_scalar("SELECT id FROM categories WHERE id = ?")
+        .bind(id)
+        .fetch_optional(&mut *conn)
+        .await?;
+    found
+        .map(drop)
+        .ok_or_else(|| AppError::NotFound("That category no longer exists.".into()))
+}
+
 /// Rules of enabled nicknames, best first by the precedence key.
 async fn enabled_rules(conn: &mut SqliteConnection) -> Result<Vec<Rule>, AppError> {
     let rows: Vec<(i64, MatchMode, MatchField, String)> = sqlx::query_as(
@@ -166,7 +177,18 @@ async fn rebuild(conn: &mut SqliteConnection) -> Result<(), AppError> {
     sqlx::query("DELETE FROM nickname_matches")
         .execute(&mut *conn)
         .await?;
-    fill(conn, None).await
+    fill(conn, None).await?;
+    // A nickname default overrides the model; dropping its answer keeps it from coming back later.
+    sqlx::query(
+        "UPDATE transaction_categories SET model_category_id = NULL, model_build_id = NULL, \
+         model_reviewed = 0 WHERE raw_transaction_id IN (SELECT m.raw_transaction_id \
+         FROM nickname_matches m JOIN nickname_rules r ON r.id = m.rule_id \
+         JOIN nicknames n ON n.id = r.nickname_id \
+         WHERE n.enabled = 1 AND n.default_category_id IS NOT NULL)",
+    )
+    .execute(&mut *conn)
+    .await?;
+    Ok(())
 }
 
 /// Matches the new rows of one import; called inside the commit transaction.
@@ -221,7 +243,7 @@ async fn all(pool: &SqlitePool) -> Result<Vec<Nickname>, AppError> {
         rules.entry(rule.nickname_id).or_default().push(rule);
     }
     let nicknames = sqlx::query(
-        "SELECT id, name, enabled, stale_exempt FROM nicknames \
+        "SELECT id, name, enabled, stale_exempt, default_category_id FROM nicknames \
          ORDER BY name COLLATE NOCASE, id",
     )
     .fetch_all(pool)
@@ -250,6 +272,7 @@ async fn all(pool: &SqlitePool) -> Result<Vec<Nickname>, AppError> {
                 last_matched,
                 stale,
                 rules: own,
+                default_category_id: row.try_get("default_category_id")?,
             })
         })
         .collect::<Result<_, sqlx::Error>>()
@@ -278,6 +301,7 @@ pub async fn save_rule(
     let (pattern, _) = compile(request.rule.mode, &request.rule.pattern)?;
     let pool = security::pool(state)?;
     let mut tx = pool.begin().await?;
+    check_category(&mut tx, request.default_category_id).await?;
     let existing: Option<i64> = sqlx::query_scalar("SELECT id FROM nicknames WHERE name = ?")
         .bind(name)
         .fetch_optional(&mut *tx)
@@ -300,10 +324,16 @@ pub async fn save_rule(
                     "That nickname already has this rule.".into(),
                 ));
             }
+            sqlx::query("UPDATE nicknames SET default_category_id = ? WHERE id = ?")
+                .bind(request.default_category_id)
+                .bind(id)
+                .execute(&mut *tx)
+                .await?;
             id
         }
-        None => sqlx::query("INSERT INTO nicknames (name) VALUES (?)")
+        None => sqlx::query("INSERT INTO nicknames (name, default_category_id) VALUES (?, ?)")
             .bind(name)
+            .bind(request.default_category_id)
             .execute(&mut *tx)
             .await?
             .last_insert_rowid(),
@@ -349,6 +379,7 @@ pub async fn update(
     let name = validate_name(&request.name)?;
     let pool = security::pool(state)?;
     let mut tx = pool.begin().await?;
+    check_category(&mut tx, request.default_category_id).await?;
     let conflict: Option<i64> =
         sqlx::query_scalar("SELECT id FROM nicknames WHERE name = ? AND id != ?")
             .bind(name)
@@ -360,15 +391,18 @@ pub async fn update(
             "A nickname named \"{name}\" already exists."
         )));
     }
-    let updated =
-        sqlx::query("UPDATE nicknames SET name = ?, enabled = ?, stale_exempt = ? WHERE id = ?")
-            .bind(name)
-            .bind(request.enabled)
-            .bind(request.stale_exempt)
-            .bind(request.id)
-            .execute(&mut *tx)
-            .await?
-            .rows_affected();
+    let updated = sqlx::query(
+        "UPDATE nicknames SET name = ?, enabled = ?, stale_exempt = ?, default_category_id = ? \
+             WHERE id = ?",
+    )
+    .bind(name)
+    .bind(request.enabled)
+    .bind(request.stale_exempt)
+    .bind(request.default_category_id)
+    .bind(request.id)
+    .execute(&mut *tx)
+    .await?
+    .rows_affected();
     if updated == 0 {
         return Err(nickname_not_found());
     }
@@ -515,6 +549,7 @@ mod tests {
                 SaveNicknameRuleRequest {
                     name: name.into(),
                     rule: input(mode, field, pattern),
+                    default_category_id: None,
                 },
             ))
             .unwrap()
@@ -552,6 +587,7 @@ mod tests {
                     name: nickname.name.clone(),
                     enabled,
                     stale_exempt,
+                    default_category_id: None,
                 },
             ))
             .unwrap()
@@ -595,6 +631,7 @@ mod tests {
             session: Default::default(),
             backup: Default::default(),
             pending_import: Default::default(),
+            jobs: Default::default(),
         };
         let fixture = Fixture { state, dir };
         let pool = fixture.pool();
@@ -822,6 +859,7 @@ mod tests {
                 SaveNicknameRuleRequest {
                     name: "X".into(),
                     rule: input(mode, Description, pattern),
+                    default_category_id: None,
                 },
             ))
         };
@@ -876,6 +914,7 @@ mod tests {
                 SaveNicknameRuleRequest {
                     name: name.into(),
                     rule: input(Exact, Description, "x"),
+                    default_category_id: None,
                 },
             ))
         };
@@ -894,6 +933,7 @@ mod tests {
                     name: name.into(),
                     enabled: true,
                     stale_exempt: false,
+                    default_category_id: None,
                 },
             ))
         };
@@ -921,6 +961,7 @@ mod tests {
             SaveNicknameRuleRequest {
                 name: "coffee".into(),
                 rule: input(Exact, Description, " CORNER Coffee "),
+                default_category_id: None,
             },
         ));
         assert_eq!(
@@ -953,6 +994,7 @@ mod tests {
                 name: "  Petrol ".into(),
                 enabled: true,
                 stale_exempt: true,
+                default_category_id: None,
             },
         ))
         .unwrap();
@@ -968,6 +1010,7 @@ mod tests {
                 name: "gas".into(),
                 enabled: true,
                 stale_exempt: false,
+                default_category_id: None,
             },
         ));
         assert_eq!(
@@ -982,6 +1025,7 @@ mod tests {
                 name: "PETROL".into(),
                 enabled: true,
                 stale_exempt: false,
+                default_category_id: None,
             },
         ))
         .unwrap();
@@ -993,6 +1037,7 @@ mod tests {
                 name: "New".into(),
                 enabled: true,
                 stale_exempt: false,
+                default_category_id: None,
             },
         ));
         assert_eq!(not_found(missing), "That nickname no longer exists.");
@@ -1175,6 +1220,7 @@ mod tests {
             session: Default::default(),
             backup: Default::default(),
             pending_import: Default::default(),
+            jobs: Default::default(),
         };
         let database = |result: Result<(), AppError>| {
             assert!(matches!(result, Err(AppError::Database(_))), "{result:?}");
@@ -1188,6 +1234,7 @@ mod tests {
                 SaveNicknameRuleRequest {
                     name: "Coffee".into(),
                     rule: rule(),
+                    default_category_id: None,
                 },
             ))
             .map(drop),
@@ -1201,6 +1248,7 @@ mod tests {
                     name: "Coffee".into(),
                     enabled: true,
                     stale_exempt: false,
+                    default_category_id: None,
                 },
             ))
             .map(drop),
@@ -1221,5 +1269,187 @@ mod tests {
             DeleteNicknameRuleRequest { id: 1 },
         )));
         database(run(set_stale_days(&state, NicknameSettings { stale_days: 30 })).map(drop));
+    }
+
+    /// (category_id, set_by, reviewed) of a row in `effective_categories`.
+    type Effective = (Option<i64>, Option<String>, i64);
+
+    impl Fixture {
+        fn effective(&self, row: i64) -> Effective {
+            run(sqlx::query_as(
+                "SELECT category_id, set_by, reviewed FROM effective_categories \
+                 WHERE raw_transaction_id = ?",
+            )
+            .bind(row)
+            .fetch_one(&self.pool()))
+            .unwrap()
+        }
+
+        fn model_answer(&self, row: i64, category: i64) {
+            run(sqlx::query(
+                "INSERT INTO transaction_categories (raw_transaction_id, model_category_id, model_reviewed) \
+                 VALUES (?, ?, 1) ON CONFLICT (raw_transaction_id) DO UPDATE \
+                 SET model_category_id = excluded.model_category_id, model_reviewed = 1",
+            )
+            .bind(row)
+            .bind(category)
+            .execute(&self.pool()))
+            .unwrap();
+        }
+
+        fn user_answer(&self, row: i64, category: i64) {
+            run(sqlx::query(
+                "INSERT INTO transaction_categories (raw_transaction_id, user_category_id) VALUES (?, ?) \
+                 ON CONFLICT (raw_transaction_id) DO UPDATE SET user_category_id = excluded.user_category_id",
+            )
+            .bind(row)
+            .bind(category)
+            .execute(&self.pool()))
+            .unwrap();
+        }
+
+        fn set_default(
+            &self,
+            nickname: &Nickname,
+            enabled: bool,
+            category: Option<i64>,
+        ) -> Nickname {
+            run(update(
+                &self.state,
+                UpdateNicknameRequest {
+                    id: nickname.id,
+                    name: nickname.name.clone(),
+                    enabled,
+                    stale_exempt: false,
+                    default_category_id: category,
+                },
+            ))
+            .unwrap()
+        }
+    }
+
+    #[test]
+    fn nickname_default_category_oracle() {
+        const GROCERIES: i64 = 4;
+        const DINING: i64 = 5;
+        const SHOPPING: i64 = 8;
+        let f = fixture("default-oracle");
+        let a = f.row(1, "2026-10-01", "coffee one", None);
+        let b = f.row(1, "2026-10-02", "coffee two", None);
+        let other = f.row(1, "2026-10-03", "tea", None);
+        f.model_answer(a, DINING);
+        f.model_answer(other, DINING);
+        let n = f.save("Coffee", Contains, Description, "coffee");
+        let none = (None, None, 0);
+        let model = |c| (Some(c), Some("model".to_string()), 1);
+        let nick = |c| (Some(c), Some("nickname".to_string()), 1);
+        let user = |c| (Some(c), Some("user".to_string()), 1);
+        let check = |step: &str, rows: &[(i64, Effective)]| {
+            for (row, expected) in rows {
+                assert_eq!(&f.effective(*row), expected, "{step}: row {row}");
+            }
+        };
+        check("no default", &[(a, model(DINING)), (b, none.clone())]);
+
+        let n = f.set_default(&n, true, Some(GROCERIES));
+        assert_eq!(n.default_category_id, Some(GROCERIES));
+        check(
+            "set default",
+            &[
+                (a, nick(GROCERIES)),
+                (b, nick(GROCERIES)),
+                (other, model(DINING)),
+            ],
+        );
+
+        let c = f.row(2, "2026-10-04", "COFFEE three", None);
+        run(async {
+            let mut conn = f.pool().acquire().await.unwrap();
+            match_import(&mut conn, 2).await.unwrap();
+        });
+        check("import", &[(c, nick(GROCERIES))]);
+
+        run(update_rule(
+            &f.state,
+            UpdateNicknameRuleRequest {
+                id: n.rules[0].id,
+                rule: input(Contains, Description, "coffee t"),
+            },
+        ))
+        .unwrap();
+        // a's old model answer was dropped when the default took over.
+        check(
+            "change rule",
+            &[
+                (a, none.clone()),
+                (b, nick(GROCERIES)),
+                (c, nick(GROCERIES)),
+            ],
+        );
+
+        f.user_answer(b, SHOPPING);
+        check("set by user", &[(b, user(SHOPPING)), (c, nick(GROCERIES))]);
+
+        let n = f.set_default(&n, true, None);
+        assert_eq!(n.default_category_id, None);
+        check("remove default", &[(b, user(SHOPPING)), (c, none.clone())]);
+
+        let n = f.set_default(&n, true, Some(GROCERIES));
+        f.set_default(&n, false, Some(GROCERIES));
+        check("disable", &[(b, user(SHOPPING)), (c, none.clone())]);
+        // While disabled the model may answer; re-enabling takes the row back.
+        f.model_answer(c, DINING);
+        check("model while disabled", &[(c, model(DINING))]);
+
+        f.set_default(&n, true, Some(GROCERIES));
+        check("re-enable", &[(b, user(SHOPPING)), (c, nick(GROCERIES))]);
+
+        run(delete(&f.state, DeleteNicknameRequest { id: n.id })).unwrap();
+        check(
+            "delete",
+            &[
+                (a, none.clone()),
+                (b, user(SHOPPING)),
+                (c, none.clone()),
+                (other, model(DINING)),
+            ],
+        );
+    }
+
+    #[test]
+    fn default_category_on_save_and_unknown_category() {
+        let f = fixture("default-save");
+        let save = |category: Option<i64>| {
+            run(save_rule(
+                &f.state,
+                SaveNicknameRuleRequest {
+                    name: "Coffee".into(),
+                    rule: input(Contains, Description, &format!("c{category:?}")),
+                    default_category_id: category,
+                },
+            ))
+        };
+        assert_eq!(save(Some(4)).unwrap().default_category_id, Some(4));
+        // Saving to the existing name sets the default to the given value, None included.
+        assert_eq!(save(Some(5)).unwrap().default_category_id, Some(5));
+        assert_eq!(save(None).unwrap().default_category_id, None);
+        assert_eq!(
+            not_found(save(Some(999))),
+            "That category no longer exists."
+        );
+        let n = f.by_name("Coffee");
+        assert_eq!((n.rules.len(), n.default_category_id), (3, None));
+        let update = run(update(
+            &f.state,
+            UpdateNicknameRequest {
+                id: n.id,
+                name: n.name.clone(),
+                enabled: true,
+                stale_exempt: false,
+                default_category_id: Some(999),
+            },
+        ));
+        assert_eq!(not_found(update), "That category no longer exists.");
+        assert_eq!(f.by_name("Coffee").default_category_id, None);
     }
 }

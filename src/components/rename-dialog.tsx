@@ -1,17 +1,25 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDownIcon } from "lucide-react";
-import { type FormEvent, useEffect, useRef, useState } from "react";
+import { type FormEvent, useEffect, useId, useRef, useState } from "react";
+import { CategorySelect } from "@/components/category-select";
 import { CommandErrorAlert } from "@/components/command-error-alert";
 import { NicknameRuleFields, RuleMatchCount } from "@/components/nickname-rule-fields";
 import { TextField } from "@/components/text-field";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { listNicknames, saveNicknameRule, updateNickname } from "@/lib/commands";
 import { focusFirstInvalid } from "@/lib/focus";
 import { errorField } from "@/lib/nickname-errors";
 import { NICKNAME_MAX_LEN } from "@/lib/nickname-limits";
-import { NICKNAMES_KEY, TRANSACTIONS_KEY } from "@/lib/query-keys";
+import {
+  CATEGORIES_KEY,
+  NICKNAMES_KEY,
+  REVIEW_GROUPS_KEY,
+  TRANSACTIONS_KEY,
+  UNREVIEWED_COUNT_KEY,
+} from "@/lib/query-keys";
 import type { Nickname } from "@/types/bindings/Nickname";
 import type { RuleInput } from "@/types/bindings/RuleInput";
 import type { CommandError } from "@/types/command";
@@ -43,13 +51,22 @@ export function RenameDialog({ transaction, open, onOpenChange, onCloseAutoFocus
     : undefined;
   const keepsRule = Boolean(current) && !ruleChanged;
   const renaming = keepsRule && !existing;
-  // Whether a rename or an add is meant depends on the list, so Save waits for it.
-  const waitingForList = keepsRule && !nicknames.data;
+  // The nickname this save lands on, whose default category the picker starts from until the user picks one.
+  const named = name.trim() ? nicknames.data?.find((nickname) => sameName(nickname.name, name)) : undefined;
+  const target = named ?? (renaming ? currentNickname : undefined);
+  const [picked, setPicked] = useState<{ id: number | null } | null>(null);
+  const defaultCategoryId = picked ? picked.id : (target?.defaultCategoryId ?? null);
+  const selectId = useId();
+  const hintId = useId();
+  // Whether a rename or an add is meant depends on the list, and so does the default to keep, so Save waits for
+  // it unless the user picked a default themselves.
+  const waitingForList = !nicknames.data && (keepsRule || !picked);
   const save = useMutation({
     mutationFn: (send: () => Promise<Nickname>) => send(),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: TRANSACTIONS_KEY });
-      queryClient.invalidateQueries({ queryKey: NICKNAMES_KEY });
+      for (const queryKey of [TRANSACTIONS_KEY, NICKNAMES_KEY, REVIEW_GROUPS_KEY, UNREVIEWED_COUNT_KEY, CATEGORIES_KEY]) {
+        queryClient.invalidateQueries({ queryKey });
+      }
       onOpenChange(false);
     },
     // The pattern field may be inside the closed expander.
@@ -63,12 +80,16 @@ export function RenameDialog({ transaction, open, onOpenChange, onCloseAutoFocus
   function submit(event: FormEvent) {
     event.preventDefault();
     if (save.isPending || waitingForList) return;
-    if (!renaming) return save.mutate(() => saveNicknameRule({ name, rule }));
-    if (current && sameName(name, current)) return onOpenChange(false);
+    // The request omits a null default, which clears it.
+    const sent = defaultCategoryId ?? undefined;
+    if (!renaming) return save.mutate(() => saveNicknameRule({ name, rule, defaultCategoryId: sent }));
+    if (current && sameName(name, current) && defaultCategoryId === (currentNickname?.defaultCategoryId ?? null)) {
+      return onOpenChange(false);
+    }
     // Never fall back to adding a rule here: that would leave the row showing the old nickname.
     if (!currentNickname) return save.mutate(() => Promise.reject({ kind: "NotFound", message: "That nickname no longer exists." }));
     const { id, enabled, staleExempt } = currentNickname;
-    save.mutate(() => updateNickname({ id, name, enabled, staleExempt }));
+    save.mutate(() => updateNickname({ id, name, enabled, staleExempt, defaultCategoryId: sent }));
   }
 
   async function retryList() {
@@ -132,17 +153,37 @@ export function RenameDialog({ transaction, open, onOpenChange, onCloseAutoFocus
           </Collapsible>
           {/* The closed expander unmounts the fields and their count, so the prefilled rule's count shows here instead. */}
           {!expanded && <RuleMatchCount rule={rule} />}
+          <div className="flex flex-col gap-2">
+            <Label htmlFor={selectId}>Default category</Label>
+            <CategorySelect
+              id={selectId}
+              aria-describedby={hintId}
+              value={defaultCategoryId}
+              onChange={(id) => {
+                save.reset();
+                setPicked({ id });
+              }}
+              uncategorizedLabel="No default"
+            />
+            <p id={hintId} className="text-sm text-muted-foreground">
+              Rows this nickname matches get this category without asking the model.
+            </p>
+          </div>
           <p aria-live="polite" className="text-sm text-muted-foreground empty:sr-only">
             {current && !renaming && `This row is shown as “${current}”. Its rule may still win over this one.`}
           </p>
-          {keepsRule && listError && (
+          {waitingForList && listError && (
             <div className="flex flex-col items-start gap-3">
               {/* A new key remounts the alert, so a repeat failure is announced again. */}
               <CommandErrorAlert
                 key={nicknames.errorUpdatedAt}
                 title="Couldn't load your nicknames"
                 error={listError}
-                nextStep="Zeni needs them to tell a rename from a new rule. Try again, or change the match options to add a rule."
+                nextStep={
+                  keepsRule
+                    ? "Zeni needs them to tell a rename from a new rule. Try again, or change the match options and pick a default category to add a rule."
+                    : "Zeni needs them to keep the nickname's default category. Try again, or pick a default category."
+                }
               />
               <Button type="button" variant="outline" onClick={retryList} aria-disabled={nicknames.isFetching}>
                 {nicknames.isFetching ? "Trying again…" : "Try again"}

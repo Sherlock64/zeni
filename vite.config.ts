@@ -1,5 +1,5 @@
 import tailwindcss from "@tailwindcss/vite";
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 
 export default defineConfig({
   plugins: [tailwindcss()],
@@ -9,5 +9,6 @@ export default defineConfig({
   // Tauri expects a fixed port and must see Rust errors in the terminal.
   clearScreen: false,
   server: { port: 1420, strictPort: true, watch: { ignored: ["**/src-tauri/**"] } },
-  test: { environment: "jsdom", globals: true },
+  // Agent worktrees under .claude/ hold stale copies of the tests.
+  test: { environment: "jsdom", globals: true, exclude: [...configDefaults.exclude, ".claude/**"] },
 });

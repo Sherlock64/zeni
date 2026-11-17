@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
+import { invalidateJobStatus } from "@/hooks/use-job-status";
 import { cancelImport, importFile, listImports, revertImport } from "@/lib/commands";
 import { formatCents } from "@/lib/money";
 import { TRANSACTIONS_KEY } from "@/lib/query-keys";
@@ -50,6 +51,8 @@ export function ImportControls() {
       setPending(null);
       setSummary(step.data);
       invalidateImports(queryClient);
+      // The commit may have started the after-import run; polling only starts once the status says so.
+      invalidateJobStatus(queryClient);
     } else setPending(step);
   }
 
@@ -191,6 +194,7 @@ function ImportSummaryAlert({ summary, onDismiss }: ImportSummaryAlertProps) {
         <div className={summary.balanceCheck === "mismatch" ? "text-destructive" : undefined}>
           <strong className="font-medium">{balance[0]}</strong> {balance[1]}
         </div>
+        {summary.categorizeNotice && <div>{summary.categorizeNotice}</div>}
       </AlertDescription>
       <AlertAction>
         <Button variant="ghost" size="icon-sm" onClick={onDismiss} aria-label="Dismiss import summary">

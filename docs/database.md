@@ -32,3 +32,16 @@ Schema detail for backend work. The rules (location, permissions, migrations, im
 - Rebuilt in full, in one SQL transaction, after any nickname or rule create, update or delete (`nicknames::rebuild`). `commit_import` fills it for the new rows only (`nicknames::match_import`). A restore brings it back with the database.
 - `app_meta.nickname_stale_days`: days before a nickname is stale; absent means 90.
 - Matching and precedence: [nicknames.md](nicknames.md#when-several-rules-match).
+
+## Categories
+
+Added in `0006_categories.sql`. Guide: [categories.md](categories.md). Design: [ADR 0001](adr/0001-derived-effective-category-and-polled-job-slot.md).
+
+- `categories`: `name` (unique ignoring case, 1-40 characters), `description` (0-200), `kind` (`spending`, `income` or `transfer`) and `sort_order`. The migration seeds 22 starter rows.
+- `nicknames.default_category_id`: optional; `ON DELETE SET NULL`.
+- `transaction_categories`: at most one row per raw transaction (`ON DELETE CASCADE`, so a revert removes it). It holds `user_category_id`, `model_category_id`, `model_build_id`, `model_reviewed`, `note` (1-500 characters or NULL) and `updated_at`. A category delete sets its columns to NULL. It never holds a nickname default.
+- `model_builds`: one row per build; `name` is `zeni-<id>`, `sent` is the JSON body sent to Ollama's `/api/create`. A partial unique index allows at most one `active` row.
+- `effective_categories` (view): per raw transaction, `category_id` (user, else the enabled winning nickname's default, else model), `set_by` (`user`, `nickname`, `model` or NULL), `reviewed` (always 1 for user and nickname), `model_build_id`, `note` and `nickname`. Every reader uses it.
+- Triggers `categories_out_of_date_insert`, `_update` and `_delete` set `out_of_date = 1` on every build after any category change.
+- `nicknames::rebuild` clears the model columns of rows whose enabled winning nickname has a default.
+- `app_meta` keys: `ollama_port` (absent means 11434), `ollama_base_model` (absent means none), `auto_categorize` (absent means on, `0` off) and `build_examples` (examples per category, 1-20; absent means 5).

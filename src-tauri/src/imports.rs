@@ -428,6 +428,7 @@ async fn import_statement(
         not_posted: statement.not_posted,
         review_skipped,
         file_balance_check: statement.file_balance_check,
+        categorize_notice: None,
     })
 }
 
@@ -558,6 +559,7 @@ mod tests {
             session: Default::default(),
             backup: Default::default(),
             pending_import: Default::default(),
+            jobs: Default::default(),
         };
         if with_account {
             tauri::async_runtime::block_on(
@@ -818,6 +820,7 @@ mod tests {
                         field: MatchField::Description,
                         pattern: "coffee".into(),
                     },
+                    default_category_id: None,
                 },
             )
             .await
@@ -1020,6 +1023,7 @@ mod tests {
             session: Default::default(),
             backup: Default::default(),
             pending_import: Default::default(),
+            jobs: Default::default(),
         };
         tauri::async_runtime::block_on(async {
             assert!(matches!(list(&state).await, Err(AppError::Database(_))));

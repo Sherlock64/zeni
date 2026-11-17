@@ -11,9 +11,10 @@ import {
 import { SettingsPage } from "@/pages/settings";
 import type { AppInfo } from "@/types/bindings/AppInfo";
 
-// The layouts and backup cards have their own tests and its own status region.
+// The layouts, backup and Ollama cards have their own tests and status regions.
 vi.mock("@/components/csv-layouts-card", () => ({ CsvLayoutsCard: () => null }));
 vi.mock("@/components/backup-card", () => ({ BackupCard: () => null }));
+vi.mock("@/components/ollama-card", () => ({ OllamaCard: () => null }));
 vi.mock("@/lib/commands", () => ({
   appInfo: vi.fn(),
   sampleError: vi.fn(),

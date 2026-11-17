@@ -12,9 +12,17 @@ from: string | null,
  */
 to: string | null, 
 /**
- * Case-insensitive substring of nickname, description or memo; trimmed, empty means none, at most 200 chars.
+ * Case-insensitive substring of nickname, description, memo or note; trimmed, empty means none, at most 200 chars.
  */
-search: string | null, sort: TransactionSort, direction: SortDirection, 
+search: string | null, 
+/**
+ * Only rows whose effective category is this one.
+ */
+categoryId?: number, 
+/**
+ * `true`: only rows with no effective category. Not together with `category_id`.
+ */
+uncategorized?: boolean, sort: TransactionSort, direction: SortDirection, 
 /**
  * 0-based.
  */

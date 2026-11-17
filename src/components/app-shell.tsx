@@ -1,6 +1,8 @@
+import { useQuery } from "@tanstack/react-query";
 import { Link, Outlet, useLocation, useRouterState } from "@tanstack/react-router";
-import { LandmarkIcon, ReceiptTextIcon, SettingsIcon, TagIcon } from "lucide-react";
+import { LandmarkIcon, ListChecksIcon, ReceiptTextIcon, SettingsIcon, ShapesIcon, TagIcon } from "lucide-react";
 import { useEffect, useRef } from "react";
+import { CategorizeBanner } from "@/components/categorize-banner";
 import { CommandErrorAlert } from "@/components/command-error-alert";
 import {
   Sidebar,
@@ -10,6 +12,7 @@ import {
   SidebarHeader,
   SidebarInset,
   SidebarMenu,
+  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarProvider,
@@ -20,13 +23,17 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAppInfo } from "@/hooks/use-app-info";
 import { useSecurityStatus } from "@/hooks/use-security-status";
+import { unreviewedCount } from "@/lib/commands";
+import { UNREVIEWED_COUNT_KEY } from "@/lib/query-keys";
 import { SetupPage } from "@/pages/setup";
 import { UnlockPage } from "@/pages/unlock";
 import type { GateScreenProps } from "@/types/ui";
 
 const navItems = [
   { to: "/transactions", label: "Transactions", icon: ReceiptTextIcon },
+  { to: "/review", label: "Review", icon: ListChecksIcon },
   { to: "/nicknames", label: "Nicknames", icon: TagIcon },
+  { to: "/categories", label: "Categories", icon: ShapesIcon },
   { to: "/accounts", label: "Accounts", icon: LandmarkIcon },
   { to: "/settings", label: "Settings", icon: SettingsIcon },
 ] as const;
@@ -123,6 +130,8 @@ export function AppShell() {
 function AppLayout() {
   const pathname = useLocation({ select: (location) => location.pathname });
   const { isMobile, open, openMobile, setOpenMobile, state } = useSidebar();
+  // A failed count just hides the badge; the Review page shows its own errors.
+  const unreviewed = useQuery({ queryKey: UNREVIEWED_COUNT_KEY, queryFn: unreviewedCount }).data ?? 0;
 
   return (
     <>
@@ -144,17 +153,26 @@ function AppLayout() {
             <SidebarGroupContent>
               <nav aria-label="Main">
                 <SidebarMenu>
-                  {navItems.map(({ to, label, icon: Icon }) => (
-                    <SidebarMenuItem key={to}>
-                      <SidebarMenuButton asChild isActive={pathname === to} className="data-active:[&_svg]:text-sidebar-primary">
-                        {/* On narrow windows the sidebar is a modal sheet; close it so the new page gets focus. */}
-                        <Link to={to} onClick={() => isMobile && setOpenMobile(false)}>
-                          <Icon aria-hidden="true" />
-                          <span>{label}</span>
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  ))}
+                  {navItems.map(({ to, label, icon: Icon }) => {
+                    const badge = to === "/review" && unreviewed > 0 ? unreviewed : null;
+                    return (
+                      <SidebarMenuItem key={to}>
+                        <SidebarMenuButton asChild isActive={pathname === to} className="data-active:[&_svg]:text-sidebar-primary">
+                          {/* On narrow windows the sidebar is a modal sheet; close it so the new page gets focus. */}
+                          <Link
+                            to={to}
+                            onClick={() => isMobile && setOpenMobile(false)}
+                            // The badge sits outside the link, so the link names the count itself.
+                            aria-label={badge ? `${label}, ${badge} unreviewed` : undefined}
+                          >
+                            <Icon aria-hidden="true" />
+                            <span>{label}</span>
+                          </Link>
+                        </SidebarMenuButton>
+                        {badge && <SidebarMenuBadge aria-hidden="true">{badge}</SidebarMenuBadge>}
+                      </SidebarMenuItem>
+                    );
+                  })}
                 </SidebarMenu>
               </nav>
             </SidebarGroupContent>
@@ -165,6 +183,8 @@ function AppLayout() {
         <header className="flex h-12 items-center border-b px-2">
           <SidebarTrigger aria-expanded={isMobile ? openMobile : open} />
         </header>
+        {/* In the shell, not a page, so a running job's banner stays across navigation. */}
+        <CategorizeBanner />
         <Outlet />
       </SidebarInset>
     </>

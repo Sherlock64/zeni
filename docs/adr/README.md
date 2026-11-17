@@ -33,4 +33,4 @@ What this makes easier, harder or impossible, and what would make it worth revis
 Accepted (V<n>), or Superseded by NNNN.
 ```
 
-No ADRs yet.
+- [0001: Derived effective category and polled single job slot](0001-derived-effective-category-and-polled-job-slot.md)

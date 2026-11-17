@@ -361,6 +361,124 @@ mod tests {
     }
 
     #[test]
+    fn categories_migration_seeds_and_derives_the_effective_category() {
+        let dir = temp_dir("categories-schema");
+        let _ = fs::remove_dir_all(&dir);
+        create_private_dir(&dir).unwrap();
+        tauri::async_runtime::block_on(async {
+            let pool = open(&dir.join("zeni.db")).await.unwrap();
+            let exec = |sql: &'static str| {
+                let pool = pool.clone();
+                async move { sqlx::query(sql).execute(&pool).await }
+            };
+            let seeded: Vec<(String, String, i64)> =
+                sqlx::query_as("SELECT name, kind, sort_order FROM categories ORDER BY sort_order")
+                    .fetch_all(&pool)
+                    .await
+                    .unwrap();
+            assert_eq!(seeded.len(), 22);
+            assert!(seeded.iter().zip(1..).all(|(row, order)| row.2 == order));
+            assert_eq!(seeded[0], ("Housing".into(), "spending".into(), 1));
+            assert_eq!(seeded[18], ("Paycheck".into(), "income".into(), 19));
+            assert_eq!(
+                seeded[21],
+                ("Credit card payment".into(), "transfer".into(), 22)
+            );
+
+            for sql in [
+                "INSERT INTO accounts (id, name, owner, bank_name, account_number, routing_number) \
+                 VALUES (1, 'Checking', 'Sam', 'Bank', x'00', x'00')",
+                "INSERT INTO imports (id, account_id, file_name, format, balance_check) \
+                 VALUES (1, 1, 'a.ofx', 'ofx', 'baseline')",
+                "INSERT INTO raw_transactions (id, import_id, account_id, fitid, posted_date, \
+                 amount_cents, raw_description, original_row) VALUES \
+                 (1, 1, 1, 'A1', '2026-10-01', -100, 'x', 'o'), \
+                 (2, 1, 1, 'A2', '2026-10-02', -200, 'y', 'o'), \
+                 (3, 1, 1, 'A3', '2026-10-03', -300, 'z', 'o'), \
+                 (4, 1, 1, 'A4', '2026-10-04', -400, 'w', 'o')",
+                "INSERT INTO nicknames (id, name, default_category_id) VALUES (1, 'Coffee', 5)",
+                "INSERT INTO nickname_rules (id, nickname_id, mode, field, pattern) \
+                 VALUES (1, 1, 'contains', 'description', 'x')",
+                "INSERT INTO nickname_matches (raw_transaction_id, rule_id) VALUES (1, 1), (2, 1)",
+                "INSERT INTO model_builds (id, name, base_model, example_count, sent) \
+                 VALUES (1, 'zeni-1', 'phi4-mini', 3, '{}')",
+                // Row 1: user beats nickname and model. Row 2: nickname beats model. Row 3: model only.
+                "INSERT INTO transaction_categories (raw_transaction_id, user_category_id, \
+                 model_category_id, model_build_id, model_reviewed, note) VALUES \
+                 (1, 4, 8, 1, 0, 'mine'), (2, NULL, 8, 1, 0, NULL), (3, NULL, 8, 1, 0, NULL)",
+            ] {
+                exec(sql).await.unwrap();
+            }
+            type Effective = (
+                i64,
+                Option<i64>,
+                Option<String>,
+                i64,
+                Option<i64>,
+                Option<String>,
+            );
+            let effective = |pool: SqlitePool| async move {
+                sqlx::query_as::<_, Effective>(
+                    "SELECT raw_transaction_id, category_id, set_by, reviewed, model_build_id, note \
+                     FROM effective_categories ORDER BY raw_transaction_id",
+                )
+                .fetch_all(&pool)
+                .await
+                .unwrap()
+            };
+            assert_eq!(
+                effective(pool.clone()).await,
+                vec![
+                    (
+                        1,
+                        Some(4),
+                        Some("user".into()),
+                        1,
+                        None,
+                        Some("mine".into())
+                    ),
+                    (2, Some(5), Some("nickname".into()), 1, None, None),
+                    (3, Some(8), Some("model".into()), 0, Some(1), None),
+                    (4, None, None, 0, None, None),
+                ]
+            );
+            // A disabled nickname's default no longer applies.
+            exec("UPDATE nicknames SET enabled = 0 WHERE id = 1")
+                .await
+                .unwrap();
+            assert_eq!(effective(pool.clone()).await[1].2.as_deref(), Some("model"));
+
+            // Any category change marks every build out of date.
+            exec("UPDATE categories SET description = 'd' WHERE id = 1")
+                .await
+                .unwrap();
+            let out_of_date: i64 = sqlx::query_scalar("SELECT out_of_date FROM model_builds")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+            assert_eq!(out_of_date, 1);
+            assert!(exec("INSERT INTO categories (name, kind, sort_order) VALUES ('HOUSING', 'spending', 23)").await.is_err());
+
+            // Deleting a category clears the links; deleting raw rows drops their overlay.
+            exec("DELETE FROM categories WHERE id = 5").await.unwrap();
+            let default: Option<i64> =
+                sqlx::query_scalar("SELECT default_category_id FROM nicknames WHERE id = 1")
+                    .fetch_one(&pool)
+                    .await
+                    .unwrap();
+            assert_eq!(default, None);
+            exec("DELETE FROM imports WHERE id = 1").await.unwrap();
+            let overlay: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM transaction_categories")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+            assert_eq!(overlay, 0);
+            pool.close().await;
+        });
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
     fn connect_describes_failure_with_path() {
         // A regular file where the data folder should be makes the folder impossible to create.
         let blocker = temp_dir("blocker");

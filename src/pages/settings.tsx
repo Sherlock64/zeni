@@ -4,6 +4,7 @@ import { type FormEvent, useEffect, useRef, useState } from "react";
 import { BackupCard } from "@/components/backup-card";
 import { CommandErrorAlert } from "@/components/command-error-alert";
 import { CsvLayoutsCard } from "@/components/csv-layouts-card";
+import { OllamaCard } from "@/components/ollama-card";
 import { Page } from "@/components/page";
 import { RecoveryCodes } from "@/components/recovery-codes";
 import { TextField } from "@/components/text-field";
@@ -63,7 +64,7 @@ export function SettingsPage() {
   }
 
   return (
-    <Page title="Settings" description="Security, backups, saved CSV layouts, nicknames and details of this installation of Zeni.">
+    <Page title="Settings" description="Security, backups, saved CSV layouts, nicknames, Ollama and details of this installation of Zeni.">
       <SecurityCard />
 
       <BackupCard />
@@ -71,6 +72,8 @@ export function SettingsPage() {
       <CsvLayoutsCard />
 
       <NicknamesCard />
+
+      <OllamaCard />
 
       <Card>
         <CardHeader>

@@ -273,6 +273,7 @@ mod tests {
             session: Default::default(),
             backup: Default::default(),
             pending_import: Default::default(),
+            jobs: Default::default(),
         };
         (dir, state)
     }
@@ -600,6 +601,7 @@ mod tests {
             session: Default::default(),
             backup: Default::default(),
             pending_import: Default::default(),
+            jobs: Default::default(),
         };
         tauri::async_runtime::block_on(async {
             assert!(matches!(list(&state).await, Err(AppError::Database(_))));

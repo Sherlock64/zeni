@@ -1,7 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
-import { countRuleMatches, listNicknames, listTransactions } from "@/lib/commands";
+import { countRuleMatches, listCategories, listNicknames, listTransactions, setTransactionCategory } from "@/lib/commands";
 import { TransactionsPage } from "@/pages/transactions";
+import type { Category } from "@/types/bindings/Category";
 import type { Transaction } from "@/types/bindings/Transaction";
 
 vi.mock("@/lib/commands", () => ({
@@ -9,16 +10,24 @@ vi.mock("@/lib/commands", () => ({
   listNicknames: vi.fn(),
   countRuleMatches: vi.fn(),
   saveNicknameRule: vi.fn(),
+  listCategories: vi.fn(),
+  setTransactionCategory: vi.fn(),
 }));
 // ImportControls has its own tests; keep this page test about the list.
 vi.mock("@/components/import-controls", () => ({ ImportControls: () => null }));
-beforeEach(() => vi.resetAllMocks());
-// jsdom lacks ResizeObserver, which the rename dialog's radio groups use.
+vi.mock("@/components/categorize-actions", () => ({ CategorizeActions: () => <p>Categorize actions</p> }));
+beforeEach(() => {
+  vi.resetAllMocks();
+  vi.mocked(listCategories).mockResolvedValue(categories);
+});
+// jsdom lacks ResizeObserver, which the rename dialog's radio groups and the selects use.
 globalThis.ResizeObserver = class {
   observe() {}
   unobserve() {}
   disconnect() {}
 };
+// Radix Select scrolls its selected option into view.
+Element.prototype.scrollIntoView = function () {};
 
 const row: Transaction = {
   id: 1,
@@ -30,7 +39,22 @@ const row: Transaction = {
   transactionType: null,
   runningBalanceCents: null,
   nickname: null,
+  categoryId: null,
+  category: null,
+  setBy: null,
+  reviewed: false,
+  note: null,
 };
+const category = (id: number, name: string): Category => ({
+  id,
+  name,
+  description: "",
+  kind: "spending",
+  sortOrder: id,
+  rowCount: 0,
+  nicknameCount: 0,
+});
+const categories = [category(4, "Groceries"), category(5, "Dining out")];
 const base = { from: null, to: null, search: null, sort: "date", direction: "desc", page: 0, pageSize: 50 };
 
 function renderPage() {
@@ -208,6 +232,8 @@ test("shows the empty state with no transactions at all", async () => {
   expect(await screen.findByRole("heading", { level: 2, name: "No transactions yet" })).toBeTruthy();
   expect(screen.getByText("Import an OFX, QFX or CSV file to get started.")).toBeTruthy();
   expect(screen.queryByLabelText("Search")).toBeNull();
+  // Nothing to categorize yet.
+  expect(screen.queryByText("Categorize actions")).toBeNull();
 });
 
 test("shows a filtered empty state that clears the filters", async () => {
@@ -273,10 +299,12 @@ test("a nickname row without a memo leaves Memo out of the tooltip and screen re
   expect(tooltip.textContent).toBe("Description: CORNER COFFEE");
 });
 
-test("the search placeholder mentions nicknames", async () => {
+test("the search placeholder mentions nicknames and notes", async () => {
   vi.mocked(listTransactions).mockResolvedValue({ rows: [row], total: 1 });
   renderPage();
-  expect((await screen.findByLabelText("Search")).getAttribute("placeholder")).toBe("Search nickname, description or memo");
+  expect((await screen.findByLabelText("Search")).getAttribute("placeholder")).toBe(
+    "Search nickname, description, memo or note",
+  );
 });
 
 test("right-clicking a row offers Rename it, which opens the rename dialog and returns focus to the row", async () => {
@@ -301,4 +329,116 @@ test("right-clicking a row offers Rename it, which opens the rename dialog and r
   fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
   await vi.waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   await vi.waitFor(() => expect(document.activeElement).toBe(tableRow));
+});
+
+test("the Category column shows the category, who set it, unreviewed model rows and the note", async () => {
+  vi.mocked(listTransactions).mockResolvedValue({
+    rows: [
+      { ...row, categoryId: 5, category: "Dining out", setBy: "model", reviewed: false },
+      { ...row, id: 2, description: "FRESH MART", categoryId: 4, category: "Groceries", setBy: "model", reviewed: true },
+      { ...row, id: 3, description: "PAYROLL", categoryId: 4, category: "Groceries", setBy: "nickname", reviewed: true },
+      { ...row, id: 4, description: "ATM", categoryId: 4, category: "Groceries", setBy: "user", reviewed: true, note: "Market cash" },
+      { ...row, id: 5, description: "INTEREST" },
+    ],
+    total: 5,
+  });
+  renderPage();
+  expect(await screen.findByRole("columnheader", { name: "Category" })).toBeTruthy();
+  const cell = (text: string) => within(screen.getByText(text).closest("tr")!);
+  expect(screen.getByText("Categorize actions")).toBeTruthy();
+  const unreviewed = cell("CORNER COFFEE").getByRole("button", { name: "Dining out, set by Model, Not reviewed" });
+  // The label already says it, so the dot stays out of the accessible name; hovering it explains it by sight.
+  const dot = unreviewed.querySelector(".rounded-full")!;
+  expect(dot.getAttribute("aria-hidden")).toBe("true");
+  fireEvent.pointerMove(dot);
+  expect((await screen.findAllByText("Not reviewed")).length).toBeGreaterThan(0);
+  expect(cell("FRESH MART").getByRole("button").querySelector(".rounded-full")).toBeNull();
+  expect(cell("FRESH MART").getByRole("button", { name: "Groceries, set by Model" })).toBeTruthy();
+  expect(cell("PAYROLL").getByRole("button", { name: "Groceries, set by Nickname" })).toBeTruthy();
+  expect(cell("ATM").getByRole("button", { name: "Groceries, set by You" })).toBeTruthy();
+  const uncategorized = cell("INTEREST").getByRole("button", { name: "Uncategorized" });
+  expect(uncategorized.querySelector(".text-muted-foreground")?.textContent).toBe("Uncategorized");
+  // Screen readers get the note in the cell; the tooltip repeats it for the eye.
+  expect(cell("ATM").getByText("Note: Market cash")).toBeTruthy();
+  expect(cell("INTEREST").queryByText(/^Note:/)).toBeNull();
+});
+
+test("the category filter picks a category, Uncategorized or all, from the first page", async () => {
+  vi.mocked(listTransactions).mockResolvedValue({ rows: [row], total: 120 });
+  renderPage();
+  fireEvent.click(await screen.findByRole("button", { name: "Next" }));
+  await vi.waitFor(() => expect(lastQuery()).toEqual({ ...base, page: 1 }));
+  const filter = screen.getByRole("combobox", { name: "Category" });
+  expect(filter.textContent).toBe("All categories");
+
+  const pick = async (name: string) => {
+    fireEvent.click(screen.getByRole("combobox", { name: "Category" }));
+    fireEvent.click(await screen.findByRole("option", { name }));
+  };
+  await pick("Uncategorized");
+  await vi.waitFor(() => expect(lastQuery()).toEqual({ ...base, uncategorized: true }));
+  await pick("Groceries");
+  await vi.waitFor(() => expect(lastQuery()).toEqual({ ...base, categoryId: 4 }));
+  expect(lastQuery()).not.toHaveProperty("uncategorized", true);
+  await pick("All categories");
+  await vi.waitFor(() => expect(lastQuery()).toEqual(base));
+});
+
+test("Clear filters also clears the category filter", async () => {
+  vi.mocked(listTransactions).mockImplementation(async (query) =>
+    query.uncategorized ? { rows: [], total: 0 } : { rows: [row], total: 1 },
+  );
+  renderPage();
+  fireEvent.click(await screen.findByRole("combobox", { name: "Category" }));
+  fireEvent.click(await screen.findByRole("option", { name: "Uncategorized" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Clear filters" }));
+  expect(await screen.findByText("CORNER COFFEE")).toBeTruthy();
+  expect(lastQuery()).toEqual(base);
+  expect(screen.getByRole("combobox", { name: "Category" }).textContent).toBe("All categories");
+});
+
+test("shows an error in place of the category filter when categories fail to load", async () => {
+  vi.mocked(listCategories).mockRejectedValue({ kind: "Locked", message: "Unlock Zeni first." });
+  vi.mocked(listTransactions).mockResolvedValue({ rows: [row], total: 1 });
+  renderPage();
+  const alert = await screen.findByRole("alert");
+  expect(within(alert).getByText("Couldn't load categories")).toBeTruthy();
+  expect(screen.queryByRole("combobox", { name: "Category" })).toBeNull();
+});
+
+test("the Category cell opens the Categorize dialog; saving shows You and returns focus to the cell", async () => {
+  vi.mocked(listTransactions).mockResolvedValue({ rows: [{ ...row, categoryId: 5, category: "Dining out", setBy: "model" }], total: 1 });
+  vi.mocked(setTransactionCategory).mockResolvedValue(null);
+  const client = renderPage();
+  const invalidate = vi.spyOn(client, "invalidateQueries");
+  const button = await screen.findByRole("button", { name: /^Dining out/ });
+  fireEvent.click(button);
+  const dialog = await screen.findByRole("dialog", { name: "Categorize" });
+  expect((await within(dialog).findByRole("combobox", { name: "Category" })).textContent).toBe("Dining out");
+
+  vi.mocked(listTransactions).mockResolvedValue({
+    rows: [{ ...row, categoryId: 5, category: "Dining out", setBy: "user", reviewed: true }],
+    total: 1,
+  });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+  await vi.waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(setTransactionCategory).toHaveBeenCalledWith({ transactionId: 1, categoryId: 5, note: "" });
+  for (const key of ["list_transactions", "review_groups", "unreviewed_count", "list_categories"]) {
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: [key] });
+  }
+  expect(await screen.findByRole("button", { name: "Dining out, set by You" })).toBeTruthy();
+  await vi.waitFor(() => expect(document.activeElement?.getAttribute("aria-label")).toBe("Dining out, set by You"));
+});
+
+test("right-click Categorize… opens the dialog and Cancel returns focus to the row", async () => {
+  vi.mocked(listTransactions).mockResolvedValue({ rows: [row], total: 1 });
+  renderPage();
+  const tableRow = (await screen.findByText("CORNER COFFEE")).closest("tr")!;
+  fireEvent.contextMenu(tableRow);
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Categorize…" }));
+  const dialog = await screen.findByRole("dialog", { name: "Categorize" });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+  await vi.waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  await vi.waitFor(() => expect(document.activeElement).toBe(tableRow));
+  expect(setTransactionCategory).not.toHaveBeenCalled();
 });
