@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDownIcon, ListChecksIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { startTransition, useEffect, useState } from "react";
 import { CategorySelect } from "@/components/category-select";
 import { CommandErrorAlert } from "@/components/command-error-alert";
 import { Page } from "@/components/page";
@@ -10,7 +10,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { markReviewed, reviewGroups, setTransactionCategory, setTransactionsCategory } from "@/lib/commands";
+import { listCategories, markReviewed, reviewGroups, setTransactionCategory, setTransactionsCategory } from "@/lib/commands";
 import { formatDate } from "@/lib/dates";
 import { formatCents } from "@/lib/money";
 import { CATEGORIES_KEY, REVIEW_GROUPS_KEY, TRANSACTIONS_KEY, UNREVIEWED_COUNT_KEY } from "@/lib/query-keys";
@@ -18,10 +18,13 @@ import type { Category } from "@/types/bindings/Category";
 import type { ReviewGroup } from "@/types/bindings/ReviewGroup";
 import type { Transaction } from "@/types/bindings/Transaction";
 import type { CommandError } from "@/types/command";
+import type { ReviewCategoryCellProps } from "@/types/ui";
 import { cn } from "cn";
 
 // Rendering every row (each with its own CategorySelect) made large reviews slow, so groups show this many at a time.
 const PAGE_SIZE = 25;
+// Groups past the first few render this many per frame, so the page paints and stays responsive while they come in.
+const BATCH = 3;
 const BULK_SELECT_ID = "review-bulk-category";
 const HEADING = "main h1";
 
@@ -29,9 +32,65 @@ const label = (row: Transaction) => row.nickname ?? row.description;
 const groupToggle = (categoryId: number | undefined) =>
   categoryId === undefined ? HEADING : `[data-review-group="${categoryId}"]`;
 
+// Looks like the select's trigger; hundreds of Radix Selects mounting at once took seconds, so the real one mounts on use.
+const TRIGGER =
+  "flex h-8 w-full items-center justify-between gap-1.5 rounded-lg border border-input bg-transparent py-2 pr-2 pl-2.5 text-sm whitespace-nowrap transition-colors outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30 dark:hover:bg-input/50";
+
+function RowCategory({ row, onChange }: ReviewCategoryCellProps) {
+  const queryClient = useQueryClient();
+  const [active, setActive] = useState(false);
+  const name = `Category for ${label(row)}`;
+  // Swaps only once the options are cached, so the button keeps focus meanwhile; a failed load shows above the groups.
+  const activate = () =>
+    void queryClient.ensureQueryData({ queryKey: CATEGORIES_KEY, queryFn: listCategories }).then(
+      () => setActive(true),
+      () => {},
+    );
+  // Mounts open, so the list takes focus from the button it replaces; closing returns focus to its trigger.
+  if (active) return <CategorySelect defaultOpen value={row.categoryId} aria-label={name} onChange={onChange} />;
+  return (
+    <button
+      type="button"
+      role="combobox"
+      aria-label={name}
+      aria-expanded={false}
+      aria-haspopup="listbox"
+      aria-autocomplete="none"
+      className={TRIGGER}
+      onClick={activate}
+      onKeyDown={(event) => {
+        if (event.key !== "ArrowDown") return;
+        event.preventDefault();
+        activate();
+      }}
+    >
+      <span className="line-clamp-1">{row.category ?? "Pick a category"}</span>
+      <ChevronDownIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+    </button>
+  );
+}
+
 export function ReviewPage() {
   const queryClient = useQueryClient();
   const groups = useQuery({ queryKey: REVIEW_GROUPS_KEY, queryFn: reviewGroups });
+  // Loaded up front, so a row's select has its options the moment it is swapped in.
+  const categories = useQuery({ queryKey: CATEGORIES_KEY, queryFn: listCategories });
+  const [categoriesRetriedError, setCategoriesRetriedError] = useState<CommandError | null>(null);
+  const categoriesError = categories.error ?? categoriesRetriedError;
+  const [rendered, setRendered] = useState(BATCH);
+  const total = groups.data?.length ?? 0;
+  const drawing = rendered < total;
+  // Only the first draw counts as loading; groups a later refetch adds just draw in.
+  const [drawn, setDrawn] = useState(false);
+  useEffect(() => {
+    if (!drawing) {
+      if (groups.data) setDrawn(true);
+      return;
+    }
+    const frame = requestAnimationFrame(() => startTransition(() => setRendered((count) => count + BATCH)));
+    return () => cancelAnimationFrame(frame);
+  }, [drawing, rendered, groups.data]);
+  const loading = groups.isPending || (drawing && !drawn);
   // A refetch clears the query's error while it runs, so keep showing the last one until the retry settles.
   const [retriedError, setRetriedError] = useState<CommandError | null>(null);
   const listError = groups.error ?? retriedError;
@@ -120,6 +179,15 @@ export function ReviewPage() {
     setShown((current) => ({ ...current, [group.categoryId]: count + PAGE_SIZE }));
     // The button stays while rows are left to show; otherwise focus the first new row.
     if (count + PAGE_SIZE >= group.rows.length) setRefocus(`[data-review-row="${group.rows[count].id}"]`);
+  }
+
+  async function retryCategories() {
+    if (categories.isFetching || !categories.error) return;
+    setCategoriesRetriedError(categories.error);
+    const result = await categories.refetch();
+    setCategoriesRetriedError(null);
+    // The retry button unmounts on success, so move focus to the page heading.
+    if (result.isSuccess) setRefocus(HEADING);
   }
 
   async function retry() {
@@ -211,7 +279,12 @@ export function ReviewPage() {
       );
     }
     const allRows = groups.data.flatMap((group) => group.rows);
-    return groups.data.map((group) => {
+    const list = groups.data.map((group, index) => {
+      if (index >= rendered) {
+        // Roughly the group's drawn height (header, table header and footer, plus its rows), so the page doesn't jump.
+        const rows = Math.min(group.rows.length, shown[group.categoryId] ?? PAGE_SIZE);
+        return <Skeleton key={group.categoryId} aria-hidden="true" className="w-full rounded-lg" style={{ height: `${9.5 + rows * 3.0625}rem` }} />;
+      }
       const title = `${group.category} (${group.rows.length})`;
       const count = shown[group.categoryId] ?? PAGE_SIZE;
       const ids = group.rows.map((row) => row.id);
@@ -306,9 +379,8 @@ export function ReviewPage() {
                         {formatCents(row.amountCents)}
                       </TableCell>
                       <TableCell>
-                        <CategorySelect
-                          value={row.categoryId}
-                          aria-label={`Category for ${label(row)}`}
+                        <RowCategory
+                          row={row}
                           onChange={(categoryId) => {
                             if (busy) return;
                             setMessage({ text: "", visible: false });
@@ -343,6 +415,21 @@ export function ReviewPage() {
         </Collapsible>
       );
     });
+    return (
+      <>
+        {categoriesError && (
+          <div className="flex flex-col items-start gap-3">
+            <CommandErrorAlert key={categories.errorUpdatedAt} title="Couldn't load categories" error={categoriesError} />
+            <Button variant="outline" onClick={retryCategories} aria-disabled={categories.isFetching}>
+              {categories.isFetching ? "Trying again…" : "Try again"}
+            </Button>
+          </div>
+        )}
+        <div className="flex flex-col gap-6" aria-busy={drawing}>
+          {list}
+        </div>
+      </>
+    );
   }
 
   return (
@@ -356,7 +443,7 @@ export function ReviewPage() {
       </p>
       {/* Always mounted, so screen readers announce each change to its text. */}
       <p role="status" className={message.visible ? "text-sm" : "sr-only"}>
-        {listError ? (groups.isFetching ? "Retrying…" : "") : groups.isPending ? "Loading the review…" : message.text}
+        {listError ? (groups.isFetching ? "Retrying…" : "") : message.text || (loading ? "Loading the review…" : "")}
       </p>
       {selectionBar()}
       {content()}

@@ -10,7 +10,7 @@ import type { CategorySelectProps } from "@/types/ui";
 const UNCATEGORIZED = "uncategorized";
 const ALL = "all";
 
-export function CategorySelect({ value, onChange, allLabel, uncategorizedLabel, excludeId, id, disabled, ...aria }: CategorySelectProps) {
+export function CategorySelect({ value, onChange, allLabel, uncategorizedLabel, excludeId, id, disabled, defaultOpen, ...aria }: CategorySelectProps) {
   const categories = useQuery({ queryKey: CATEGORIES_KEY, queryFn: listCategories });
 
   // Silent: the page around it announces its own loading, and a second status region would compete with it.
@@ -25,6 +25,7 @@ export function CategorySelect({ value, onChange, allLabel, uncategorizedLabel, 
 
   return (
     <Select
+      defaultOpen={defaultOpen}
       value={selected}
       // ALL only renders with an allLabel, whose onChange takes undefined.
       onValueChange={(next) =>

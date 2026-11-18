@@ -180,11 +180,15 @@ export type CategorySelectProps = {
   "aria-label"?: string;
   "aria-describedby"?: string;
   disabled?: boolean;
+  // Mounts the list already open, for a control swapped in when the user activates it.
+  defaultOpen?: boolean;
 } & (
   | { allLabel?: undefined; value: number | null; onChange: (value: number | null) => void }
   // A first option with this label for every category, for example "All categories"; it is value undefined.
   | { allLabel: string; value: number | null | undefined; onChange: (value: number | null | undefined) => void }
 );
+
+export type ReviewCategoryCellProps = { row: Transaction; onChange: (categoryId: number | null) => void };
 
 export type CategoryFormProps = {
   // The category being edited, or null to add one.

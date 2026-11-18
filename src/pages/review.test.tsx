@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { listCategories, markReviewed, reviewGroups, setTransactionCategory, setTransactionsCategory } from "@/lib/commands";
 import { formatDate } from "@/lib/dates";
 import { formatCents } from "@/lib/money";
@@ -80,6 +80,11 @@ function renderPage() {
 }
 
 const group = (name: string) => screen.getByRole("region", { name });
+// ArrowDown opens both a row's stand-in control (which swaps in the real select) and a real select.
+const pickIn = async (name: string, option: string) => {
+  fireEvent.keyDown(await screen.findByLabelText(name), { key: "ArrowDown" });
+  fireEvent.click(within(await screen.findByRole("listbox")).getByRole("option", { name: option }));
+};
 // The groups come from the cache, not a refetch; only the count and transactions reload.
 const expectRefreshed = (invalidate: ReturnType<typeof renderPage>) => {
   expect(invalidate.mock.calls.map(([filters]) => filters?.queryKey)).toEqual([["unreviewed_count"], ["list_transactions"]]);
@@ -105,8 +110,10 @@ test("shows each group open with its rows: date, nickname or description, amount
   });
   expect(within(group("Dining out (1)")).getByText("Pizza night")).toBeTruthy();
   expect(within(group("Dining out (1)")).queryByText("PIZZERIA NAPOLI")).toBeNull();
-  const select = await within(grocery).findByRole("combobox", { name: "Category for GREENLEAF MARKET #42" });
-  expect(select.textContent).toBe("Groceries");
+  const control = within(grocery).getByRole("combobox", { name: "Category for GREENLEAF MARKET #42" });
+  expect(control.textContent).toBe("Groceries");
+  expect(control.getAttribute("aria-haspopup")).toBe("listbox");
+  expect(control.getAttribute("aria-expanded")).toBe("false");
 });
 
 test("a group collapses and opens again", async () => {
@@ -212,9 +219,7 @@ test("changing a row's category keeps its note, and the row leaves the group", a
     .mockResolvedValue([{ ...groceries, rows: [freshMart] }, dining]);
   vi.mocked(setTransactionCategory).mockResolvedValue(null);
   const invalidate = renderPage();
-  const select = await screen.findByRole("combobox", { name: "Category for GREENLEAF MARKET #42" });
-  fireEvent.keyDown(select, { key: "ArrowDown" });
-  fireEvent.click(within(screen.getByRole("listbox")).getByRole("option", { name: "Dining out" }));
+  await pickIn("Category for GREENLEAF MARKET #42", "Dining out");
 
   expect(await screen.findByRole("region", { name: "Groceries (1)" })).toBeTruthy();
   expect(screen.queryByText("GREENLEAF MARKET #42")).toBeNull();
@@ -227,15 +232,11 @@ test("while a category change saves, another change and Looks good do nothing", 
   vi.mocked(reviewGroups).mockResolvedValue([groceries, dining]);
   vi.mocked(setTransactionCategory).mockReturnValue(new Promise(() => {}));
   renderPage();
-  const pick = async (name: string, option: string) => {
-    fireEvent.keyDown(await screen.findByRole("combobox", { name }), { key: "ArrowDown" });
-    fireEvent.click(within(screen.getByRole("listbox")).getByRole("option", { name: option }));
-  };
-  await pick("Category for GREENLEAF MARKET #42", "Dining out");
+  await pickIn("Category for GREENLEAF MARKET #42", "Dining out");
   await waitFor(() =>
     expect(within(group("Groceries (2)")).getByRole("button", { name: "Looks good" }).getAttribute("aria-disabled")).toBe("true"),
   );
-  await pick("Category for Pizza night", "Groceries");
+  await pickIn("Category for Pizza night", "Groceries");
   fireEvent.click(within(group("Groceries (2)")).getByRole("button", { name: "Looks good" }));
   expect(setTransactionCategory).toHaveBeenCalledTimes(1);
   expect(markReviewed).not.toHaveBeenCalled();
@@ -245,8 +246,7 @@ test("a failed category change shows the error in its group and keeps the row", 
   vi.mocked(reviewGroups).mockResolvedValue([groceries, dining]);
   vi.mocked(setTransactionCategory).mockRejectedValue(busyError);
   renderPage();
-  fireEvent.keyDown(await screen.findByRole("combobox", { name: "Category for Pizza night" }), { key: "ArrowDown" });
-  fireEvent.click(within(screen.getByRole("listbox")).getByRole("option", { name: "Groceries" }));
+  await pickIn("Category for Pizza night", "Groceries");
   const alert = await within(group("Dining out (1)")).findByRole("alert");
   expect(within(alert).getByText("Couldn't change the category")).toBeTruthy();
   expect(within(alert).getByText("Wait for categorizing to finish.")).toBeTruthy();
@@ -255,10 +255,6 @@ test("a failed category change shows the error in its group and keeps the row", 
 
 const many = (count: number, start: number, categoryId: number, description = "CORNER STORE") =>
   Array.from({ length: count }, (_, i) => row(start + i, `${description} ${i + 1}`, categoryId));
-const pickIn = async (name: string, option: string) => {
-  fireEvent.keyDown(await screen.findByRole("combobox", { name }), { key: "ArrowDown" });
-  fireEvent.click(within(screen.getByRole("listbox")).getByRole("option", { name: option }));
-};
 const BAR_SELECT = "Change selected to…";
 
 test("a group shows 25 rows; Show 25 more keeps focus on the button while rows are left, then focuses the first new row", async () => {
@@ -266,7 +262,7 @@ test("a group shows 25 rows; Show 25 more keeps focus on the button while rows a
   renderPage();
   const region = await screen.findByRole("region", { name: "Groceries (60)" });
   expect(within(region).getAllByRole("row")).toHaveLength(26);
-  expect(await within(region).findAllByRole("combobox")).toHaveLength(25);
+  expect(within(region).getAllByRole("combobox", { name: /^Category for / })).toHaveLength(25);
 
   const more = within(region).getByRole("button", { name: "Show 25 more" });
   more.focus();
@@ -283,13 +279,124 @@ test("a group shows 25 rows; Show 25 more keeps focus on the button while rows a
   await waitFor(() => expect(document.activeElement).toBe(within(region).getByRole("checkbox", { name: "Select CORNER STORE 51" })));
 });
 
-test("stays fast with 1,200 rows: only 25 rows and CategorySelects per group are mounted", async () => {
-  vi.mocked(reviewGroups).mockResolvedValue(
-    [4, 5, 6, 7].map((id, i) => ({ categoryId: id, category: `Category ${id}`, rows: many(300, 10000 + i * 300, id) })),
-  );
+const twenty = (rows = 60) =>
+  Array.from({ length: 20 }, (_, i) => ({ categoryId: 100 + i, category: `Category ${100 + i}`, rows: many(rows, 10000 + i * rows, 100 + i, `SHOP ${i}`) }));
+
+// Queues animation frames so a test runs them one at a time.
+function stubFrames() {
+  const frames = new Map<number, FrameRequestCallback>();
+  let next = 0;
+  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+    frames.set(++next, callback);
+    return next;
+  });
+  vi.stubGlobal("cancelAnimationFrame", (id: number) => frames.delete(id));
+  return {
+    pending: () => frames.size,
+    flush: () =>
+      act(() => {
+        const queued = [...frames.values()];
+        frames.clear();
+        for (const callback of queued) callback(0);
+      }),
+  };
+}
+afterEach(() => vi.unstubAllGlobals());
+
+const groupRegions = () => screen.queryAllByRole("region", { name: /^Category 1/ });
+const groupSkeletons = () => document.querySelectorAll('[aria-hidden="true"][data-slot="skeleton"]');
+
+test("stays fast with 1,200 rows in 20 groups: no selects mount until a row's control is used, which opens and focuses it", async () => {
+  stubFrames();
+  vi.mocked(reviewGroups).mockResolvedValue(twenty());
   renderPage();
-  await waitFor(() => expect(screen.getAllByRole("combobox")).toHaveLength(100));
-  expect(screen.getAllByRole("row")).toHaveLength(4 * 26);
+  // Frames are held, so only the first batch draws: 75 rows out of 1,200, none with a Radix Select yet.
+  await screen.findByRole("region", { name: "Category 100 (60)" });
+  expect(groupRegions()).toHaveLength(3);
+  expect(screen.getAllByRole("combobox")).toHaveLength(3 * 25);
+  for (const control of screen.getAllByRole("combobox")) expect(control.tagName).toBe("BUTTON");
+  expect(screen.getAllByRole("row")).toHaveLength(3 * 26);
+
+  const control = screen.getByRole("combobox", { name: "Category for SHOP 0 1" });
+  control.focus();
+  fireEvent.keyDown(control, { key: "ArrowDown" });
+  const listbox = await screen.findByRole("listbox");
+  // An open Radix Select hides the rest of the page from the accessibility tree.
+  const opened = screen.getByRole("combobox", { hidden: true, name: "Category for SHOP 0 1" });
+  expect(opened.tagName).toBe("BUTTON");
+  expect(opened.getAttribute("aria-expanded")).toBe("true");
+  expect(screen.getAllByRole("combobox", { hidden: true, expanded: true })).toHaveLength(1);
+  await waitFor(() => expect(listbox.contains(document.activeElement)).toBe(true));
+
+  // Escape closes the list and returns focus to the row's select.
+  fireEvent.keyDown(listbox, { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("listbox")).toBeNull());
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("combobox", { name: "Category for SHOP 0 1" })));
+});
+
+test("the first groups paint at once and the rest arrive in later frames, with skeletons and a loading status until then", async () => {
+  const frames = stubFrames();
+  // Two rows a group keep the draw cheap; the batching doesn't depend on row count.
+  vi.mocked(reviewGroups).mockResolvedValue(twenty(2));
+  renderPage();
+  await screen.findByRole("region", { name: "Category 100 (2)" });
+  expect(groupRegions()).toHaveLength(3);
+  expect(groupSkeletons()).toHaveLength(17);
+  expect(screen.getByRole("status").textContent).toBe("Loading the review…");
+  expect(groupRegions()[0].parentElement?.getAttribute("aria-busy")).toBe("true");
+
+  frames.flush();
+  expect(groupRegions()).toHaveLength(6);
+  expect(groupSkeletons()).toHaveLength(14);
+
+  // Selection works from the data, so rows in groups not drawn yet count; its message takes precedence.
+  fireEvent.click(screen.getByRole("button", { name: "Select all like this (SHOP 0 1)" }));
+  expect(screen.getByText("1 selected")).toBeTruthy();
+  expect(screen.getByRole("status").textContent).toBe("1 selected.");
+  fireEvent.click(screen.getByRole("checkbox", { name: "Select all in Category 103" }));
+  expect(screen.getByText("3 selected")).toBeTruthy();
+
+  while (frames.pending() > 0) frames.flush();
+  expect(groupRegions()).toHaveLength(20);
+  expect(groupSkeletons()).toHaveLength(0);
+  expect(groupRegions()[0].parentElement?.getAttribute("aria-busy")).toBe("false");
+});
+
+test("a row's control waits for the categories before opening, keeping focus", async () => {
+  vi.mocked(reviewGroups).mockResolvedValue([dining]);
+  let resolve: (value: Category[]) => void = () => {};
+  vi.mocked(listCategories).mockReturnValue(new Promise((r) => (resolve = r)));
+  renderPage();
+  const control = await screen.findByRole("combobox", { name: "Category for Pizza night" });
+  control.focus();
+  fireEvent.click(control);
+  expect(document.activeElement).toBe(control);
+  expect(screen.queryByRole("listbox")).toBeNull();
+  resolve([category(4, "Groceries"), category(5, "Dining out")]);
+  const listbox = await screen.findByRole("listbox");
+  await waitFor(() => expect(listbox.contains(document.activeElement)).toBe(true));
+});
+
+test("when the categories fail to load, a row's control stays put and focused, and Try again recovers", async () => {
+  vi.mocked(reviewGroups).mockResolvedValue([dining]);
+  vi.mocked(listCategories).mockRejectedValue(invokeError);
+  renderPage();
+  const alert = await screen.findByRole("alert");
+  expect(within(alert).getByText("Couldn't load categories")).toBeTruthy();
+  const control = screen.getByRole("combobox", { name: "Category for Pizza night" });
+  control.focus();
+  fireEvent.click(control);
+  await waitFor(() => expect(listCategories).toHaveBeenCalledTimes(2));
+  expect(screen.queryByRole("listbox")).toBeNull();
+  expect(control.isConnected).toBe(true);
+  expect(document.activeElement).toBe(control);
+
+  vi.mocked(listCategories).mockResolvedValue([category(4, "Groceries"), category(5, "Dining out")]);
+  fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+  await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Review" })));
+  await pickIn("Category for Pizza night", "Groceries");
+  expect(setTransactionCategory).toHaveBeenCalledWith({ transactionId: 92, categoryId: 4, note: null });
 });
 
 test("Select all selects the whole group, including rows not shown yet, and the bulk change moves them all", async () => {
