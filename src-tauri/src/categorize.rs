@@ -244,7 +244,7 @@ async fn store(
     Ok(result.rows_affected() > 0)
 }
 
-/// Categorizes the rows of `target`, stopping between rows when cancelled.
+/// Categorizes the rows of `target`, stopping at once when cancelled.
 pub async fn run<C: Categorizer>(
     pool: &SqlitePool,
     categorizer: &C,
@@ -283,7 +283,13 @@ async fn categorize_rows<C: Categorizer>(
         if ctx.cancelled() {
             break;
         }
-        match answer(categorizer, row, &categories).await {
+        // An in-flight request is dropped on cancel; that row counts as not reached.
+        let answered = tokio::select! {
+            biased;
+            answered = answer(categorizer, row, &categories) => answered,
+            () = ctx.until_cancelled() => break,
+        };
+        match answered {
             Ok(Some(category_id)) => {
                 match store(pool, row.id, category_id, categorizer.build_id()).await {
                     Ok(true) => categorized += 1,
@@ -374,6 +380,8 @@ mod tests {
         sent: Mutex<Vec<i64>>,
         build_id: Option<i64>,
         hook: Option<(SqlitePool, i64, &'static str)>,
+        /// The row whose request never returns, and where to say it started.
+        hang_on: Option<(i64, std::sync::mpsc::Sender<()>)>,
     }
 
     impl FakeCategorizer {
@@ -385,6 +393,7 @@ mod tests {
                 sent: Mutex::new(Vec::new()),
                 build_id: None,
                 hook: None,
+                hang_on: None,
             }
         }
 
@@ -405,6 +414,12 @@ mod tests {
                 && *id == row.id
             {
                 sqlx::raw_sql(*sql).execute(pool).await.unwrap();
+            }
+            if let Some((id, started)) = &self.hang_on
+                && *id == row.id
+            {
+                started.send(()).unwrap();
+                std::future::pending::<()>().await;
             }
             (self.answer)(row)
         }
@@ -743,7 +758,7 @@ mod tests {
         let cancel = ctx.cancel.clone();
         let fake = FakeCategorizer::new(move |row| {
             if row.id == 5 {
-                cancel.store(true, Ordering::Relaxed);
+                cancel.send_replace(true);
             }
             Ok("Groceries".into())
         });
@@ -751,6 +766,32 @@ mod tests {
         assert_eq!(fake.sent(), vec![4, 5]);
         assert!(outcome.cancelled);
         assert_eq!(outcome.error, None);
+        assert_eq!(summary(&outcome), (2, 0, 2));
+        let stored: Vec<i64> = fixture.model_rows().iter().map(|row| row.0).collect();
+        assert_eq!(stored, vec![3, 4, 5]);
+    }
+
+    #[test]
+    fn cancel_drops_a_request_in_flight_at_once() {
+        let fixture = fixture("cancel-in-flight");
+        let ctx = ctx();
+        let mut fake = FakeCategorizer::new(groceries);
+        let (started, row_started) = std::sync::mpsc::channel();
+        fake.hang_on = Some((6, started));
+        let cancel = ctx.cancel.clone();
+        // Cancels once row 6's request is in flight, then times how long the run takes to end.
+        let canceller = std::thread::spawn(move || {
+            row_started.recv().unwrap();
+            cancel.send_replace(true);
+            Instant::now()
+        });
+        let outcome = fixture.run(&fake, RunTarget::Uncategorized, &ctx);
+        let cancelled = canceller.join().unwrap();
+        assert!(cancelled.elapsed() < Duration::from_secs(1));
+        assert_eq!(fake.sent(), vec![4, 5, 6]);
+        assert!(outcome.cancelled);
+        assert_eq!(outcome.error, None);
+        // Row 6 was in flight, so it and row 7 count as not reached.
         assert_eq!(summary(&outcome), (2, 0, 2));
         let stored: Vec<i64> = fixture.model_rows().iter().map(|row| row.0).collect();
         assert_eq!(stored, vec![3, 4, 5]);

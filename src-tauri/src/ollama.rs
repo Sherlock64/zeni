@@ -365,7 +365,11 @@ impl Ollama {
             if ctx.cancelled() {
                 return Ok(false);
             }
-            let Some(chunk) = response.chunk().await.map_err(|error| self.error(error))? else {
+            let chunk = tokio::select! {
+                chunk = response.chunk() => chunk,
+                () = ctx.until_cancelled() => return Ok(false),
+            };
+            let Some(chunk) = chunk.map_err(|error| self.error(error))? else {
                 break;
             };
             buffer.extend_from_slice(&chunk);
@@ -463,11 +467,12 @@ mod tests {
     }
 
     /// What the stub answers: a status, NDJSON lines (written one at a time), and whether to keep
-    /// repeating the last line until the client hangs up.
+    /// repeating the last line, or to go silent with the connection open, until the client hangs up.
     struct Reply {
         status: u16,
         lines: Vec<String>,
         forever: bool,
+        silent: bool,
     }
 
     fn reply(status: u16, lines: &[Value]) -> Reply {
@@ -475,6 +480,7 @@ mod tests {
             status,
             lines: lines.iter().map(Value::to_string).collect(),
             forever: false,
+            silent: false,
         }
     }
 
@@ -543,6 +549,11 @@ mod tests {
             }
             let _ = stream.flush();
             std::thread::sleep(Duration::from_millis(5));
+        }
+        if reply.silent {
+            // Blocks until the client hangs up.
+            let _ = reader.read(&mut [0; 1]);
+            return;
         }
         if !reply.forever {
             return;
@@ -894,6 +905,38 @@ mod tests {
     }
 
     #[test]
+    fn cancel_drops_a_stalled_download_at_once() {
+        let f = fixture("download-stalled");
+        let server = stub(|_| Reply {
+            silent: true,
+            ..reply(
+                200,
+                &[json!({ "status": "pulling a", "digest": "a", "total": 1000, "completed": 400 })],
+            )
+        });
+        f.port(server.port);
+        run(start_download(
+            &f.state,
+            StartModelDownloadRequest {
+                name: "phi4-mini".into(),
+            },
+        ))
+        .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while jobs::status(&f.state.jobs).running.unwrap().done != 400 {
+            assert!(Instant::now() < deadline, "no progress");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        // The stub now sends nothing; only the cancel signal can end the 30 s read wait.
+        let cancelled = Instant::now();
+        jobs::cancel(&f.state.jobs);
+        let last = f.wait_until_idle().last.unwrap();
+        assert!(cancelled.elapsed() < Duration::from_secs(2));
+        assert!(last.cancelled);
+        assert_eq!(last.error, None);
+    }
+
+    #[test]
     fn a_download_reports_summed_bytes_refuses_a_second_job_and_stops_on_cancel() {
         let f = fixture("download-cancel");
         let server = stub(|_| Reply {
@@ -1149,6 +1192,7 @@ mod tests {
                 status: 200,
                 lines: vec![huge.clone()],
                 forever: false,
+                silent: false,
             },
             _ => reply(200, &[json!({ "version": body })]),
         });

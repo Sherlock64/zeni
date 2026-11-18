@@ -43,6 +43,7 @@ import type { SetBaseModelRequest } from "@/types/bindings/SetBaseModelRequest";
 import type { SetExamplesPerCategoryRequest } from "@/types/bindings/SetExamplesPerCategoryRequest";
 import type { SetOllamaPortRequest } from "@/types/bindings/SetOllamaPortRequest";
 import type { SetTransactionCategoryRequest } from "@/types/bindings/SetTransactionCategoryRequest";
+import type { SetTransactionsCategoryRequest } from "@/types/bindings/SetTransactionsCategoryRequest";
 import type { SetupRequest } from "@/types/bindings/SetupRequest";
 import type { SetupResponse } from "@/types/bindings/SetupResponse";
 import type { SpendingQuery } from "@/types/bindings/SpendingQuery";
@@ -150,6 +151,8 @@ export const reorderCategories = (request: ReorderCategoriesRequest) =>
 export const deleteCategory = (request: DeleteCategoryRequest) => call<null>("delete_category", { request });
 export const setTransactionCategory = (request: SetTransactionCategoryRequest) =>
   call<null>("set_transaction_category", { request });
+export const setTransactionsCategory = (request: SetTransactionsCategoryRequest) =>
+  call<number>("set_transactions_category", { request });
 export const ollamaSettings = () => call<OllamaSettings>("ollama_settings");
 export const setOllamaPort = (request: SetOllamaPortRequest) => call<OllamaSettings>("set_ollama_port", { request });
 export const setBaseModel = (request: SetBaseModelRequest) => call<OllamaSettings>("set_base_model", { request });

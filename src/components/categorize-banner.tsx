@@ -56,7 +56,7 @@ export function CategorizeBanner() {
   const announcement = running ? progressAnnouncement(running.label, running.done, running.total) : lines.join(" ");
 
   return (
-    <div className={`mx-auto flex w-full max-w-3xl flex-col gap-3 px-8 ${visible ? "pt-6" : ""}`}>
+    <div className={`mx-auto flex w-full max-w-screen-2xl flex-col gap-3 px-8 ${visible ? "pt-6" : ""}`}>
       {/* Always mounted and coarse, so screen readers hear the start, every quarter and the end, not every poll. */}
       <div role="status" className="sr-only">
         {announcement}

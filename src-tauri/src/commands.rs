@@ -14,10 +14,10 @@ use crate::types::{
     RevertImportRequest, ReviewGroup, RuleInput, SampleErrorRequest, SaveCsvLayoutRequest,
     SaveNicknameRuleRequest, SecurityStatus, SetAutoCategorizeRequest, SetBackupRetentionRequest,
     SetBaseModelRequest, SetExamplesPerCategoryRequest, SetOllamaPortRequest,
-    SetTransactionCategoryRequest, SetupRequest, SetupResponse, SpendingQuery, SpendingSummary,
-    StartCategorizeRequest, StartModelDownloadRequest, TransactionPage, TransactionQuery,
-    UnlockRequest, UpdateCategoryRequest, UpdateCsvLayoutRequest, UpdateNicknameRequest,
-    UpdateNicknameRuleRequest,
+    SetTransactionCategoryRequest, SetTransactionsCategoryRequest, SetupRequest, SetupResponse,
+    SpendingQuery, SpendingSummary, StartCategorizeRequest, StartModelDownloadRequest,
+    TransactionPage, TransactionQuery, UnlockRequest, UpdateCategoryRequest,
+    UpdateCsvLayoutRequest, UpdateNicknameRequest, UpdateNicknameRuleRequest,
 };
 use crate::{
     accounts, backup, builds, categories, categorize, csv_layouts, db, imports, jobs, nicknames,
@@ -402,6 +402,14 @@ pub async fn set_transaction_category(
     request: SetTransactionCategoryRequest,
 ) -> Result<(), AppError> {
     overlay::set_category(&state, request).await
+}
+
+#[tauri::command]
+pub async fn set_transactions_category(
+    state: State<'_, AppState>,
+    request: SetTransactionsCategoryRequest,
+) -> Result<u32, AppError> {
+    overlay::set_many(&state, request).await
 }
 
 #[tauri::command]

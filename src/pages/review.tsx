@@ -5,25 +5,29 @@ import { CategorySelect } from "@/components/category-select";
 import { CommandErrorAlert } from "@/components/command-error-alert";
 import { Page } from "@/components/page";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { markReviewed, reviewGroups, setTransactionCategory } from "@/lib/commands";
+import { markReviewed, reviewGroups, setTransactionCategory, setTransactionsCategory } from "@/lib/commands";
 import { formatDate } from "@/lib/dates";
 import { formatCents } from "@/lib/money";
-import { REVIEW_GROUPS_KEY, TRANSACTIONS_KEY, UNREVIEWED_COUNT_KEY } from "@/lib/query-keys";
+import { CATEGORIES_KEY, REVIEW_GROUPS_KEY, TRANSACTIONS_KEY, UNREVIEWED_COUNT_KEY } from "@/lib/query-keys";
+import type { Category } from "@/types/bindings/Category";
+import type { ReviewGroup } from "@/types/bindings/ReviewGroup";
 import type { Transaction } from "@/types/bindings/Transaction";
 import type { CommandError } from "@/types/command";
 import { cn } from "cn";
 
-// After an action removes the focused control, focus the group's toggle, else the first group's, else the heading.
-function focusAfter(categoryId: number) {
-  const toggle =
-    document.querySelector<HTMLElement>(`[data-review-group="${categoryId}"]`) ??
-    document.querySelector<HTMLElement>("[data-review-group]");
-  (toggle ?? document.querySelector<HTMLElement>("main h1"))?.focus();
-}
+// Rendering every row (each with its own CategorySelect) made large reviews slow, so groups show this many at a time.
+const PAGE_SIZE = 25;
+const BULK_SELECT_ID = "review-bulk-category";
+const HEADING = "main h1";
+
+const label = (row: Transaction) => row.nickname ?? row.description;
+const groupToggle = (categoryId: number | undefined) =>
+  categoryId === undefined ? HEADING : `[data-review-group="${categoryId}"]`;
 
 export function ReviewPage() {
   const queryClient = useQueryClient();
@@ -31,42 +35,91 @@ export function ReviewPage() {
   // A refetch clears the query's error while it runs, so keep showing the last one until the retry settles.
   const [retriedError, setRetriedError] = useState<CommandError | null>(null);
   const listError = groups.error ?? retriedError;
+  const [shown, setShown] = useState<Record<number, number>>({});
+  const [selected, setSelected] = useState<ReadonlySet<number>>(new Set());
+  // Selection counts are only announced, since the bar already shows them; a bulk change's result also shows.
+  const [message, setMessage] = useState({ text: "", visible: false });
+  // A selector for the control to focus once the next render has happened, when an action removes the focused one.
+  const [refocus, setRefocus] = useState<string | null>(null);
+  useEffect(() => {
+    if (refocus === null) return;
+    document.querySelector<HTMLElement>(refocus)?.focus();
+    setRefocus(null);
+  }, [refocus]);
 
-  const refresh = () =>
-    Promise.all(
-      [REVIEW_GROUPS_KEY, UNREVIEWED_COUNT_KEY, TRANSACTIONS_KEY].map((queryKey) =>
-        queryClient.invalidateQueries({ queryKey }),
-      ),
-    );
+  // Drops the rows from the cached groups instead of refetching every group; returns the groups left.
+  function removeRows(ids: number[]) {
+    const gone = new Set(ids);
+    const left = (queryClient.getQueryData<ReviewGroup[]>(REVIEW_GROUPS_KEY) ?? [])
+      .map((group) => ({ ...group, rows: group.rows.filter((row) => !gone.has(row.id)) }))
+      .filter((group) => group.rows.length > 0);
+    queryClient.setQueryData<ReviewGroup[]>(REVIEW_GROUPS_KEY, left);
+    setSelected((current) => new Set([...current].filter((id) => !gone.has(id))));
+    for (const queryKey of [UNREVIEWED_COUNT_KEY, TRANSACTIONS_KEY]) void queryClient.invalidateQueries({ queryKey });
+    return left;
+  }
+  // Focus stays in the group while it has rows, else moves to the first group left, else the heading.
+  function removeFromGroup(groupId: number, ids: number[]) {
+    const left = removeRows(ids);
+    setRefocus(groupToggle(left.some((group) => group.categoryId === groupId) ? groupId : left[0]?.categoryId));
+  }
+
   // Each carries its group's id, so the error shows in the group it came from.
   const change = useMutation({
     mutationFn: ({ row, categoryId }: { groupId: number; row: Transaction; categoryId: number | null }) =>
       setTransactionCategory({ transactionId: row.id, categoryId, note: row.note }),
-    onSuccess: async (_result, { groupId }) => {
-      await refresh();
-      setRefocus(groupId);
-    },
+    onSuccess: (_result, { groupId, row }) => removeFromGroup(groupId, [row.id]),
   });
   const looksGood = useMutation({
     mutationFn: ({ transactionIds }: { groupId: number; transactionIds: number[] }) => markReviewed({ transactionIds }),
-    onSuccess: async (_result, { groupId }) => {
-      await refresh();
-      setRefocus(groupId);
+    onSuccess: (_result, { groupId, transactionIds }) => removeFromGroup(groupId, transactionIds),
+  });
+  const bulk = useMutation({
+    mutationFn: ({ transactionIds, categoryId }: { transactionIds: number[]; categoryId: number }) =>
+      setTransactionsCategory({ transactionIds, categoryId }),
+    onSuccess: (count, { transactionIds, categoryId }) => {
+      const name =
+        queryClient.getQueryData<Category[]>(CATEGORIES_KEY)?.find((category) => category.id === categoryId)?.name ?? "the new category";
+      setMessage({ text: `Changed ${count} ${count === 1 ? "row" : "rows"} to ${name}.`, visible: true });
+      const left = removeRows(transactionIds);
+      setRefocus(groupToggle(left[0]?.categoryId));
     },
   });
-  // The group whose control an action removed; focused once the refetched groups have rendered.
-  const [refocus, setRefocus] = useState<number | null>(null);
-  useEffect(() => {
-    if (refocus === null) return;
-    focusAfter(refocus);
-    setRefocus(null);
-  }, [refocus]);
-  const busy = change.isPending || looksGood.isPending;
+  const busy = change.isPending || looksGood.isPending || bulk.isPending;
+  // A refetch (say, when a run ends) can drop selected rows, so only count and send the ones still shown in a group.
+  const liveIds = (ids: ReadonlySet<number>) =>
+    (groups.data ?? []).flatMap((group) => group.rows.map((row) => row.id)).filter((id) => ids.has(id));
+  const selectedIds = liveIds(selected);
 
   // The dismiss button unmounts with the alert, so focus the group's toggle.
   function dismiss(reset: () => void, groupId: number) {
     reset();
-    focusAfter(groupId);
+    setRefocus(groupToggle(groupId));
+  }
+
+  function select(ids: number[], on: boolean) {
+    const next = new Set(selected);
+    for (const id of ids) {
+      if (on) next.add(id);
+      else next.delete(id);
+    }
+    setSelected(next);
+    const count = liveIds(next).length;
+    setMessage({ text: count === 0 ? "Selection cleared." : `${count} selected.`, visible: false });
+  }
+
+  function clear() {
+    setSelected(new Set());
+    setMessage({ text: "Selection cleared.", visible: false });
+    bulk.reset();
+    // The bar unmounts with the selection.
+    setRefocus(groupToggle(groups.data?.[0]?.categoryId));
+  }
+
+  function showMore(group: ReviewGroup, count: number) {
+    setShown((current) => ({ ...current, [group.categoryId]: count + PAGE_SIZE }));
+    // The button stays while rows are left to show; otherwise focus the first new row.
+    if (count + PAGE_SIZE >= group.rows.length) setRefocus(`[data-review-row="${group.rows[count].id}"]`);
   }
 
   async function retry() {
@@ -75,7 +128,45 @@ export function ReviewPage() {
     const result = await groups.refetch();
     setRetriedError(null);
     // The retry button unmounts on success, so move focus to the page heading.
-    if (result.isSuccess) document.querySelector<HTMLElement>("main h1")?.focus();
+    if (result.isSuccess) setRefocus(HEADING);
+  }
+
+  function selectionBar() {
+    if (selectedIds.length === 0) return null;
+    return (
+      <div className="sticky top-0 z-10 flex flex-col gap-3 rounded-lg border bg-background px-4 py-3">
+        <div className="flex flex-wrap items-center gap-4">
+          <p className="text-sm font-medium tabular-nums">{selectedIds.length} selected</p>
+          <label htmlFor={BULK_SELECT_ID} className="text-sm">
+            {bulk.isPending ? "Changing…" : "Change selected to…"}
+          </label>
+          <div className="w-56">
+            <CategorySelect
+              id={BULK_SELECT_ID}
+              value={null}
+              onChange={(categoryId) => {
+                if (busy || categoryId === null) return;
+                setMessage({ text: "", visible: false });
+                bulk.mutate({ transactionIds: selectedIds, categoryId });
+              }}
+            />
+          </div>
+          <Button variant="outline" className="ml-auto" onClick={clear}>
+            Clear
+          </Button>
+        </div>
+        {bulk.isError && (
+          <CommandErrorAlert
+            title="Couldn't change the selected rows"
+            error={bulk.error}
+            onDismiss={() => {
+              bulk.reset();
+              setRefocus(`#${BULK_SELECT_ID}`);
+            }}
+          />
+        )}
+      </div>
+    );
   }
 
   function content() {
@@ -119,21 +210,39 @@ export function ReviewPage() {
         </Empty>
       );
     }
+    const allRows = groups.data.flatMap((group) => group.rows);
     return groups.data.map((group) => {
       const title = `${group.category} (${group.rows.length})`;
+      const count = shown[group.categoryId] ?? PAGE_SIZE;
+      const ids = group.rows.map((row) => row.id);
+      const picked = ids.filter((id) => selected.has(id)).length;
+      // The checkbox draws mixed like checked, so the label says how many.
+      const selectAll = picked > 0 && picked < ids.length ? `Select all (${picked} of ${ids.length} selected)` : "Select all";
+      const hidden = group.rows.length > count;
       const changeError = change.isError && change.variables.groupId === group.categoryId ? change.error : null;
       const reviewError = looksGood.isError && looksGood.variables.groupId === group.categoryId ? looksGood.error : null;
       return (
         <Collapsible key={group.categoryId} defaultOpen asChild>
           <section aria-label={title} className="rounded-lg border">
-            <h2 className="flex items-center gap-2 px-4 py-3">
-              <CollapsibleTrigger asChild>
-                <Button variant="ghost" size="sm" className="group -ml-2 font-semibold" data-review-group={group.categoryId}>
-                  <ChevronDownIcon aria-hidden="true" className="transition-transform group-data-[state=closed]:-rotate-90" />
-                  {title}
-                </Button>
-              </CollapsibleTrigger>
-            </h2>
+            <div className="flex items-center gap-4 px-4 py-3">
+              <h2>
+                <CollapsibleTrigger asChild>
+                  <Button variant="ghost" size="sm" className="group -ml-2 font-semibold" data-review-group={group.categoryId}>
+                    <ChevronDownIcon aria-hidden="true" className="transition-transform group-data-[state=closed]:-rotate-90" />
+                    {title}
+                  </Button>
+                </CollapsibleTrigger>
+              </h2>
+              <label className="ml-auto flex items-center gap-2 text-sm">
+                <Checkbox
+                  aria-label={`${selectAll} in ${group.category}`}
+                  className="border-muted-foreground"
+                  checked={picked === ids.length ? true : picked > 0 ? "indeterminate" : false}
+                  onCheckedChange={() => select(ids, picked !== ids.length)}
+                />
+                {selectAll}
+              </label>
+            </div>
             <CollapsibleContent className="flex flex-col gap-3 px-4 pb-4">
               {changeError && (
                 <CommandErrorAlert title="Couldn't change the category" error={changeError} onDismiss={() => dismiss(change.reset, group.categoryId)} />
@@ -145,23 +254,53 @@ export function ReviewPage() {
               <Table className="table-fixed">
                 <TableHeader>
                   <TableRow>
+                    <TableHead scope="col" className="w-10">
+                      <span className="sr-only">Selected</span>
+                    </TableHead>
                     <TableHead scope="col" className="w-28">
                       Date
                     </TableHead>
                     <TableHead scope="col">Description</TableHead>
-                    <TableHead scope="col" className="w-24 text-right">
+                    <TableHead scope="col" className="w-28 text-right">
                       Amount
                     </TableHead>
-                    <TableHead scope="col" className="w-40">
+                    <TableHead scope="col" className="w-48">
                       Category
                     </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {group.rows.map((row) => (
-                    <TableRow key={row.id}>
+                  {group.rows.slice(0, count).map((row) => (
+                    <TableRow key={row.id} data-state={selected.has(row.id) ? "selected" : undefined}>
+                      <TableCell>
+                        <Checkbox
+                          aria-label={`Select ${label(row)}`}
+                          className="border-muted-foreground"
+                          data-review-row={row.id}
+                          checked={selected.has(row.id)}
+                          onCheckedChange={(checked) => select([row.id], checked === true)}
+                        />
+                      </TableCell>
                       <TableCell className="tabular-nums">{formatDate(row.postedDate)}</TableCell>
-                      <TableCell className="whitespace-normal font-medium">{row.nickname ?? row.description}</TableCell>
+                      <TableCell className="whitespace-normal">
+                        <div className="flex items-baseline gap-2">
+                          <span className="font-medium">{label(row)}</span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="shrink-0 text-muted-foreground"
+                            aria-label={`Select all like this (${label(row)})`}
+                            onClick={() =>
+                              select(
+                                allRows.filter((other) => label(other) === label(row)).map((other) => other.id),
+                                true,
+                              )
+                            }
+                          >
+                            Select all like this
+                          </Button>
+                        </div>
+                      </TableCell>
                       {/* The minus sign marks money out; the colour only reinforces it. */}
                       <TableCell className={cn("text-right tabular-nums", row.amountCents < 0 && "text-destructive")}>
                         {formatCents(row.amountCents)}
@@ -169,9 +308,10 @@ export function ReviewPage() {
                       <TableCell>
                         <CategorySelect
                           value={row.categoryId}
-                          aria-label={`Category for ${row.nickname ?? row.description}`}
+                          aria-label={`Category for ${label(row)}`}
                           onChange={(categoryId) => {
                             if (busy) return;
+                            setMessage({ text: "", visible: false });
                             change.mutate({ groupId: group.categoryId, row, categoryId });
                           }}
                         />
@@ -180,17 +320,24 @@ export function ReviewPage() {
                   ))}
                 </TableBody>
               </Table>
-              <Button
-                variant="outline"
-                className="self-end"
-                aria-disabled={busy}
-                onClick={() => {
-                  if (busy) return;
-                  looksGood.mutate({ groupId: group.categoryId, transactionIds: group.rows.map((row) => row.id) });
-                }}
-              >
-                {looksGood.isPending && looksGood.variables.groupId === group.categoryId ? "Saving…" : "Looks good"}
-              </Button>
+              <div className="flex items-center justify-end gap-3">
+                {hidden && (
+                  <Button variant="outline" className="mr-auto" onClick={() => showMore(group, count)}>
+                    Show {Math.min(PAGE_SIZE, group.rows.length - count)} more
+                  </Button>
+                )}
+                <Button
+                  variant="outline"
+                  aria-disabled={busy}
+                  onClick={() => {
+                    if (busy) return;
+                    setMessage({ text: "", visible: false });
+                    looksGood.mutate({ groupId: group.categoryId, transactionIds: ids });
+                  }}
+                >
+                  {looksGood.isPending && looksGood.variables.groupId === group.categoryId ? "Saving…" : hidden ? `Looks good (all ${ids.length})` : "Looks good"}
+                </Button>
+              </div>
             </CollapsibleContent>
           </section>
         </Collapsible>
@@ -200,10 +347,18 @@ export function ReviewPage() {
 
   return (
     <Page title="Review" description="Check the categories the model picked.">
-      {/* Always mounted, so screen readers announce each change to its text. */}
-      <p role="status" className="sr-only">
-        {listError ? (groups.isFetching ? "Retrying…" : "") : groups.isPending ? "Loading the review…" : ""}
+      <p className="-mt-4 text-sm text-muted-foreground">
+        To always categorize a merchant the same way,{" "}
+        <a href="#/nicknames" className="underline underline-offset-4 hover:text-foreground">
+          give its nickname a default category
+        </a>
+        .
       </p>
+      {/* Always mounted, so screen readers announce each change to its text. */}
+      <p role="status" className={message.visible ? "text-sm" : "sr-only"}>
+        {listError ? (groups.isFetching ? "Retrying…" : "") : groups.isPending ? "Loading the review…" : message.text}
+      </p>
+      {selectionBar()}
       {content()}
     </Page>
   );

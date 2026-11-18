@@ -1,8 +1,9 @@
 //! The one Ollama job (a categorize run, a download or a build): start, progress, cancel and status.
 
 use std::future::Future;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, MutexGuard, PoisonError};
+
+use tokio::sync::watch;
 
 use crate::types::{AppError, JobCtx, JobKind, JobOutcome, JobSlot, JobStatus, Jobs, RunningJob};
 
@@ -37,7 +38,7 @@ where
             running.label
         )));
     }
-    let cancel = Arc::new(AtomicBool::new(false));
+    let cancel = Arc::new(watch::Sender::new(false));
     guard.cancel = cancel.clone();
     guard.running = Some(RunningJob {
         kind,
@@ -78,7 +79,18 @@ impl JobCtx {
     }
 
     pub fn cancelled(&self) -> bool {
-        self.cancel.load(Ordering::Relaxed)
+        *self.cancel.borrow()
+    }
+
+    /// Resolves once the job is cancelled, at once if it already is, so `select!` can drop work.
+    pub async fn until_cancelled(&self) {
+        // `wait_for` checks the current value first, so a cancel before this call is not missed.
+        // Its error (sender dropped) can't happen: `self.cancel` keeps the sender alive.
+        let _ = self
+            .cancel
+            .subscribe()
+            .wait_for(|cancelled| *cancelled)
+            .await;
     }
 }
 
@@ -102,7 +114,7 @@ pub fn status(jobs: &Jobs) -> JobStatus {
 
 /// Asks the running job to stop; a no-op when idle.
 pub fn cancel(jobs: &Jobs) {
-    slot(jobs).cancel.store(true, Ordering::Relaxed);
+    slot(jobs).cancel.send_replace(true);
 }
 
 pub fn clear_outcome(jobs: &Jobs) {
@@ -113,7 +125,7 @@ pub fn clear_outcome(jobs: &Jobs) {
 pub async fn stop_and_wait(jobs: &Jobs) {
     let handle = {
         let mut slot = slot(jobs);
-        slot.cancel.store(true, Ordering::Relaxed);
+        slot.cancel.send_replace(true);
         slot.handle.take()
     };
     if let Some(handle) = handle {
@@ -124,6 +136,7 @@ pub async fn stop_and_wait(jobs: &Jobs) {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicBool, Ordering};
     use std::time::{Duration, Instant};
 
     use super::*;

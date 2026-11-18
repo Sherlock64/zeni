@@ -80,7 +80,7 @@ export function CategoryForm({ editing, onDone, locked, lockId }: CategoryFormPr
 
   const busy = save.isPending || locked;
   return (
-    <Card>
+    <Card className="w-full max-w-3xl">
       <CardHeader>
         <CardTitle>
           <h2 className="break-words">{editing ? `Edit ${editing.name}` : "Add a category"}</h2>

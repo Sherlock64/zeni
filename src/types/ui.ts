@@ -213,3 +213,6 @@ export type CategoryDeleteDialogProps = {
   onOpenChange: (open: boolean) => void;
   onCloseAutoFocus: (event: Event) => void;
 };
+
+// Text size choices, in percent of the default root font size.
+export type TextSize = 90 | 100 | 115 | 130 | 150;

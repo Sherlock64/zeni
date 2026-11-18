@@ -101,6 +101,7 @@ pub fn run() {
             commands::reorder_categories,
             commands::delete_category,
             commands::set_transaction_category,
+            commands::set_transactions_category,
             commands::ollama_settings,
             commands::set_ollama_port,
             commands::set_base_model,

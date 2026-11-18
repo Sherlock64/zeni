@@ -8,6 +8,7 @@ import { OllamaCard } from "@/components/ollama-card";
 import { Page } from "@/components/page";
 import { RecoveryCodes } from "@/components/recovery-codes";
 import { TextField } from "@/components/text-field";
+import { TextSizeCard } from "@/components/text-size-card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -64,73 +65,78 @@ export function SettingsPage() {
   }
 
   return (
-    <Page title="Settings" description="Security, backups, saved CSV layouts, nicknames, Ollama and details of this installation of Zeni.">
-      <SecurityCard />
+    <Page title="Settings" description="Security, text size, backups, saved CSV layouts, nicknames, Ollama and details of this installation of Zeni.">
+      {/* Form cards stay readable on wide windows instead of stretching to the page width. */}
+      <div className="flex w-full max-w-4xl flex-col gap-6">
+        <SecurityCard />
 
-      <BackupCard />
+        <TextSizeCard />
 
-      <CsvLayoutsCard />
+        <BackupCard />
 
-      <NicknamesCard />
+        <CsvLayoutsCard />
 
-      <OllamaCard />
+        <NicknamesCard />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>
-            <h2 ref={aboutHeading} tabIndex={-1}>
-              About
-            </h2>
-          </CardTitle>
-          <CardDescription>Version and storage details reported by the backend.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {/* Always mounted, so screen readers announce each change to its text. */}
-          <p role="status" className="sr-only">
-            {infoStatus()}
-          </p>
-          {infoError ? (
-            <div className="flex flex-col items-start gap-3">
-              {/* A new key remounts the alert, so a repeat failure is announced again. */}
-              <CommandErrorAlert key={info.errorUpdatedAt} title="Couldn't load app info" error={infoError} />
-              {/* aria-disabled instead of disabled keeps keyboard focus on the button while busy. */}
-              <Button variant="outline" onClick={retryInfo} aria-disabled={info.isFetching}>
-                Try again
-              </Button>
-            </div>
-          ) : (
-            <dl aria-busy={info.isPending} className="grid grid-cols-[max-content_1fr] items-center gap-x-8 gap-y-3">
-              <InfoRow label="Name" loading={info.isPending}>
-                {info.data?.name}
-              </InfoRow>
-              <InfoRow label="Version" loading={info.isPending}>
-                {info.data?.version}
-              </InfoRow>
-              <InfoRow label="Database" loading={info.isPending}>
-                <span className="font-mono text-xs break-all">{info.data?.dbPath}</span>
-              </InfoRow>
-              <InfoRow label="Migrations applied" loading={info.isPending}>
-                {info.data?.migrationsApplied}
-              </InfoRow>
-            </dl>
-          )}
-        </CardContent>
-      </Card>
+        <OllamaCard />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>
-            <h2>Error handling</h2>
-          </CardTitle>
-          <CardDescription>Ask the backend for a sample error to check how errors are shown.</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col items-start gap-4">
-          <Button variant="outline" onClick={() => !sample.isPending && sample.mutate()} aria-disabled={sample.isPending}>
-            Trigger sample error
-          </Button>
-          {sample.isError && <CommandErrorAlert title="Sample command failed" error={sample.error} />}
-        </CardContent>
-      </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              <h2 ref={aboutHeading} tabIndex={-1}>
+                About
+              </h2>
+            </CardTitle>
+            <CardDescription>Version and storage details reported by the backend.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {/* Always mounted, so screen readers announce each change to its text. */}
+            <p role="status" className="sr-only">
+              {infoStatus()}
+            </p>
+            {infoError ? (
+              <div className="flex flex-col items-start gap-3">
+                {/* A new key remounts the alert, so a repeat failure is announced again. */}
+                <CommandErrorAlert key={info.errorUpdatedAt} title="Couldn't load app info" error={infoError} />
+                {/* aria-disabled instead of disabled keeps keyboard focus on the button while busy. */}
+                <Button variant="outline" onClick={retryInfo} aria-disabled={info.isFetching}>
+                  Try again
+                </Button>
+              </div>
+            ) : (
+              <dl aria-busy={info.isPending} className="grid grid-cols-[max-content_1fr] items-center gap-x-8 gap-y-3">
+                <InfoRow label="Name" loading={info.isPending}>
+                  {info.data?.name}
+                </InfoRow>
+                <InfoRow label="Version" loading={info.isPending}>
+                  {info.data?.version}
+                </InfoRow>
+                <InfoRow label="Database" loading={info.isPending}>
+                  <span className="font-mono text-xs break-all">{info.data?.dbPath}</span>
+                </InfoRow>
+                <InfoRow label="Migrations applied" loading={info.isPending}>
+                  {info.data?.migrationsApplied}
+                </InfoRow>
+              </dl>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              <h2>Error handling</h2>
+            </CardTitle>
+            <CardDescription>Ask the backend for a sample error to check how errors are shown.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col items-start gap-4">
+            <Button variant="outline" onClick={() => !sample.isPending && sample.mutate()} aria-disabled={sample.isPending}>
+              Trigger sample error
+            </Button>
+            {sample.isError && <CommandErrorAlert title="Sample command failed" error={sample.error} />}
+          </CardContent>
+        </Card>
+      </div>
     </Page>
   );
 }

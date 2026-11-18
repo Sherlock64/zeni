@@ -37,7 +37,7 @@ Open **Settings** and find the **Ollama** card.
 - **Port**: the port Ollama listens on. The default is 11434. Enter 1 to 65535.
 - **Status**: shows whether Ollama is running and its version. When it is not reachable, the card says so and every other part of Zeni keeps working.
 - **Base model**: the installed model that categorizes. Pick one from the list. If none is installed, the card shows an `ollama pull <model>` command you can copy.
-- **Recommended models**: pick one that is not installed and confirm "Download <model> (<size>)?". A progress bar with **Cancel** shows the download, and it comes back if you leave and reopen Settings. A finished download becomes your base model.
+- **Recommended models**: pick one that is not installed and confirm "Download <model> (<size>)?". A progress bar with **Cancel** shows the download, and Cancel stops it at once. The bar comes back if you leave and reopen Settings. A finished download becomes your base model.
 
 | Model | Download | What to expect on the sample files |
 |---|---|---|
@@ -58,7 +58,7 @@ Both buttons are on **Transactions**.
 
 The buttons are disabled, with the reason, when Ollama is not running, no model is picked, or a job is running.
 
-A banner shows "Categorizing <done> of <total>" with **Cancel**. It stays when you change pages. Cancel keeps the finished rows and leaves the rest alone. When the run ends the banner shows "Categorized <a>. Couldn't categorize <b>. Not reached <c>." Click **Dismiss** to clear it.
+A banner shows "Categorizing <done> of <total>" with **Cancel**. It stays when you change pages. Cancel stops at once, even in the middle of a row. It keeps the finished rows and leaves the rest alone. When the run ends the banner shows "Categorized <a>. Couldn't categorize <b>. Not reached <c>." Click **Dismiss** to clear it.
 
 Zeni sends the model one row at a time, with the nickname, description, memo, amount and the CSV bank category when there is one, plus your category list. An answer not on the list is retried once. If it is still wrong, the row stays uncategorized and counts as "couldn't categorize". If Ollama stops answering, the run stops and the summary says after how many rows.
 
@@ -74,8 +74,15 @@ If it cannot start, the import still commits and the import summary adds a line 
 
 Open **Review** in the sidebar. A badge shows how many model answers you have not reviewed. Rows are grouped by category in category order, and each group collapses.
 
+Each group shows 25 rows. Click **Show 25 more** to see the next 25.
+
 - Change a row's category: it becomes set by you and reviewed, and leaves the group.
 - **Looks good**: marks the rest of the group reviewed.
+- Change many rows at once: tick the boxes beside rows, then use the bar that shows "<n> selected". Pick a category in **Change selected to…**. The rows keep their notes. **Clear** unticks everything.
+- **Select all** in a group header ticks every row of the group, including rows not shown yet.
+- **Select all like this** on a row ticks every row, in all groups, with the same nickname or description.
+
+To always categorize a merchant the same way, give its nickname a default category (see below).
 
 ## Nickname default categories
 

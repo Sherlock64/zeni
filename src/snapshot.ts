@@ -5,6 +5,7 @@
 // `?nicknames=empty` answers list_nicknames with no nicknames.
 // Every key of `variants` in snapshot-fixtures.ts is a param too, for example `?job=categorizing`, `?ollama=unreachable`,
 // `?categories=empty`, `?review=empty` or `?builds=empty`; see that map for the values.
+// `?textSize=<percent>` saves that text size before the app starts.
 // `?fail=<command>[:<kind>]` (repeatable) makes that command reject, to show error states (kind defaults to Sample);
 // the message is that command's own for the kind when it has one (`errorMessages["<command>:<kind>"]`), else the kind's.
 // Steps run in URL order once the app has loaded, to reach states behind a click:
@@ -54,6 +55,7 @@ mockIPC((command) => {
   return responses[command];
 });
 
+if (params.has("textSize")) localStorage.setItem("zeni.textSize", params.get("textSize")!);
 await import("@/main");
 
 async function waitFor<T>(find: () => T | null | undefined): Promise<T> {

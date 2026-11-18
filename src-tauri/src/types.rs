@@ -944,6 +944,17 @@ pub struct SetTransactionCategoryRequest {
     pub note: Option<String>,
 }
 
+#[derive(Debug, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct SetTransactionsCategoryRequest {
+    #[ts(type = "number[]")]
+    pub transaction_ids: Vec<i64>,
+    /// The user's category for every row; `None` clears it. Notes stay as they are.
+    #[ts(type = "number | null")]
+    pub category_id: Option<i64>,
+}
+
 #[derive(Debug, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -1091,18 +1102,18 @@ pub struct Jobs(pub std::sync::Arc<std::sync::Mutex<JobSlot>>);
 #[derive(Default)]
 pub struct JobSlot {
     pub running: Option<RunningJob>,
-    /// The running job's cancel flag; each job gets a fresh one.
-    pub cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    /// The running job's cancel signal (`true` once cancelled); each job gets a fresh one.
+    pub cancel: std::sync::Arc<tokio::sync::watch::Sender<bool>>,
     /// The running job's task, until it ends or `stop_and_wait` takes it.
     pub handle: Option<tauri::async_runtime::JoinHandle<()>>,
     pub last: Option<JobOutcome>,
 }
 
-/// Handed to a job's work: reports progress and reads the cancel flag (Rust only).
+/// Handed to a job's work: reports progress and reads or awaits the cancel signal (Rust only).
 #[derive(Clone)]
 pub struct JobCtx {
     pub jobs: Jobs,
-    pub cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    pub cancel: std::sync::Arc<tokio::sync::watch::Sender<bool>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, TS)]

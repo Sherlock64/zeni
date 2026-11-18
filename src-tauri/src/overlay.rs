@@ -1,7 +1,11 @@
 //! The user's category and note per transaction, stored in `transaction_categories`.
 
+use sqlx::SqliteConnection;
+
 use crate::security;
-use crate::types::{AppError, AppState, SetTransactionCategoryRequest};
+use crate::types::{
+    AppError, AppState, SetTransactionCategoryRequest, SetTransactionsCategoryRequest,
+};
 
 const MAX_NOTE_CHARS: usize = 500;
 
@@ -31,16 +35,7 @@ pub async fn set_category(
             "That transaction no longer exists.".into(),
         ));
     }
-    if let Some(category_id) = request.category_id {
-        let exists: bool =
-            sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM categories WHERE id = ?)")
-                .bind(category_id)
-                .fetch_one(&mut *tx)
-                .await?;
-        if !exists {
-            return Err(AppError::NotFound("That category no longer exists.".into()));
-        }
-    }
+    check_category(&mut tx, request.category_id).await?;
     sqlx::query(
         "INSERT INTO transaction_categories (raw_transaction_id, user_category_id, note) \
          VALUES (?, ?, ?) \
@@ -58,6 +53,63 @@ pub async fn set_category(
     Ok(())
 }
 
+/// Sets or clears the user's category of many rows, as `set_category` does, keeping each note.
+/// Returns the number of rows changed.
+pub async fn set_many(
+    state: &AppState,
+    request: SetTransactionsCategoryRequest,
+) -> Result<u32, AppError> {
+    if request.transaction_ids.is_empty() {
+        return Ok(0);
+    }
+    let ids = serde_json::Value::from(request.transaction_ids).to_string();
+    let mut tx = security::pool(state)?.begin().await?;
+    let missing: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM json_each(?) j \
+         WHERE NOT EXISTS (SELECT 1 FROM raw_transactions r WHERE r.id = j.value))",
+    )
+    .bind(&ids)
+    .fetch_one(&mut *tx)
+    .await?;
+    if missing {
+        return Err(AppError::NotFound(
+            "That transaction no longer exists.".into(),
+        ));
+    }
+    check_category(&mut tx, request.category_id).await?;
+    let changed = sqlx::query(
+        "INSERT INTO transaction_categories (raw_transaction_id, user_category_id) \
+         SELECT r.id, ? FROM raw_transactions r WHERE r.id IN (SELECT value FROM json_each(?)) \
+         ON CONFLICT (raw_transaction_id) DO UPDATE SET \
+         user_category_id = excluded.user_category_id, model_category_id = NULL, \
+         model_build_id = NULL, model_reviewed = 0, updated_at = CURRENT_TIMESTAMP",
+    )
+    .bind(request.category_id)
+    .bind(&ids)
+    .execute(&mut *tx)
+    .await?
+    .rows_affected();
+    tx.commit().await?;
+    Ok(changed as u32)
+}
+
+async fn check_category(
+    conn: &mut SqliteConnection,
+    category_id: Option<i64>,
+) -> Result<(), AppError> {
+    let Some(category_id) = category_id else {
+        return Ok(());
+    };
+    let exists: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM categories WHERE id = ?)")
+        .bind(category_id)
+        .fetch_one(conn)
+        .await?;
+    if !exists {
+        return Err(AppError::NotFound("That category no longer exists.".into()));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
@@ -65,7 +117,7 @@ mod tests {
     use super::*;
     use crate::db;
     use crate::imports;
-    use crate::types::RevertImportRequest;
+    use crate::types::{JobKind, JobOutcome, RevertImportRequest};
 
     struct Fixture {
         state: AppState,
@@ -272,6 +324,112 @@ mod tests {
         assert!(overlay(&f, 3).is_some());
     }
 
+    fn set_many_rows(f: &Fixture, ids: &[i64], category_id: Option<i64>) -> Result<u32, AppError> {
+        run(set_many(
+            &f.state,
+            SetTransactionsCategoryRequest {
+                transaction_ids: ids.to_vec(),
+                category_id,
+            },
+        ))
+    }
+
+    #[test]
+    fn set_many_sets_every_row_and_keeps_notes() {
+        let f = fixture("many");
+        set(&f, 1, Some(5), Some("keep me")).unwrap();
+        model_answer(&f, 2, 5);
+        assert_eq!(set_many_rows(&f, &[1, 2, 3, 2], Some(4)).unwrap(), 3);
+        assert_eq!(
+            overlay(&f, 1),
+            Some((Some(4), None, None, false, Some("keep me".into())))
+        );
+        for id in [2, 3] {
+            assert_eq!(overlay(&f, id), Some((Some(4), None, None, false, None)));
+        }
+        for id in [1, 2, 3] {
+            assert_eq!(effective(&f, id), (Some(4), Some("user".into()), true));
+        }
+        // Clearing keeps the notes and leaves the rows open to the model.
+        assert_eq!(set_many_rows(&f, &[1, 2], None).unwrap(), 2);
+        assert_eq!(
+            overlay(&f, 1),
+            Some((None, None, None, false, Some("keep me".into())))
+        );
+        assert_eq!(effective(&f, 2), (None, None, false));
+    }
+
+    #[test]
+    fn set_many_with_no_rows_changes_nothing() {
+        let f = fixture("many-empty");
+        assert_eq!(set_many_rows(&f, &[], Some(999)).unwrap(), 0);
+        assert_eq!(overlay(&f, 1), None);
+    }
+
+    #[test]
+    fn set_many_rejects_unknown_categories_and_transactions_and_changes_nothing() {
+        let f = fixture("many-unknown");
+        match set_many_rows(&f, &[1, 2], Some(999)) {
+            Err(AppError::NotFound(message)) => {
+                assert_eq!(message, "That category no longer exists.")
+            }
+            other => panic!("expected not found, got {other:?}"),
+        }
+        match set_many_rows(&f, &[1, 99], Some(4)) {
+            Err(AppError::NotFound(message)) => {
+                assert_eq!(message, "That transaction no longer exists.")
+            }
+            other => panic!("expected not found, got {other:?}"),
+        }
+        assert_eq!((overlay(&f, 1), overlay(&f, 2)), (None, None));
+    }
+
+    #[test]
+    fn set_many_works_during_a_categorize_run_as_the_single_set_does() {
+        let f = fixture("many-busy");
+        crate::jobs::start(
+            &f.state.jobs,
+            JobKind::CategorizeNow,
+            "Categorize now".into(),
+            |ctx| async move {
+                ctx.until_cancelled().await;
+                JobOutcome {
+                    kind: JobKind::CategorizeNow,
+                    label: "Categorize now".into(),
+                    cancelled: true,
+                    error: None,
+                    summary: None,
+                }
+            },
+        )
+        .unwrap();
+        assert!(crate::jobs::refuse_while_categorizing(&f.state.jobs).is_err());
+        set(&f, 1, Some(4), None).unwrap();
+        assert_eq!(set_many_rows(&f, &[2, 3], Some(4)).unwrap(), 2);
+        assert_eq!(effective(&f, 3), (Some(4), Some("user".into()), true));
+        run(crate::jobs::stop_and_wait(&f.state.jobs));
+    }
+
+    #[test]
+    fn set_many_keeps_user_over_nickname_over_model() {
+        let f = fixture("many-precedence");
+        let pool = &security::pool(&f.state).unwrap();
+        run(sqlx::raw_sql(
+            "INSERT INTO nicknames (id, name, default_category_id) VALUES (1, 'Coffee', 6);
+             INSERT INTO nickname_rules (id, nickname_id, mode, field, pattern)
+               VALUES (1, 1, 'contains', 'description', 'Coffee');
+             INSERT INTO nickname_matches (raw_transaction_id, rule_id) VALUES (1, 1);",
+        )
+        .execute(pool))
+        .unwrap();
+        model_answer(&f, 1, 5);
+        assert_eq!(effective(&f, 1), (Some(6), Some("nickname".into()), true));
+        set_many_rows(&f, &[1], Some(4)).unwrap();
+        assert_eq!(effective(&f, 1), (Some(4), Some("user".into()), true));
+        set_many_rows(&f, &[1], None).unwrap();
+        assert_eq!(effective(&f, 1), (Some(6), Some("nickname".into()), true));
+    }
+
     #[test]
     fn reports_a_missing_database() {
         let state = AppState {
@@ -288,6 +446,14 @@ mod tests {
         };
         assert!(matches!(
             run(set_category(&state, request)),
+            Err(AppError::Database(_))
+        ));
+        let request = SetTransactionsCategoryRequest {
+            transaction_ids: vec![1],
+            category_id: None,
+        };
+        assert!(matches!(
+            run(set_many(&state, request)),
             Err(AppError::Database(_))
         ));
     }
