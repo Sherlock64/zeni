@@ -37,6 +37,9 @@ export function OllamaCard() {
   const status = useQuery({ queryKey: OLLAMA_STATUS_KEY, queryFn: ollamaStatus });
   const job = useJobStatus();
   const heading = useRef<HTMLHeadingElement>(null);
+  const checkAgainRef = useRef<HTMLButtonElement>(null);
+  // Set while a Check again from a success card runs, so its error can take focus.
+  const focusOnError = useRef(false);
   const busyId = useId();
   const pickerId = useId();
 
@@ -109,13 +112,23 @@ export function OllamaCard() {
   async function checkAgain() {
     if (status.isFetching) return;
     const fromError = status.isError;
+    focusOnError.current = !fromError;
     const result = await status.refetch();
+    if (result.isSuccess) focusOnError.current = false;
     // The error alert and its button unmount on success, so don't leave focus on nothing.
     if (fromError && result.isSuccess) heading.current?.focus();
   }
 
+  // The success card's Check again unmounts on error; focus the one under the new alert.
+  useEffect(() => {
+    if (status.isError && focusOnError.current) {
+      focusOnError.current = false;
+      checkAgainRef.current?.focus();
+    }
+  }, [status.isError]);
+
   const checkAgainButton = (
-    <Button variant="outline" size="sm" aria-disabled={status.isFetching} onClick={checkAgain}>
+    <Button ref={checkAgainRef} variant="outline" size="sm" aria-disabled={status.isFetching} onClick={checkAgain}>
       {status.isFetching ? "Checking…" : "Check again"}
     </Button>
   );
@@ -210,8 +223,11 @@ export function OllamaCard() {
         ) : (
           <>
             <div className="flex flex-wrap items-center gap-3">
+              {/* The text changes on every check, so a repeat result is announced again. */}
               <p role="status" className="text-sm">
-                {status.data.reachable
+                {status.isFetching
+                  ? "Checking Ollama…"
+                  : status.data.reachable
                   ? status.data.version
                     ? `Ollama ${status.data.version} is running.`
                     : "Ollama is running."

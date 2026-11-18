@@ -268,7 +268,7 @@ test("shows the nickname instead of the description, with the raw text in a tool
     total: 2,
   });
   renderPage();
-  const nickname = await screen.findByText("Coffee");
+  const nickname = (await screen.findByText("Coffee")).closest("p")!;
   // Unmapped rows show the bank's text as before.
   expect(screen.getByText("PAYROLL")).toBeTruthy();
   expect(screen.queryByText("CORNER COFFEE")).toBeNull();
@@ -292,11 +292,29 @@ test("shows the nickname instead of the description, with the raw text in a tool
 test("a nickname row without a memo leaves Memo out of the tooltip and screen reader text", async () => {
   vi.mocked(listTransactions).mockResolvedValue({ rows: [{ ...row, nickname: "Coffee", memo: null }], total: 1 });
   renderPage();
-  const nickname = await screen.findByText("Coffee");
+  const nickname = (await screen.findByText("Coffee")).closest("p")!;
   expect(nickname.textContent).toBe("Coffee, description CORNER COFFEE");
   fireEvent.focus(nickname.closest("tr")!);
   const tooltip = await screen.findByRole("tooltip");
   expect(tooltip.textContent).toBe("Description: CORNER COFFEE");
+});
+
+test("a long description truncates to one line, with its full text and memo in a tooltip on focus", async () => {
+  const description = "ATM WITHDRAWAL 5TH AVE AND MAIN STREET BRANCH 0042";
+  vi.mocked(listTransactions).mockResolvedValue({ rows: [{ ...row, description }], total: 1 });
+  renderPage();
+  const text = await screen.findByText(description);
+  expect(text.className).toContain("truncate");
+  // Below lg the memo is hidden from sight only; screen readers still get it without the tooltip.
+  const memo = screen.getByText("Card purchase");
+  expect(memo.className).toContain("sr-only");
+  expect(memo.className).not.toMatch(/(^|\s)hidden(\s|$)/);
+  const tableRow = text.closest("tr")!;
+  fireEvent.focus(tableRow);
+  const tooltip = await screen.findByRole("tooltip");
+  expect(tooltip.textContent).toBe(`Description: ${description}Memo: Card purchase`);
+  fireEvent.blur(tableRow);
+  await vi.waitFor(() => expect(screen.queryByRole("tooltip")).toBeNull());
 });
 
 test("the search placeholder mentions nicknames and notes", async () => {

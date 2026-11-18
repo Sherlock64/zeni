@@ -18,7 +18,7 @@ import type { Category } from "@/types/bindings/Category";
 import type { ReviewGroup } from "@/types/bindings/ReviewGroup";
 import type { Transaction } from "@/types/bindings/Transaction";
 import type { CommandError } from "@/types/command";
-import type { ReviewCategoryCellProps } from "@/types/ui";
+import type { ReviewBulkVariables, ReviewCategoryCellProps, ReviewChangeVariables, ReviewLooksGoodVariables } from "@/types/ui";
 import { cn } from "cn";
 
 // Rendering every row (each with its own CategorySelect) made large reviews slow, so groups show this many at a time.
@@ -125,16 +125,16 @@ export function ReviewPage() {
 
   // Each carries its group's id, so the error shows in the group it came from.
   const change = useMutation({
-    mutationFn: ({ row, categoryId }: { groupId: number; row: Transaction; categoryId: number | null }) =>
+    mutationFn: ({ row, categoryId }: ReviewChangeVariables) =>
       setTransactionCategory({ transactionId: row.id, categoryId, note: row.note }),
     onSuccess: (_result, { groupId, row }) => removeFromGroup(groupId, [row.id]),
   });
   const looksGood = useMutation({
-    mutationFn: ({ transactionIds }: { groupId: number; transactionIds: number[] }) => markReviewed({ transactionIds }),
+    mutationFn: ({ transactionIds }: ReviewLooksGoodVariables) => markReviewed({ transactionIds }),
     onSuccess: (_result, { groupId, transactionIds }) => removeFromGroup(groupId, transactionIds),
   });
   const bulk = useMutation({
-    mutationFn: ({ transactionIds, categoryId }: { transactionIds: number[]; categoryId: number }) =>
+    mutationFn: ({ transactionIds, categoryId }: ReviewBulkVariables) =>
       setTransactionsCategory({ transactionIds, categoryId }),
     onSuccess: (count, { transactionIds, categoryId }) => {
       const name =

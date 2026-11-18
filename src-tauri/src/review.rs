@@ -59,7 +59,8 @@ pub async fn mark_reviewed(state: &AppState, request: MarkReviewedRequest) -> Re
         return Ok(());
     }
     // One JSON array bind, so any number of ids fits under SQLite's parameter limit.
-    let ids = serde_json::to_string(&request.transaction_ids).expect("integers always serialize");
+    let ids = serde_json::to_string(&request.transaction_ids)
+        .map_err(|error| AppError::Database(error.to_string()))?;
     sqlx::query(
         "UPDATE transaction_categories SET model_reviewed = 1, updated_at = CURRENT_TIMESTAMP \
          WHERE raw_transaction_id IN (SELECT value FROM json_each(?)) \
