@@ -1,7 +1,7 @@
 ---
 name: council-ui-design
-description: Read-only Zeni council member for visual UI design. Reviews shadcn component use, theme tokens, dark theme, layout, spacing, typography and iconography. Invoked by the council-review skill.
-tools: Read, Grep, Glob
+description: Read-only Zeni council member (writes only its own report file) for visual UI design. Reviews shadcn component use, theme tokens, dark theme, layout, spacing, typography and iconography. Invoked by the council-review skill.
+tools: Read, Grep, Glob, Write
 model: sonnet
 ---
 

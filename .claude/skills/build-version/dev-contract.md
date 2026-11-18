@@ -29,7 +29,7 @@ Nobody edits `plans/`; the user writes PRDs, or the organizer does with the user
    - `dead_code` clippy errors your task message says are expected (callers land in a later task) may stay; list them in `CHECKS`.
    - Never set `ZENI_DEPS_APPROVED` or `ZENI_SUPPRESSIONS_APPROVED`. Report a `POLICY FAIL` in `NEEDS`.
    - UI: the snapshots in `ui-dev`'s agent file, viewed and fixed until they look right.
-10. Report in this format:
+10. Write your full report to `snapshots/V<n>/reports/<task ID>.md` (the version and task ID are in your task message; a follow-up on the same task appends a new section to the same file), in this format:
    ```
    STATUS: DONE | BLOCKED
    CHANGED: <every file created, edited or deleted>
@@ -40,3 +40,8 @@ Nobody edits `plans/`; the user writes PRDs, or the organizer does with the user
    NOTES: <at most five one-line items, or "none">
    ```
    Nothing outside these seven fields. Story and task IDs go only in the report, never in code, test names or comments.
+11. Then reply with exactly one line and nothing else:
+   ```
+   <task ID> DONE|BLOCKED checks=pass|fail needs=none|<count> -> snapshots/V<n>/reports/<task ID>.md
+   ```
+   Put every detail in the file, not in the reply; the organizer opens the file only when it needs it.

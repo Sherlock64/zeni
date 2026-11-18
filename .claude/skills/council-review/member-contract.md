@@ -14,7 +14,7 @@ Your prompt is the template in `council-review` step 3. For a hotfix, the task b
 4. Report every genuine improvement in your dimension, however small, and rate it with the severity scale below. Low findings are how small improvements get recorded; don't drop them, and don't inflate them.
 5. Never invent a problem to look rigorous. Each finding must cite a `file:line` you actually read (or a snapshot path you actually viewed), and must rest on your rubric, `CLAUDE.md`, the PRD, or a pattern already established in this codebase. Personal taste is not a finding.
 6. Do not raise a finding again after the organizer rejected it, unless you have new evidence; state that evidence.
-7. Never edit files. Use Bash only for the commands your agent file lists, plus read-only `git` (`status`, `diff`, `log`, `show`).
+7. Never edit files, except writing your own report file (see Output). Use Bash only for the commands your agent file lists, plus read-only `git` (`status`, `diff`, `log`, `show`).
 
 ## Severity
 
@@ -36,7 +36,7 @@ Every `MEDIUM` names which of the two it is, citing the criterion that decided i
 
 ## Output
 
-Return exactly this, followed only by any extra section your agent file requires:
+Write exactly this to `snapshots/V<n>/reports/council-<member>-r<round>.md` (for example `council-ux-design-r3.md`), followed only by any extra section your agent file requires. This file is the only file you may create or edit:
 
 ```
 VERDICT: PASS | FAIL
@@ -48,3 +48,9 @@ FINDINGS:
 ```
 
 List findings most severe first. With no findings, write `FINDINGS: none`. A finding that spans lines uses `<path>:<start>-<end>`. A missing file uses the path where it should exist and line `1`. A finding seen only in a snapshot cites the snapshot path and the source line that renders it.
+
+Then reply with exactly one line and nothing else:
+
+```
+<member> r<round> PASS|FAIL critical=<n> high=<n> blocking=<n> medium=<n> low=<n> -> snapshots/V<n>/reports/council-<member>-r<round>.md
+```
