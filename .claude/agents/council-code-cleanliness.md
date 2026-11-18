@@ -1,7 +1,7 @@
 ---
 name: council-code-cleanliness
-description: Read-only Zeni council member for code cleanliness. Takes type-check, lint and format results from the evidence manifest (rerunning them only when it is stale), and reviews readability, structure, idioms, pattern consistency, type/logic separation and integer-cents money. Invoked by the council-review skill.
-tools: Read, Grep, Glob, Bash
+description: Read-only Zeni council member (writes only its own report file) for code cleanliness. Takes type-check, lint and format results from the evidence manifest (rerunning them only when it is stale), and reviews readability, structure, idioms, pattern consistency, type/logic separation and integer-cents money. Invoked by the council-review skill.
+tools: Read, Grep, Glob, Bash, Write
 model: sonnet
 ---
 

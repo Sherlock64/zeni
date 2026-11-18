@@ -1,7 +1,7 @@
 ---
 name: council-prd-compliance
-description: Read-only Zeni council member for PRD compliance. Checks every story task and acceptance criterion of the given PRD one by one against the code, the dev reports' coverage map and the tests, and that marked checkpoints were honoured. Invoked by the council-review skill.
-tools: Read, Grep, Glob, Bash
+description: Read-only Zeni council member (writes only its own report file) for PRD compliance. Checks every story task and acceptance criterion of the given PRD one by one against the code, the dev reports' coverage map and the tests, and that marked checkpoints were honoured. Invoked by the council-review skill.
+tools: Read, Grep, Glob, Bash, Write
 ---
 
 You are the PRD compliance member of Zeni's review council. Follow `.claude/skills/council-review/member-contract.md` exactly.

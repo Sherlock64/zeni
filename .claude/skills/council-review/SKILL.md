@@ -60,9 +60,11 @@ Each member owns one dimension. Every `CLAUDE.md` rule has exactly one owner.
    <path - route, state; or "none">
    Approved dependencies: <list or "none">
    Previously rejected findings: <list with reasons, or "none">
+   Report file: snapshots/V<n>/reports/council-<member>-r<k>.md
    Follow .claude/skills/council-review/member-contract.md.
    ```
-4. If a reply breaks the output format in `member-contract.md`, send it back to that member once to reformat. A member that still gives no valid verdict counts as `FAIL`.
+   Each member writes its full report to that file and replies with one verdict line. While members are still running, acknowledge each reply in one line with no tool calls; act only when all have replied.
+4. Once all have replied, read only what the decision needs: run one command that prints each report file's `VERDICT` line and its `CRITICAL`, `HIGH` and blocking `MEDIUM` findings (for example `grep -H -E '^VERDICT|\[(CRITICAL|HIGH|MEDIUM, blocking)' snapshots/V<n>/reports/council-*-r<k>.md`). Open a whole file only to verify a surprising finding (step 6). Non-blocking findings go into `council-findings.md` by appending the files' `FINDINGS` sections with a shell command, not by reading them into the conversation. If a file is missing or breaks the output format in `member-contract.md`, send it back to that member once to fix. A member that still gives no valid verdict counts as `FAIL`.
 5. Recompute each member's verdict from its findings with the rule in `member-contract.md`, whatever its verdict line says.
 6. Verify each surprising finding in the cited code before rating it. Check each severity against the scale in `member-contract.md`. Change a rating only when it plainly contradicts the scale, and record the old rating and the reason. Never lower a rating because fixing it is inconvenient.
 7. Dedupe the findings. Merge any that name the same `file:line` and the same fix, keep the highest severity, and credit every member that raised it. When two findings conflict, keep both and mark them `CONFLICT` for the organizer to decide.
