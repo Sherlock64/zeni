@@ -8,13 +8,14 @@ argument-hint: V<n>
 
 ## 1. Read
 
-1. Read `CLAUDE.md`, `plans/ROADMAP.md`, `docs/glossary.md` and the PRDs this version builds on.
+1. Read `CLAUDE.md`, `plans/ROADMAP.md` (including its Product preferences section), `docs/glossary.md` and the PRDs this version builds on.
 2. Read the code, migrations and fixtures the version touches: schema, triggers, existing commands and pages. Check every environment or file-format fact a question depends on (running services, format limits, what SQLite allows) before you ask it.
 
 ## 2. Grill
 
 1. Walk the version's decision tree depth-first: scope, then each story, then each task's behaviour, errors and edges. Each answer can open follow-up branches; walk them before moving on.
 2. Ask in rounds of at most four independent questions. Give each your recommended answer and why.
+   Base each product recommendation on the Product preferences in `plans/ROADMAP.md`; code minimalism governs code and dependency structure, not product scope. When an answer shows a new preference, add it to that section.
 3. Answer from the roadmap, the code and `CLAUDE.md` whatever you can; ask only what they leave open. Stop only when no branch is open.
 4. Use `docs/glossary.md` terms exactly. Settle a name for every new domain term in the interview.
 5. If an answer moves scope to another version, update `plans/ROADMAP.md` to match.

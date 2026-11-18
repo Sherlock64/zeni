@@ -20,6 +20,7 @@ import {
   unlock,
   unreviewedCount,
 } from "@/lib/commands";
+import { UNREVIEWED_COUNT_KEY } from "@/lib/query-keys";
 import { routeTree } from "@/router";
 
 // The backup card has its own tests.
@@ -135,8 +136,10 @@ test("redirects to Transactions and navigates with the sidebar", async () => {
 
 test("lists the pages in order and opens Nicknames", async () => {
   vi.mocked(listNicknames).mockResolvedValue([]);
-  renderApp();
+  const client = renderApp();
   await screen.findByRole("heading", { level: 1, name: "Transactions" });
+  // A count of 0 shows nothing, so wait for the count itself to settle.
+  await vi.waitFor(() => expect(client.getQueryState(UNREVIEWED_COUNT_KEY)?.status).toBe("success"));
   const nav = within(screen.getByRole("navigation", { name: "Main" }));
   expect(nav.getAllByRole("link").map((link) => link.textContent)).toEqual([
     "Transactions",
@@ -180,9 +183,9 @@ test("shows the unreviewed count as a badge on Review", async () => {
 
 test("shows no Review badge when the count fails", async () => {
   vi.mocked(unreviewedCount).mockRejectedValue({ kind: "Locked", message: "Unlock Zeni first." });
-  renderApp();
+  const client = renderApp();
   await screen.findByRole("heading", { level: 1, name: "Transactions" });
-  await vi.waitFor(() => expect(unreviewedCount).toHaveBeenCalled());
+  await vi.waitFor(() => expect(client.getQueryState(UNREVIEWED_COUNT_KEY)?.status).toBe("error"));
   const nav = within(screen.getByRole("navigation", { name: "Main" }));
   expect(nav.getByRole("link", { name: "Review" })).toBeTruthy();
   expect(document.querySelector("[data-sidebar=menu-badge]")).toBeNull();
@@ -224,8 +227,8 @@ test("blocks the app with a full-page screen when the database fails to open", a
 
 test("keeps the shell usable when app info fails for another reason", async () => {
   vi.mocked(appInfo).mockRejectedValue({ kind: "Invoke", message: "not running in Tauri" });
-  renderApp();
-  await vi.waitFor(() => expect(appInfo).toHaveBeenCalled());
+  const client = renderApp();
+  await vi.waitFor(() => expect(client.getQueryState(["app_info"])?.status).toBe("error"));
   expect(await screen.findByRole("heading", { level: 1, name: "Transactions" })).toBeTruthy();
   expect(screen.getByRole("navigation", { name: "Main" })).toBeTruthy();
   expect(screen.queryByRole("alert")).toBeNull();

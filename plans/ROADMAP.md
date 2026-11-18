@@ -2,6 +2,14 @@
 
 One major change per version; each version gets its own PRD, written from this roadmap.
 
+## Product preferences
+
+`write-prd` bases its product recommendations on these; add one when an interview shows a new preference.
+
+- Richer UX is preferred over minimal UI (for example drag reorder over up/down buttons, in-app download over a hint).
+- A mature dependency is fine when it buys real UX.
+- American spelling.
+
 ## V1: App foundation
 
 - Tauri 2 project: Rust backend, TypeScript + React frontend.

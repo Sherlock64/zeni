@@ -1158,4 +1158,19 @@ mod tests {
             Some("Imported. Categorizing didn't start: no model is picked in Settings.")
         );
     }
+
+    #[test]
+    fn commit_import_with_nothing_pending_returns_the_import_error_and_starts_no_job() {
+        let fixture = fixture("commit-nothing");
+        // A model and a reachable Ollama, so only the missing import keeps a run from starting.
+        set_base_model(&fixture);
+        fixture.port(version_stub());
+        let commit = || CommitImportRequest { skip_rows: vec![] };
+        let expected = block(imports::commit_import(&fixture.state, commit())).unwrap_err();
+        let error = block(commit_import(&fixture.state, commit())).unwrap_err();
+        assert!(matches!(error, AppError::NotFound(_)), "{error:?}");
+        assert_eq!(error.to_string(), expected.to_string());
+        let status = jobs::status(&fixture.state.jobs);
+        assert!(status.running.is_none() && status.last.is_none());
+    }
 }

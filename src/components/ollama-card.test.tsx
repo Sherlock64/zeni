@@ -148,6 +148,33 @@ test("checks again from the status error alert, announces a repeat failure, then
   expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Ollama" }));
 });
 
+test("announces the status again when a repeat check has the same result", async () => {
+  renderCard();
+  const status = await screen.findByText("Ollama 0.12.6 is running.");
+  expect(status.getAttribute("role")).toBe("status");
+  let resolve: (value: OllamaStatus) => void = () => {};
+  vi.mocked(ollamaStatus).mockReturnValueOnce(new Promise((r) => (resolve = r)));
+  fireEvent.click(screen.getByRole("button", { name: "Check again" }));
+  // The live region's text changes and comes back, so the same result is read out again.
+  await waitFor(() => expect(status.textContent).toBe("Checking Ollama…"));
+  resolve(reachable);
+  await waitFor(() => expect(status.textContent).toBe("Ollama 0.12.6 is running."));
+});
+
+test("moves focus to Check again under the error alert when a check from a success card fails", async () => {
+  renderCard();
+  await screen.findByText("Ollama 0.12.6 is running.");
+  vi.mocked(ollamaStatus).mockRejectedValue({ kind: "Invoke", message: "not running in Tauri" });
+  const button = screen.getByRole("button", { name: "Check again" });
+  button.focus();
+  fireEvent.click(button);
+  const alert = await screen.findByRole("alert");
+  expect(within(alert).getByText("Couldn't check Ollama")).toBeTruthy();
+  const retry = screen.getByRole("button", { name: "Check again" });
+  await waitFor(() => expect(document.activeElement).toBe(retry));
+  expect(retry).not.toBe(button);
+});
+
 test("says how to copy by hand when the clipboard fails", async () => {
   Object.defineProperty(navigator, "clipboard", { value: { writeText: vi.fn().mockRejectedValue(new Error("denied")) }, configurable: true });
   vi.mocked(ollamaStatus).mockResolvedValue(unreachable);

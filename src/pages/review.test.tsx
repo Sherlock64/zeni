@@ -564,3 +564,58 @@ test("a selected row that a refetch drops is no longer counted or sent", async (
   await pickIn(BAR_SELECT, "Dining out");
   await waitFor(() => expect(setTransactionsCategory).toHaveBeenCalledWith({ transactionIds: [60], categoryId: 5 }));
 });
+
+test("the loading status clears once the last group draws, and a refetch that adds groups leaves it clear", async () => {
+  const frames = stubFrames();
+  const more = Array.from({ length: 4 }, (_, i) => ({ categoryId: 200 + i, category: `Category ${200 + i}`, rows: many(2, 20000 + i * 2, 200 + i) }));
+  vi.mocked(reviewGroups).mockResolvedValueOnce(twenty(2)).mockResolvedValue([...twenty(2), ...more]);
+  const client = renderWithClient();
+  await screen.findByRole("region", { name: "Category 100 (2)" });
+  expect(screen.getByRole("status").textContent).toBe("Loading the review…");
+  while (frames.pending() > 0) frames.flush();
+  expect(groupRegions()).toHaveLength(20);
+  expect(screen.getByRole("status").textContent).toBe("");
+
+  await client.refetchQueries({ queryKey: ["review_groups"] });
+  // The new groups still draw in a later frame, but the status stays clear.
+  await waitFor(() => expect(groupSkeletons().length).toBeGreaterThan(0));
+  expect(screen.getByRole("status").textContent).toBe("");
+  while (frames.pending() > 0) frames.flush();
+  expect(screen.getByRole("region", { name: "Category 203 (2)" })).toBeTruthy();
+  expect(groupSkeletons()).toHaveLength(0);
+  expect(screen.getByRole("status").textContent).toBe("");
+});
+
+test("the categories Try again: a repeat failure shows the error again, and while retrying it is busy and a second press fetches once", async () => {
+  vi.mocked(reviewGroups).mockResolvedValue([dining]);
+  vi.mocked(listCategories).mockRejectedValue(invokeError);
+  renderPage();
+  const alert = await screen.findByRole("alert");
+  expect(within(alert).getByText("Couldn't load categories")).toBeTruthy();
+
+  let fail: (error: unknown) => void = () => {};
+  vi.mocked(listCategories).mockReturnValueOnce(new Promise((_resolve, reject) => (fail = reject)));
+  fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+  const busy = await screen.findByRole("button", { name: "Trying again…" });
+  expect(busy.getAttribute("aria-disabled")).toBe("true");
+  expect(screen.getByRole("alert")).toBeTruthy();
+  fireEvent.click(busy);
+  expect(listCategories).toHaveBeenCalledTimes(2);
+  fail(invokeError);
+  const again = await screen.findByRole("button", { name: "Try again" });
+  expect(again.getAttribute("aria-disabled")).toBe("false");
+  expect(within(screen.getByRole("alert")).getByText("Couldn't load categories")).toBeTruthy();
+  expect(listCategories).toHaveBeenCalledTimes(2);
+});
+
+test("Looks good (all N) before Show more marks every row in the group reviewed, hidden rows included", async () => {
+  const rows = many(60, 1000, 4);
+  vi.mocked(reviewGroups).mockResolvedValue([{ categoryId: 4, category: "Groceries", rows }]);
+  vi.mocked(markReviewed).mockResolvedValue(null);
+  renderPage();
+  const region = await screen.findByRole("region", { name: "Groceries (60)" });
+  expect(within(region).getAllByRole("row")).toHaveLength(26);
+  fireEvent.click(within(region).getByRole("button", { name: "Looks good (all 60)" }));
+  await waitFor(() => expect(markReviewed).toHaveBeenCalledWith({ transactionIds: rows.map((r) => r.id) }));
+  expect(markReviewed).toHaveBeenCalledTimes(1);
+});

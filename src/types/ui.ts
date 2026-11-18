@@ -190,6 +190,11 @@ export type CategorySelectProps = {
 
 export type ReviewCategoryCellProps = { row: Transaction; onChange: (categoryId: number | null) => void };
 
+// Review page mutation variables; groupId says which group shows the error.
+export type ReviewChangeVariables = { groupId: number; row: Transaction; categoryId: number | null };
+export type ReviewLooksGoodVariables = { groupId: number; transactionIds: number[] };
+export type ReviewBulkVariables = { transactionIds: number[]; categoryId: number };
+
 export type CategoryFormProps = {
   // The category being edited, or null to add one.
   editing: Category | null;

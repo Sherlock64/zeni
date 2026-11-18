@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { addCategory, deleteCategory, jobStatus, listCategories, reorderCategories, updateCategory } from "@/lib/commands";
+import { JOB_STATUS_KEY } from "@/lib/query-keys";
 import { CategoriesPage } from "@/pages/categories";
 import type { Category } from "@/types/bindings/Category";
 
@@ -59,7 +60,7 @@ function renderPage() {
       </main>
     </QueryClientProvider>,
   );
-  return invalidate;
+  return { invalidate, client };
 }
 
 const rows = () => within(screen.getByRole("list", { name: "Categories" })).getAllByRole("listitem");
@@ -116,7 +117,7 @@ test("a retry that succeeds shows the list and focuses the heading", async () =>
 test("adds a category, shows Saved. and refreshes the list", async () => {
   let resolve: (value: Category) => void = () => {};
   vi.mocked(addCategory).mockReturnValue(new Promise((r) => (resolve = r)));
-  const invalidate = renderPage();
+  const { invalidate } = renderPage();
   await screen.findByText("Housing");
   fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Pets" } });
   fireEvent.change(screen.getByLabelText("Description"), { target: { value: "Vet and food" } });
@@ -158,6 +159,25 @@ test("other save errors show in an alert", async () => {
   const alert = await screen.findByRole("alert");
   expect(within(alert).getByText("Couldn't save the category")).toBeTruthy();
   expect(within(alert).getByText("Wait for categorizing to finish.")).toBeTruthy();
+});
+
+test("a Validation error about no field shows in the alert and keeps the entries", async () => {
+  vi.mocked(addCategory).mockRejectedValue({ kind: "Validation", message: "Pick a kind." });
+  renderPage();
+  await screen.findByText("Housing");
+  fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Pets" } });
+  fireEvent.change(screen.getByLabelText("Description"), { target: { value: "Vet and food" } });
+  fireEvent.click(screen.getByRole("radio", { name: "Income" }));
+  fireEvent.click(screen.getByRole("button", { name: "Add category" }));
+  const alert = await screen.findByRole("alert");
+  expect(within(alert).getByText("Couldn't save the category")).toBeTruthy();
+  expect(within(alert).getByText("Pick a kind.")).toBeTruthy();
+  expect(within(alert).getByText("Nothing was saved. Check your entries, then save again.")).toBeTruthy();
+  expect(screen.getByLabelText("Name").getAttribute("aria-invalid")).not.toBe("true");
+  expect((screen.getByLabelText("Name") as HTMLInputElement).value).toBe("Pets");
+  expect((screen.getByLabelText("Description") as HTMLInputElement).value).toBe("Vet and food");
+  expect(screen.getByRole("radio", { name: "Income" }).getAttribute("aria-checked")).toBe("true");
+  expect(screen.getByRole("button", { name: "Add category" })).toBeTruthy();
 });
 
 test("edits a category, then goes back to adding and focuses its Edit button", async () => {
@@ -222,9 +242,21 @@ test("a failed reorder puts the order back and says so", async () => {
   await waitFor(() => expect(rows()[0].textContent).toContain("Housing"));
 });
 
+test("dismissing the reorder error moves focus to the list", async () => {
+  vi.mocked(reorderCategories).mockRejectedValue(invokeError);
+  renderPage();
+  await moveFirstDownByKeyboard();
+  await screen.findByText("Couldn't save the order. Try again.");
+  const dismiss = screen.getByRole("button", { name: "Dismiss error" });
+  dismiss.focus();
+  fireEvent.click(dismiss);
+  await waitFor(() => expect(screen.queryByText("Couldn't save the order. Try again.")).toBeNull());
+  expect(document.activeElement).toBe(screen.getByRole("list", { name: "Categories" }));
+});
+
 test("deleting an unused category asks to confirm, then deletes it", async () => {
   vi.mocked(deleteCategory).mockResolvedValue(null);
-  const invalidate = renderPage();
+  const { invalidate } = renderPage();
   fireEvent.click(await screen.findByRole("button", { name: "Delete Groceries" }));
   const dialog = await screen.findByRole("alertdialog", { name: "Delete Groceries?" });
   expect(within(dialog).queryByText("Move them to")).toBeNull();
@@ -282,9 +314,10 @@ test("a download does not lock the categories", async () => {
     running: { kind: "download", label: "Download phi4-mini", done: 1, total: 9 },
     last: null,
   });
-  renderPage();
+  const { client } = renderPage();
   await screen.findByText("Housing");
-  await waitFor(() => expect(jobStatus).toHaveBeenCalled());
+  // A running download shows nothing here, so wait for the job status itself to settle.
+  await waitFor(() => expect(client.getQueryState(JOB_STATUS_KEY)?.status).toBe("success"));
   expect(screen.queryByText(/^Wait for categorizing to finish\./)).toBeNull();
   expect(screen.getByRole("button", { name: "Edit Housing" }).getAttribute("aria-disabled")).toBe("false");
 });

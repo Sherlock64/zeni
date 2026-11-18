@@ -68,7 +68,7 @@ export function TransactionsPage() {
   const [opens, setOpens] = useState(0);
   const opener = useRef<HTMLElement | null>(null);
   const categoryFilterId = useId();
-  // The row whose nickname tooltip is open: by hover on the nickname, or while the row has keyboard focus.
+  // The row whose description tooltip is open: by hover on the description, or while the row has keyboard focus.
   const [tooltipRow, setTooltipRow] = useState<number | null>(null);
   const rowHintId = useId();
 
@@ -222,8 +222,9 @@ export function TransactionsPage() {
                   )}
                   <TableHead scope="col">Category</TableHead>
                   <SortHeader column="amount" label="Amount" query={query} onSort={sortBy} className="text-right" />
+                  {/* Balance also gives way below lg, so the description keeps room to be read. */}
                   {showBalance && (
-                    <TableHead scope="col" className="text-right">
+                    <TableHead scope="col" className="hidden text-right lg:table-cell">
                       Balance
                     </TableHead>
                   )}
@@ -239,39 +240,39 @@ export function TransactionsPage() {
                         aria-describedby={rowHintId}
                         className="select-auto focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
                         onContextMenu={(event) => (opener.current = event.currentTarget)}
-                        // Only the row itself, not the Category button inside it, opens the nickname tooltip.
-                        onFocus={row.nickname ? (event) => event.target === event.currentTarget && setTooltipRow(row.id) : undefined}
-                        onBlur={row.nickname ? () => setTooltipRow(null) : undefined}
+                        // Only the row itself, not the Category button inside it, opens the description tooltip.
+                        onFocus={(event) => event.target === event.currentTarget && setTooltipRow(row.id)}
+                        onBlur={() => setTooltipRow(null)}
                       >
                         <TableCell className="tabular-nums">{formatDate(row.postedDate)}</TableCell>
-                        {/* The memo sits under the description so the table fits narrow windows without scrolling. */}
-                        <TableCell className="whitespace-normal">
-                          {row.nickname ? (
-                            <Tooltip
-                              open={tooltipRow === row.id}
-                              onOpenChange={(open) => setTooltipRow(open ? row.id : null)}
-                            >
-                              <TooltipTrigger asChild>
-                                <p className="flex w-fit items-center gap-1.5 font-medium">
-                                  <TagIcon aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
-                                  {row.nickname}
-                                  <span className="sr-only">
-                                    , description {row.description}
-                                    {row.memo && `, memo ${row.memo}`}
-                                  </span>
-                                </p>
-                              </TooltipTrigger>
-                              <TooltipContent side="bottom" align="start" className="flex-col items-start break-words">
-                                <p>Description: {row.description}</p>
-                                {row.memo && <p>Memo: {row.memo}</p>}
-                              </TooltipContent>
-                            </Tooltip>
-                          ) : (
-                            <>
-                              <p className="font-medium">{row.description}</p>
-                              {row.memo && <p className="text-muted-foreground">{row.memo}</p>}
-                            </>
-                          )}
+                        {/* Below lg the cell takes the leftover width and its text truncates to one line; the memo
+                            then lives only in the tooltip. From lg the memo sits under the description as before. */}
+                        <TableCell className="w-full max-w-0 lg:w-auto lg:max-w-none">
+                          <Tooltip open={tooltipRow === row.id} onOpenChange={(open) => setTooltipRow(open ? row.id : null)}>
+                            <TooltipTrigger asChild>
+                              <div className="w-fit max-w-full">
+                                {row.nickname ? (
+                                  <p className="flex items-center gap-1.5 font-medium">
+                                    <TagIcon aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
+                                    <span className="truncate">{row.nickname}</span>
+                                    <span className="sr-only">
+                                      , description {row.description}
+                                      {row.memo && `, memo ${row.memo}`}
+                                    </span>
+                                  </p>
+                                ) : (
+                                  <>
+                                    <p className="truncate font-medium">{row.description}</p>
+                                    {row.memo && <p className="sr-only truncate text-muted-foreground lg:not-sr-only">{row.memo}</p>}
+                                  </>
+                                )}
+                              </div>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom" align="start" className="flex-col items-start break-words">
+                              <p>Description: {row.description}</p>
+                              {row.memo && <p>Memo: {row.memo}</p>}
+                            </TooltipContent>
+                          </Tooltip>
                         </TableCell>
                         {showType && (
                           <TableCell className="hidden text-muted-foreground lg:table-cell">{row.transactionType}</TableCell>
@@ -328,7 +329,7 @@ export function TransactionsPage() {
                           {formatCents(row.amountCents)}
                         </TableCell>
                         {showBalance && (
-                          <TableCell className="text-right tabular-nums">
+                          <TableCell className="hidden text-right tabular-nums lg:table-cell">
                             {row.runningBalanceCents !== null && formatCents(row.runningBalanceCents)}
                           </TableCell>
                         )}

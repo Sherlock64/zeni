@@ -103,6 +103,7 @@ export function CategoriesPage() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   // The button that opened the edit form or the delete dialog.
   const opener = useRef<HTMLElement | null>(null);
+  const listRef = useRef<HTMLOListElement>(null);
 
   const reorder = useMutation({
     mutationFn: (ids: number[]) => reorderCategories({ ids }),
@@ -219,7 +220,7 @@ export function CategoriesPage() {
         <p className="text-sm text-muted-foreground">Drag a handle, or focus it and press Space, to change the order.</p>
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={dragEnd} accessibility={{ announcements }}>
           <SortableContext items={list.map((category) => category.id)} strategy={verticalListSortingStrategy}>
-            <ol aria-label="Categories" aria-busy={reorder.isPending} className="overflow-hidden rounded-xl border">
+            <ol ref={listRef} tabIndex={-1} aria-label="Categories" aria-busy={reorder.isPending} className="overflow-hidden rounded-xl border">
               {list.map((category, index) => (
                 <CategoryRow
                   key={category.id}
@@ -255,7 +256,11 @@ export function CategoriesPage() {
           title="Couldn't save the order. Try again."
           error={reorder.error}
           nextStep="The order was put back."
-          onDismiss={reorder.reset}
+          onDismiss={() => {
+            // The dismiss button unmounts, so keep keyboard focus on the list it was about.
+            listRef.current?.focus();
+            reorder.reset();
+          }}
         />
       )}
       <CategoryForm editing={editing} onDone={doneEditing} locked={locked} lockId={lockId} />
