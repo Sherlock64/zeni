@@ -34,12 +34,16 @@ One self-contained HTML file. No external scripts, fonts or images: it is opened
 
 ## 4. File factory-bugs
 
-1. Collect candidates into one list: every non-blocking follow-up in `snapshots/V<n>/council-findings.md` for the session's version(s) not already marked `-> #<n>` or `-> SB-<n>`, plus the "could have gone better" items that are concrete defects. Mark the `build-version` step 6.2 floor items `private` yourself.
+Blocking findings were fixed in the council loop. Here, non-blocking `medium` (and higher) public items are filed and fixed later (`factory-cleanup`); a `low` is filed only if the user picks it.
+
+1. Collect candidates into one list: every non-blocking follow-up in `snapshots/V<n>/council-findings.md` for the session's version(s) not already marked `-> #<n>`, `-> SB-<n>` or `-> not filed`, plus the "could have gone better" items that are concrete defects. Mark the `build-version` step 6.2 floor items `private` yourself.
 2. Spawn `council-security` once with the rest, each with an id, and the step 6.2 rule. Tell it this is triage mode: instead of the member-contract VERDICT/FINDINGS format, it replies one line per item, `<id> public|private - <reason>`, and says private when unsure.
 3. Append each private item to `snapshots/security-bugs.md`, numbering on from its last entry: `SB-<n> [severity] <path>:<line> - Problem: ... Fix: ... Source: <version> <member|retro>. Status: open`. Mark its source line `-> SB-<n>`.
 4. Dedupe the public ones by file and problem against `gh issue list --label factory-bug --state open --limit 1000`. One issue per defect.
-5. Give each public item a severity: its finding's (non-blocking findings are normally `medium` or `low`), or for a retro item the one you assign. Show the user each issue's full rendered title, body and severity label, plus how many items went private (count only). Create nothing without their yes. Creating issues is outward-facing.
-6. Create each missing label once (`gh label list`):
+5. Give each public item a severity: its finding's (non-blocking findings are normally `medium` or `low`), or for a retro item the one you assign. Write every public item's full rendered title, body and severity label to `snapshots/V<n>/proposed-issues.md`.
+6. Mediums and higher: list them for the user (title and severity, with the path to the file above) plus how many items went private (count only), and file them on their yes. Creating issues is outward-facing.
+7. Lows: let the user pick. Use `AskUserQuestion` with `multiSelect`, grouped by kind (code, copy and UX, visual, accessibility, tests), at most 3 lows per question plus a "None" option, and at most 4 questions per call. Each option's label is `<id> <few words>`; its description is the one-line problem, where, and fix. File only the picked ones.
+8. Create each missing label once (`gh label list`):
    - `gh label create factory-bug --color 5319E7 --description "Minor defect filed by Zeni's agent workflow"`
    - `gh label create severity:<level> --color <color> --description "<Level> severity"`, colors `critical` B60205, `high` D93F0B, `medium` FBCA04, `low` 0E8A16.
 
@@ -50,8 +54,8 @@ One self-contained HTML file. No external scripts, fonts or images: it is opened
    **Fix:** <the suggested fix>
    **Source:** <version> council (<member>) | <version> retro
    ```
-7. Mark each source line in `council-findings.md` with `-> #<n>`.
+9. Mark each source line in `council-findings.md` with `-> #<n>`, and each low the user didn't pick with `-> not filed (user, <date>)`, so later retros don't propose it again.
 
 ## 5. Report
 
-Give the user the file path, the issues filed, the number of new `SB-<n>` entries, the three most valuable recommended changes, and offer to make them. Change no skill, agent or rule without the user's yes.
+Give the user the file path, the issues filed (mediums, and the lows they picked), the number of new `SB-<n>` entries, the three most valuable recommended changes, and offer to make them. Change no skill, agent or rule without the user's yes.
