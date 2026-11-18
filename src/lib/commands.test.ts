@@ -1,40 +1,66 @@
 import { invoke } from "@tauri-apps/api/core";
 import {
+  activateBuild,
+  addCategory,
   appInfo,
   backUpNow,
   backupSettings,
   cancelImport,
+  cancelJob,
   chooseBackupFolder,
+  clearJobOutcome,
   commitImport,
   completeSetup,
   countRuleMatches,
+  deleteBuild,
+  deleteCategory,
   deleteCsvLayout,
   deleteNickname,
   deleteNicknameRule,
   importFile,
+  jobStatus,
   listAccounts,
   listBackups,
+  listBuilds,
+  listCategories,
   listCsvLayouts,
   listImports,
   listNicknames,
   listTransactions,
+  markReviewed,
   nicknameSettings,
+  ollamaSettings,
+  ollamaStatus,
   pickRestoreFile,
   previewCsvMapping,
   recover,
   regenerateRecoveryCodes,
+  reorderCategories,
   resetSecurity,
   restoreBackup,
   revealAccountNumbers,
   revertImport,
+  reviewGroups,
   sampleError,
   saveCsvLayout,
   saveNicknameRule,
   securityStatus,
+  setAutoCategorize,
   setBackupRetention,
+  setBaseModel,
+  setExamplesPerCategory,
   setNicknameStaleDays,
+  setOllamaPort,
+  setTransactionCategory,
+  setTransactionsCategory,
+  spendingSummary,
+  startBuild,
+  startCategorize,
+  startModelDownload,
   undoRestore,
   unlock,
+  unreviewedCount,
+  updateCategory,
   updateCsvLayout,
   updateNickname,
   updateNicknameRule,
@@ -244,6 +270,7 @@ test("nickname wrappers invoke their commands with the request", async () => {
     lastMatched: "2026-10-31",
     stale: false,
     rules: [{ id: 4, nicknameId: 1, ...rule, matchCount: 2, lastMatched: "2026-10-31" }],
+    defaultCategoryId: null,
   };
   const update = { id: 1, name: "Cafe", enabled: false, staleExempt: true };
   const cases: [() => Promise<unknown>, string, unknown, unknown][] = [
@@ -265,6 +292,92 @@ test("nickname wrappers invoke their commands with the request", async () => {
       "set_nickname_stale_days",
       { request: { staleDays: 30 } },
       { staleDays: 30 },
+    ],
+  ];
+  for (const [run, command, args, response] of cases) {
+    mockInvoke.mockResolvedValueOnce(response);
+    await expect(run()).resolves.toEqual(response);
+    expect(mockInvoke).toHaveBeenLastCalledWith(command, args);
+  }
+});
+
+test("category, Ollama, job, review, build and spending wrappers invoke their commands with the request", async () => {
+  const category = {
+    id: 4,
+    name: "Groceries",
+    description: "Supermarkets",
+    kind: "spending",
+    sortOrder: 4,
+    rowCount: 2,
+    nicknameCount: 1,
+  } as const;
+  const newCategory = { name: "Groceries", description: "Supermarkets", kind: "spending" } as const;
+  const settings = { port: 11434, baseModel: "phi4-mini", autoCategorize: true, examplesPerCategory: 5 };
+  const job = {
+    running: { kind: "categorizeNow", label: "Categorize now", done: 1, total: 3 },
+    last: null,
+  } as const;
+  const cases: [() => Promise<unknown>, string, unknown, unknown][] = [
+    [listCategories, "list_categories", undefined, [category]],
+    [() => addCategory(newCategory), "add_category", { request: newCategory }, category],
+    [
+      () => updateCategory({ id: 4, ...newCategory }),
+      "update_category",
+      { request: { id: 4, ...newCategory } },
+      category,
+    ],
+    [() => reorderCategories({ ids: [4, 1] }), "reorder_categories", { request: { ids: [4, 1] } }, [category]],
+    [
+      () => deleteCategory({ id: 4, replacementId: null }),
+      "delete_category",
+      { request: { id: 4, replacementId: null } },
+      null,
+    ],
+    [
+      () => setTransactionCategory({ transactionId: 7, categoryId: 4, note: "Party" }),
+      "set_transaction_category",
+      { request: { transactionId: 7, categoryId: 4, note: "Party" } },
+      null,
+    ],
+    [
+      () => setTransactionsCategory({ transactionIds: [7, 8], categoryId: null }),
+      "set_transactions_category",
+      { request: { transactionIds: [7, 8], categoryId: null } },
+      2,
+    ],
+    [ollamaSettings, "ollama_settings", undefined, settings],
+    [() => setOllamaPort({ port: 11500 }), "set_ollama_port", { request: { port: 11500 } }, settings],
+    [() => setBaseModel({ name: "phi4-mini" }), "set_base_model", { request: { name: "phi4-mini" } }, settings],
+    [() => setAutoCategorize({ enabled: false }), "set_auto_categorize", { request: { enabled: false } }, settings],
+    [
+      () => setExamplesPerCategory({ count: 3 }),
+      "set_examples_per_category",
+      { request: { count: 3 } },
+      settings,
+    ],
+    [ollamaStatus, "ollama_status", undefined, { reachable: false, version: null, installed: [], recommended: [] }],
+    [() => startModelDownload({ name: "phi4-mini" }), "start_model_download", { request: { name: "phi4-mini" } }, job],
+    [jobStatus, "job_status", undefined, job],
+    [cancelJob, "cancel_job", undefined, null],
+    [clearJobOutcome, "clear_job_outcome", undefined, null],
+    [
+      () => startCategorize({ scope: "uncategorized" }),
+      "start_categorize",
+      { request: { scope: "uncategorized" } },
+      job,
+    ],
+    [reviewGroups, "review_groups", undefined, []],
+    [unreviewedCount, "unreviewed_count", undefined, 3],
+    [() => markReviewed({ transactionIds: [7] }), "mark_reviewed", { request: { transactionIds: [7] } }, null],
+    [listBuilds, "list_builds", undefined, []],
+    [startBuild, "start_build", undefined, job],
+    [() => activateBuild({ id: 2 }), "activate_build", { request: { id: 2 } }, null],
+    [() => deleteBuild({ id: 2 }), "delete_build", { request: { id: 2 } }, null],
+    [
+      () => spendingSummary({ from: "2026-10-01", to: "2026-10-31" }),
+      "spending_summary",
+      { request: { from: "2026-10-01", to: "2026-10-31" } },
+      { categories: [], uncategorizedCount: 0, uncategorizedCents: 0 },
     ],
   ];
   for (const [run, command, args, response] of cases) {

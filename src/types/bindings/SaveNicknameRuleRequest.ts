@@ -5,4 +5,8 @@ export type SaveNicknameRuleRequest = {
 /**
  * Trimmed, 1..=100 chars; an existing name (case-insensitive) gets the rule added.
  */
-name: string, rule: RuleInput, };
+name: string, rule: RuleInput, 
+/**
+ * Always applied, also to an existing nickname: `None` clears it.
+ */
+defaultCategoryId?: number, };

@@ -1,7 +1,17 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { CategorizeBanner } from "@/components/categorize-banner";
 import { ImportControls } from "@/components/import-controls";
-import { cancelImport, commitImport, importFile, listImports, previewCsvMapping, revertImport, saveCsvLayout } from "@/lib/commands";
+import {
+  cancelImport,
+  commitImport,
+  importFile,
+  jobStatus,
+  listImports,
+  previewCsvMapping,
+  revertImport,
+  saveCsvLayout,
+} from "@/lib/commands";
 import type { CsvPreviewRow } from "@/types/bindings/CsvPreviewRow";
 import type { ImportRecord } from "@/types/bindings/ImportRecord";
 import type { ImportStep } from "@/types/bindings/ImportStep";
@@ -15,6 +25,9 @@ vi.mock("@/lib/commands", () => ({
   saveCsvLayout: vi.fn(),
   commitImport: vi.fn(),
   cancelImport: vi.fn(),
+  jobStatus: vi.fn(),
+  cancelJob: vi.fn(),
+  clearJobOutcome: vi.fn(),
 }));
 beforeEach(() => vi.resetAllMocks());
 // Radix Select and RadioGroup need these pointer, scroll and resize APIs that jsdom lacks.
@@ -41,6 +54,7 @@ const summary: ImportSummary = {
   notPosted: 0,
   reviewSkipped: 0,
   fileBalanceCheck: "notChecked",
+  categorizeNotice: null,
 };
 const imported = (data: ImportSummary): ImportStep => ({ step: "imported", data });
 
@@ -91,7 +105,7 @@ test.each([
   const status = screen.getByRole("status");
   expect(within(status).getByText("12 transactions added, 1 duplicate skipped.")).toBeTruthy();
   expect(status.textContent).toContain(text);
-  expect(invalidatedKeys(invalidate)).toEqual([["list_transactions"], ["list_imports"]]);
+  expect(invalidatedKeys(invalidate)).toEqual([["list_transactions"], ["list_imports"], ["job_status"]]);
 
   fireEvent.click(screen.getByRole("button", { name: "Dismiss import summary" }));
   expect(screen.queryByText("Imported checking-2026-10.qfx")).toBeNull();
@@ -356,6 +370,25 @@ test("flags a running balance mismatch and hides zero counts", async () => {
   expect(status.queryByText(/in review/)).toBeNull();
 });
 
+test("shows the categorize notice under the summary", async () => {
+  const notice = "Imported. Categorizing didn't start: Ollama isn't running.";
+  vi.mocked(importFile).mockResolvedValue(imported({ ...summary, categorizeNotice: notice }));
+  renderControls();
+  fireEvent.click(screen.getByRole("button", { name: "Import file" }));
+
+  await screen.findByText("Imported checking-2026-10.qfx");
+  expect(within(screen.getByRole("status")).getByText(notice)).toBeTruthy();
+});
+
+test("shows no categorize notice when there is none", async () => {
+  vi.mocked(importFile).mockResolvedValue(imported(summary));
+  renderControls();
+  fireEvent.click(screen.getByRole("button", { name: "Import file" }));
+
+  await screen.findByText("Imported checking-2026-10.qfx");
+  expect(screen.queryByText(/Categorizing/)).toBeNull();
+});
+
 test("hides the running balance line when it wasn't checked", async () => {
   vi.mocked(importFile).mockResolvedValue(imported(summary));
   renderControls();
@@ -407,7 +440,7 @@ test("maps a new CSV layout with guessed columns, previews it and imports", asyn
   resolve(imported(csvSummary));
   await screen.findByText("Imported checking-2026-10.csv");
   expect(screen.queryByRole("dialog")).toBeNull();
-  expect(invalidatedKeys(invalidate)).toEqual([["list_csv_layouts"], ["list_transactions"], ["list_imports"]]);
+  expect(invalidatedKeys(invalidate)).toEqual([["list_csv_layouts"], ["list_transactions"], ["list_imports"], ["job_status"]]);
 });
 
 test("switching to debit and credit columns asks for them before previewing", async () => {
@@ -516,7 +549,7 @@ test("maps a layout, then reviews possible duplicates and imports the answers", 
   resolve(csvSummary);
   await screen.findByText("Imported checking-2026-10.csv");
   expect(screen.queryByRole("dialog")).toBeNull();
-  expect(invalidatedKeys(invalidate)).toEqual([["list_csv_layouts"], ["list_transactions"], ["list_imports"]]);
+  expect(invalidatedKeys(invalidate)).toEqual([["list_csv_layouts"], ["list_transactions"], ["list_imports"], ["job_status"]]);
 });
 
 test("keeps the review dialog open when the commit fails", async () => {
@@ -677,4 +710,23 @@ test("flags a CSV import whose running balances don't add up in the history", as
   expect(within(items[0]).getByText("Running balances in this file don't add up")).toBeTruthy();
   expect(within(items[1]).getByText(/CSV ·/)).toBeTruthy();
   expect(within(items[1]).queryByText(/Running balances/)).toBeNull();
+});
+
+test("shows the after-import run in the banner once the import commits", async () => {
+  vi.mocked(jobStatus)
+    .mockResolvedValueOnce({ running: null, last: null })
+    .mockResolvedValue({ running: { kind: "afterImport", label: "Categorizing new rows", done: 0, total: 12 }, last: null });
+  vi.mocked(importFile).mockResolvedValue(imported(summary));
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={client}>
+      <CategorizeBanner />
+      <ImportControls />
+    </QueryClientProvider>,
+  );
+  await waitFor(() => expect(jobStatus).toHaveBeenCalledTimes(1));
+
+  fireEvent.click(screen.getByRole("button", { name: "Import file" }));
+  expect(await screen.findByText("Categorizing 0 of 12")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy();
 });

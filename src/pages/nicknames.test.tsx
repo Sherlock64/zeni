@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import {
   countRuleMatches,
+  listCategories,
   deleteNickname,
   deleteNicknameRule,
   listNicknames,
@@ -10,10 +11,12 @@ import {
   updateNicknameRule,
 } from "@/lib/commands";
 import { NicknamesPage } from "@/pages/nicknames";
+import type { Category } from "@/types/bindings/Category";
 import type { Nickname } from "@/types/bindings/Nickname";
 
 vi.mock("@/lib/commands", () => ({
   listNicknames: vi.fn(),
+  listCategories: vi.fn(),
   saveNicknameRule: vi.fn(),
   countRuleMatches: vi.fn(),
   updateNickname: vi.fn(),
@@ -29,6 +32,16 @@ globalThis.ResizeObserver = class {
   disconnect() {}
 };
 
+const category = (id: number, name: string): Category => ({
+  id,
+  name,
+  description: "",
+  kind: "spending",
+  sortOrder: id,
+  rowCount: 0,
+  nicknameCount: 0,
+});
+const categories = [category(1, "Housing"), category(4, "Groceries")];
 const rule = (id: number, nicknameId: number, pattern: string, matchCount: number, lastMatched: string | null) => ({
   id,
   nicknameId,
@@ -47,6 +60,7 @@ const coffee: Nickname = {
   lastMatched: "2026-10-31",
   stale: false,
   rules: [rule(11, 1, "CORNER COFFEE", 9, "2026-10-31")],
+  defaultCategoryId: null,
 };
 const gym: Nickname = {
   ...coffee,
@@ -62,6 +76,7 @@ const never = () => new Promise<never>(() => {});
 
 beforeEach(() => {
   vi.resetAllMocks();
+  vi.mocked(listCategories).mockResolvedValue(categories);
   vi.mocked(listNicknames).mockResolvedValue([coffee, gym]);
   vi.mocked(countRuleMatches).mockResolvedValue(3);
 });
@@ -90,6 +105,14 @@ async function choose(menu: string, item: string | RegExp) {
   fireEvent.click(await screen.findByRole("menuitem", { name: item }));
   return trigger;
 }
+// The page's own status line; each category picker shows a loading status of its own.
+const pageStatus = () => screen.getAllByRole("status")[0];
+Element.prototype.scrollIntoView = function () {};
+// Radix Select opens on ArrowDown; returns the named option of a nickname's Default category picker.
+async function defaultOption(nickname: string, option: string) {
+  fireEvent.keyDown(await screen.findByRole("combobox", { name: `${nickname} default category` }), { key: "ArrowDown" });
+  return within(screen.getByRole("listbox")).getByRole("option", { name: option });
+}
 const expectRefreshed = (invalidate: ReturnType<typeof renderPage>) => {
   expect(invalidate).toHaveBeenCalledWith({ queryKey: ["list_nicknames"] });
   expect(invalidate).toHaveBeenCalledWith({ queryKey: ["list_transactions"] });
@@ -97,9 +120,9 @@ const expectRefreshed = (invalidate: ReturnType<typeof renderPage>) => {
 
 test("shows a loading status, then each nickname with its rules, counts, dates and stale badge", async () => {
   renderPage();
-  expect(screen.getByRole("status").textContent).toBe("Loading nicknames…");
+  expect(pageStatus().textContent).toBe("Loading nicknames…");
   await screen.findByRole("table", { name: "Nicknames" });
-  expect(screen.getByRole("status").textContent).toBe("");
+  expect(pageStatus().textContent).toBe("");
 
   expect(within(row("Coffee")).getAllByRole("cell").map((cell) => cell.textContent)).toEqual(
     expect.arrayContaining(["Coffee", "Oct 31, 20269 matches"]),
@@ -128,7 +151,7 @@ test("shows a list error, retries once while busy, and announces a repeat failur
   expect(retry.textContent).toBe("Trying again…");
   expect(document.activeElement).toBe(retry);
   fireEvent.click(retry);
-  expect(screen.getByRole("status").textContent).toBe("Retrying…");
+  expect(pageStatus().textContent).toBe("Retrying…");
   await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("gone"));
   expect(screen.getByRole("alert")).not.toBe(alert);
   expect(document.activeElement).toBe(screen.getByRole("button", { name: "Try again" }));
@@ -154,11 +177,11 @@ test("Show only stale filters the list and says when none are stale", async () =
   const filter = screen.getByRole("button", { name: "Show only stale" });
   fireEvent.click(filter);
   expect(filter.getAttribute("aria-pressed")).toBe("true");
-  expect(screen.getByRole("status").textContent).toBe("1 stale nickname shown.");
+  expect(pageStatus().textContent).toBe("1 stale nickname shown.");
   expect(screen.queryByText("Coffee", { selector: "span" })).toBeNull();
   expect(screen.getByText("Gym", { selector: "span" })).toBeTruthy();
   fireEvent.click(filter);
-  expect(screen.getByRole("status").textContent).toBe("");
+  expect(pageStatus().textContent).toBe("");
   expect(screen.getByText("Coffee", { selector: "span" })).toBeTruthy();
 });
 
@@ -167,7 +190,7 @@ test("counts several stale nicknames in the status", async () => {
   renderPage();
   await screen.findByRole("table");
   fireEvent.click(screen.getByRole("button", { name: "Show only stale" }));
-  expect(screen.getByRole("status").textContent).toBe("2 stale nicknames shown.");
+  expect(pageStatus().textContent).toBe("2 stale nicknames shown.");
 });
 
 test("says No stale nicknames when the filter leaves nothing, and Show all nicknames turns it off", async () => {
@@ -177,7 +200,7 @@ test("says No stale nicknames when the filter leaves nothing, and Show all nickn
   const filter = screen.getByRole("button", { name: "Show only stale" });
   fireEvent.click(filter);
   expect(screen.getByText("No stale nicknames.")).toBeTruthy();
-  expect(screen.getByRole("status").textContent).toBe("0 stale nicknames shown.");
+  expect(pageStatus().textContent).toBe("0 stale nicknames shown.");
   fireEvent.click(screen.getByRole("button", { name: "Show all nicknames" }));
   expect(filter.getAttribute("aria-pressed")).toBe("false");
   expect(screen.getByText("Coffee", { selector: "span" })).toBeTruthy();
@@ -228,6 +251,107 @@ test("toggles change at once, are busy while the change saves and ignore repeat 
   fireEvent.click(toggle);
   fireEvent.click(screen.getByRole("checkbox", { name: "Don't flag Gym as stale" }));
   expect(updateNickname).toHaveBeenCalledTimes(1);
+});
+
+test("a default category picker saves the chosen default at once and refreshes the category views", async () => {
+  vi.mocked(updateNickname).mockResolvedValue({ ...gym, defaultCategoryId: 4 });
+  const invalidate = renderPage();
+  const picker = await screen.findByRole("combobox", { name: "Gym default category" });
+  expect(picker.textContent).toBe("No default");
+  expect(document.getElementById(picker.getAttribute("aria-describedby")!)?.textContent).toBe(
+    "Default category: rows this nickname matches get this category without asking the model.",
+  );
+  vi.mocked(listNicknames).mockResolvedValue([coffee, { ...gym, defaultCategoryId: 4 }]);
+  fireEvent.click(await defaultOption("Gym", "Groceries"));
+  await waitFor(() => expect(picker.textContent).toBe("Groceries"));
+  expect(firstArg(updateNickname)).toEqual({ id: 2, name: "Gym", enabled: true, staleExempt: false, defaultCategoryId: 4 });
+  await waitFor(() => expectRefreshed(invalidate));
+  for (const key of ["review_groups", "unreviewed_count", "list_categories"]) {
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: [key] });
+  }
+});
+
+test("No default clears the default", async () => {
+  vi.mocked(listNicknames).mockResolvedValue([{ ...coffee, defaultCategoryId: 1 }, gym]);
+  vi.mocked(updateNickname).mockImplementation(never);
+  renderPage();
+  const picker = await screen.findByRole("combobox", { name: "Coffee default category" });
+  expect(picker.textContent).toBe("Housing");
+  fireEvent.click(await defaultOption("Coffee", "No default"));
+  await waitFor(() => expect(picker.textContent).toBe("No default"));
+  // An omitted default clears it.
+  expect(firstArg(updateNickname)).toEqual({ id: 1, name: "Coffee", enabled: true, staleExempt: false });
+  expect(vi.mocked(updateNickname).mock.calls[0][0].defaultCategoryId).toBeUndefined();
+});
+
+test("the picker is busy while a change saves and ignores changes meanwhile", async () => {
+  vi.mocked(updateNickname).mockImplementation(never);
+  renderPage();
+  const picker = await screen.findByRole("combobox", { name: "Gym default category" });
+  fireEvent.click(screen.getByRole("switch", { name: "Coffee on" }));
+  await waitFor(() => expect(picker.getAttribute("aria-disabled")).toBe("true"));
+  fireEvent.click(await defaultOption("Gym", "Groceries"));
+  expect(updateNickname).toHaveBeenCalledTimes(1);
+});
+
+test("switches, Rename and Add rule keep an unchanged default", async () => {
+  const withDefault = { ...coffee, defaultCategoryId: 1 };
+  vi.mocked(listNicknames).mockResolvedValue([withDefault, gym]);
+  vi.mocked(updateNickname).mockResolvedValue(withDefault);
+  vi.mocked(saveNicknameRule).mockResolvedValue(withDefault);
+  renderPage();
+  fireEvent.click(await screen.findByRole("switch", { name: "Coffee on" }));
+  await waitFor(() => expect(firstArg(updateNickname)).toEqual({ id: 1, name: "Coffee", enabled: false, staleExempt: false, defaultCategoryId: 1 }));
+  await waitFor(() => expect(screen.getByRole("switch", { name: "Coffee on" }).getAttribute("aria-disabled")).toBe("false"));
+
+  await choose("Actions for Coffee", "Rename");
+  let dialog = screen.getByRole("dialog", { name: "Rename Coffee" });
+  fireEvent.change(within(dialog).getByLabelText("Nickname"), { target: { value: "Cafe" } });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Save name" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(updateNickname).toHaveBeenLastCalledWith({ id: 1, name: "Cafe", enabled: true, staleExempt: false, defaultCategoryId: 1 });
+
+  await choose("Actions for Coffee", "Add rule");
+  dialog = screen.getByRole("dialog", { name: "Add a rule to Coffee" });
+  fireEvent.change(within(dialog).getByLabelText("Pattern"), { target: { value: "CAFE" } });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Save rule" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(saveNicknameRule).toHaveBeenLastCalledWith({
+    name: "Coffee",
+    rule: { mode: "exact", field: "description", pattern: "CAFE" },
+    defaultCategoryId: 1,
+  });
+});
+
+test("a deleted category shows the error and the picker goes back", async () => {
+  vi.mocked(listNicknames).mockResolvedValue([{ ...coffee, defaultCategoryId: 1 }, gym]);
+  vi.mocked(updateNickname).mockRejectedValue({ kind: "NotFound", message: "That category no longer exists." });
+  renderPage();
+  fireEvent.click(await defaultOption("Coffee", "Groceries"));
+  const alert = await screen.findByRole("alert");
+  expect(alert.textContent).toContain("Couldn't change Coffee");
+  expect(alert.textContent).toContain("That category no longer exists.");
+  await waitFor(() =>
+    expect(screen.getByRole("combobox", { name: "Coffee default category" }).textContent).toBe("Housing"),
+  );
+});
+
+test("adding a rule under an existing name keeps that nickname's default", async () => {
+  vi.mocked(listNicknames).mockResolvedValue([{ ...coffee, defaultCategoryId: 1 }, gym]);
+  vi.mocked(saveNicknameRule).mockResolvedValue(coffee);
+  renderPage();
+  await screen.findByRole("table");
+  fireEvent.click(screen.getByRole("button", { name: "Add nickname" }));
+  const dialog = screen.getByRole("dialog", { name: "Add nickname" });
+  fireEvent.change(within(dialog).getByLabelText("Nickname"), { target: { value: "coffee" } });
+  fireEvent.change(within(dialog).getByLabelText("Pattern"), { target: { value: "CAFE" } });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Save nickname" }));
+  await waitFor(() => expect(saveNicknameRule).toHaveBeenCalled());
+  expect(firstArg(saveNicknameRule)).toEqual({
+    name: "coffee",
+    rule: { mode: "exact", field: "description", pattern: "CAFE" },
+    defaultCategoryId: 1,
+  });
 });
 
 test("adds a nickname with the live count, refreshes, closes and returns focus", async () => {

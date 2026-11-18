@@ -6,6 +6,7 @@ Personal finance desktop app: import bank data, build a budget, analyze spending
 
 - Rust: https://rustup.rs
 - Node.js and pnpm
+- Optional: [Ollama](https://ollama.com), to categorize with a local model. Zeni contacts it only on `127.0.0.1`.
 - A freedesktop Secret Service provider, such as `gnome-keyring-daemon` (the default on Pop!_OS). Without one, Zeni still works but asks for the master password at every start.
 - System libraries:
 
@@ -22,6 +23,8 @@ To import bank transactions from OFX, QFX or CSV files: [docs/importing.md](docs
 To back up and restore your data: [docs/backup.md](docs/backup.md).
 
 To give transactions short names: [docs/nicknames.md](docs/nicknames.md).
+
+To categorize transactions, with or without a local Ollama model: [docs/categories.md](docs/categories.md).
 
 How the app fits together: [docs/architecture.md](docs/architecture.md). How the Claude Code agents build it: [docs/workflow.md](docs/workflow.md).
 

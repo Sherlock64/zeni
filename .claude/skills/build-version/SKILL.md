@@ -10,7 +10,7 @@ You are the organizer. You plan, delegate, verify and decide. Leave all code and
 
 Flow: plan → code waves (`core-dev` + `ui-dev`, parallel) → integration → docs and agents (only where needed) → council (risk-selected) → blocking findings go back to the code waves; otherwise PR, metrics and hand-off.
 
-Usage gate: before every phase (each code wave, integration, docs and agents, each council round, each fix wave, PR), call `mcp__ccd_session_mgmt__get_usage`. If the 5-hour window is at about 80% or more, or the weekly window at about 90% or more, start no new agents: let in-flight ones finish, notify the user with PushNotification and a message naming the window and its reset time so they can reset the limit, and wait for their prompt. Run no sleep or cache-warm loops unless the user asks for them. Resume an agent cut off by a limit with SendMessage; never respawn it.
+Usage gate: before every phase (each code wave, integration, docs and agents, each council round, each fix wave, PR), call `mcp__ccd_session_mgmt__get_usage`. If the 5-hour window is at about 80% or more, or the weekly window at about 90% or more, start no new agents: let in-flight ones finish, notify the user with PushNotification and a message naming the window and its reset time so they can reset the limit. In the same turn, unasked, start a cache-warm timer: `sleep 3300` with `run_in_background`. On each wake, call `get_usage` again: restart the timer while a window is still over the gate, and resume the work once it has reset. Resume an agent cut off by a limit with SendMessage; never respawn it.
 
 ## 0. Scope
 

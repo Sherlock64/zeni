@@ -1,5 +1,8 @@
 mod accounts;
 mod backup;
+mod builds;
+mod categories;
+mod categorize;
 mod commands;
 mod crypto;
 mod csv_import;
@@ -8,10 +11,15 @@ mod db;
 #[cfg(test)]
 mod import_acceptance_tests;
 mod imports;
+mod jobs;
 mod keyring;
 mod nicknames;
 mod ofx;
+mod ollama;
+mod overlay;
+mod review;
 mod security;
+mod spending;
 mod transactions;
 mod types;
 
@@ -37,6 +45,7 @@ pub fn run() {
                 session: Default::default(),
                 backup: Default::default(),
                 pending_import: Default::default(),
+                jobs: Default::default(),
             });
             if daily_due {
                 // Off the setup thread, so the window isn't blocked by the copy.
@@ -85,8 +94,39 @@ pub fn run() {
             commands::update_nickname_rule,
             commands::delete_nickname_rule,
             commands::nickname_settings,
-            commands::set_nickname_stale_days
+            commands::set_nickname_stale_days,
+            commands::list_categories,
+            commands::add_category,
+            commands::update_category,
+            commands::reorder_categories,
+            commands::delete_category,
+            commands::set_transaction_category,
+            commands::set_transactions_category,
+            commands::ollama_settings,
+            commands::set_ollama_port,
+            commands::set_base_model,
+            commands::set_auto_categorize,
+            commands::set_examples_per_category,
+            commands::ollama_status,
+            commands::start_model_download,
+            commands::start_categorize,
+            commands::review_groups,
+            commands::unreviewed_count,
+            commands::mark_reviewed,
+            commands::list_builds,
+            commands::start_build,
+            commands::activate_build,
+            commands::delete_build,
+            commands::spending_summary,
+            commands::job_status,
+            commands::cancel_job,
+            commands::clear_job_outcome
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Zeni");
+        .build(tauri::generate_context!())
+        .expect("error while running Zeni")
+        .run(|handle, event| {
+            if let (tauri::RunEvent::Exit, Some(state)) = (event, handle.try_state::<AppState>()) {
+                jobs::cancel(&state.jobs);
+            }
+        });
 }

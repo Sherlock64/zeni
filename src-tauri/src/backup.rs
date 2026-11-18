@@ -13,7 +13,7 @@ use crate::types::{
     AppError, AppState, BackupFile, BackupKind, BackupSettings, Database, RestoreBackupRequest,
     RestoreSource, SetBackupRetentionRequest,
 };
-use crate::{db, security};
+use crate::{db, jobs, security};
 
 const KINDS: [(BackupKind, &str); 4] = [
     (BackupKind::Manual, "manual"),
@@ -636,6 +636,8 @@ pub async fn restore(state: &AppState, request: RestoreBackupRequest) -> Result<
     };
     let kept = with_data_state(UNCHANGED);
     validate(&source).await.map_err(&kept)?;
+    // Before the safety copy, so it holds the job's last writes and nothing writes after it.
+    jobs::stop_and_wait(&state.jobs).await;
     let safety = async {
         let folder = ready_folder(&pool, &db_path).await?;
         write(&pool, &folder, BackupKind::Safety).await
@@ -661,6 +663,7 @@ pub async fn undo_restore(state: &AppState) -> Result<(), AppError> {
     validate(&undo)
         .await
         .map_err(with_data_state(STILL_RESTORED))?;
+    jobs::stop_and_wait(&state.jobs).await;
     replace(state, pool, &db_path, &undo, None, STILL_RESTORED).await?;
     after_replace(state, None);
     Ok(())
@@ -668,10 +671,12 @@ pub async fn undo_restore(state: &AppState) -> Result<(), AppError> {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::*;
     use crate::accounts::sample_account;
     use crate::security::tests::{FakeKeyring, PASSWORD};
-    use crate::types::{SecurityStatus, SetupRequest, UnlockRequest};
+    use crate::types::{JobKind, JobOutcome, SecurityStatus, SetupRequest, UnlockRequest};
 
     const OTHER_PASSWORD: &str = "a different long password";
 
@@ -704,6 +709,7 @@ mod tests {
                 session: Default::default(),
                 pending_import: Default::default(),
                 backup: Default::default(),
+                jobs: Default::default(),
             },
             keyring: FakeKeyring::default(),
             dir,
@@ -885,6 +891,7 @@ mod tests {
             session: Default::default(),
             pending_import: Default::default(),
             backup: Default::default(),
+            jobs: Default::default(),
         };
         let database = |result: Result<(), AppError>| kind(result.unwrap_err());
         assert_eq!(database(run(settings(&missing)).map(drop)), "Database");
@@ -1122,6 +1129,52 @@ mod tests {
         assert_eq!(f.undo_path(), None);
         assert!(safety.exists(), "the safety copy stays in the folder");
         assert_eq!(f.status()["state"], "unlocked");
+    }
+
+    #[test]
+    fn restore_stops_the_running_job_and_waits_for_it_first() {
+        let f = fixture("restore-job");
+        f.setup(PASSWORD, "Checking");
+        let old = f.back_up();
+        let pool = f.pool();
+        let label = "Build zeni-1";
+        jobs::start(
+            &f.state.jobs,
+            JobKind::Build,
+            label.into(),
+            move |ctx| async move {
+                while !ctx.cancelled() {
+                    std::thread::sleep(Duration::from_millis(2));
+                }
+                // A last write after the cancel, as a job finishing its current row does.
+                std::thread::sleep(Duration::from_millis(50));
+                sqlx::query("INSERT INTO app_meta (key, value) VALUES ('job_write', 'x')")
+                    .execute(&pool)
+                    .await
+                    .unwrap();
+                JobOutcome {
+                    kind: JobKind::Build,
+                    label: label.into(),
+                    cancelled: true,
+                    error: None,
+                    summary: None,
+                }
+            },
+        )
+        .unwrap();
+
+        f.restore(by_name(&old)).unwrap();
+        let status = jobs::status(&f.state.jobs);
+        assert!(status.running.is_none());
+        let last = status.last.unwrap();
+        assert!(
+            last.cancelled && last.error.is_none(),
+            "the job ended cleanly"
+        );
+        assert_eq!(f.meta("job_write"), None);
+        // The write landed before the safety copy, so undo brings it back.
+        run(undo_restore(&f.state)).unwrap();
+        assert_eq!(f.meta("job_write").as_deref(), Some("x"));
     }
 
     #[test]

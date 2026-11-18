@@ -3,6 +3,9 @@
 // `?layouts=empty` list_csv_layouts with no layouts, `?transactions=empty` list_transactions with an empty page, `?balances=1` list_transactions with running balances, `?import=cancel` import_file with null (picker cancelled),
 // and `?import=mapping|review|csv|mismatch` import_file with the mapping dialog, the review dialog, or a CSV summary (running balance passed or mismatch).
 // `?nicknames=empty` answers list_nicknames with no nicknames.
+// Every key of `variants` in snapshot-fixtures.ts is a param too, for example `?job=categorizing`, `?ollama=unreachable`,
+// `?categories=empty`, `?review=empty` or `?builds=empty`; see that map for the values.
+// `?textSize=<percent>` saves that text size before the app starts.
 // `?fail=<command>[:<kind>]` (repeatable) makes that command reject, to show error states (kind defaults to Sample);
 // the message is that command's own for the kind when it has one (`errorMessages["<command>:<kind>"]`), else the kind's.
 // Steps run in URL order once the app has loaded, to reach states behind a click:
@@ -11,13 +14,14 @@
 // `?contextmenu=<text>` right-clicks the table row whose text contains it (opens its context menu).
 import { mockIPC } from "@tauri-apps/api/mocks";
 import type { TransactionPage } from "@/types/bindings/TransactionPage";
-import { errorMessages, fixtures, importSteps, securityStatus } from "@/lib/snapshot-fixtures";
+import { errorMessages, fixtures, importSteps, securityStatus, variants } from "@/lib/snapshot-fixtures";
 
 const params = new URLSearchParams(location.search);
 const failing = new Map(params.getAll("fail").map((entry) => entry.split(":") as [string, string | undefined]));
 const responses: Record<string, unknown> = { ...fixtures, security_status: securityStatus(params) };
 if (params.get("keyringSaved") === "false") responses.complete_setup = { ...(fixtures.complete_setup as object), keyringSaved: false };
 
+for (const [param, options] of Object.entries(variants)) Object.assign(responses, options[params.get(param) ?? ""]);
 if (params.get("accounts") === "empty") responses.list_accounts = [];
 if (params.get("imports") === "empty") responses.list_imports = [];
 if (params.get("layouts") === "empty") responses.list_csv_layouts = [];
@@ -51,6 +55,7 @@ mockIPC((command) => {
   return responses[command];
 });
 
+if (params.has("textSize")) localStorage.setItem("zeni.textSize", params.get("textSize")!);
 await import("@/main");
 
 async function waitFor<T>(find: () => T | null | undefined): Promise<T> {

@@ -53,6 +53,7 @@ fn database(name: &str) -> Db {
         session: Default::default(),
         backup: Default::default(),
         pending_import: Default::default(),
+        jobs: Default::default(),
     };
     run(sqlx::query(
         "INSERT INTO accounts (name, owner, bank_name, account_number, routing_number) \
@@ -238,6 +239,8 @@ impl Db {
                 direction: SortDirection::Asc,
                 page: 0,
                 page_size: 200,
+                category_id: None,
+                uncategorized: None,
             },
         ))
         .unwrap();

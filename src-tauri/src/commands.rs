@@ -5,16 +5,24 @@ use tauri_plugin_dialog::{DialogExt, FilePath};
 
 use crate::keyring::SecretService;
 use crate::types::{
-    Account, AccountNumbers, AppError, AppInfo, AppState, BackupFile, BackupSettings,
-    CommitImportRequest, CsvLayout, CsvMapping, CsvPreviewRow, DeleteCsvLayoutRequest,
-    DeleteNicknameRequest, DeleteNicknameRuleRequest, ImportRecord, ImportStep, ImportSummary,
-    Nickname, NicknameSettings, RecoverRequest, RecoveryCodes, RestoreBackupRequest,
-    RevealAccountNumbersRequest, RevertImportRequest, RuleInput, SampleErrorRequest,
-    SaveCsvLayoutRequest, SaveNicknameRuleRequest, SecurityStatus, SetBackupRetentionRequest,
-    SetupRequest, SetupResponse, TransactionPage, TransactionQuery, UnlockRequest,
+    Account, AccountNumbers, AppError, AppInfo, AppState, BackupFile, BackupSettings, BuildRequest,
+    Category, CommitImportRequest, CsvLayout, CsvMapping, CsvPreviewRow, DeleteCategoryRequest,
+    DeleteCsvLayoutRequest, DeleteNicknameRequest, DeleteNicknameRuleRequest, ImportRecord,
+    ImportStep, ImportSummary, JobStatus, MarkReviewedRequest, ModelBuild, NewCategory, Nickname,
+    NicknameSettings, OllamaSettings, OllamaStatus, RecoverRequest, RecoveryCodes,
+    ReorderCategoriesRequest, RestoreBackupRequest, RevealAccountNumbersRequest,
+    RevertImportRequest, ReviewGroup, RuleInput, SampleErrorRequest, SaveCsvLayoutRequest,
+    SaveNicknameRuleRequest, SecurityStatus, SetAutoCategorizeRequest, SetBackupRetentionRequest,
+    SetBaseModelRequest, SetExamplesPerCategoryRequest, SetOllamaPortRequest,
+    SetTransactionCategoryRequest, SetTransactionsCategoryRequest, SetupRequest, SetupResponse,
+    SpendingQuery, SpendingSummary, StartCategorizeRequest, StartModelDownloadRequest,
+    TransactionPage, TransactionQuery, UnlockRequest, UpdateCategoryRequest,
     UpdateCsvLayoutRequest, UpdateNicknameRequest, UpdateNicknameRuleRequest,
 };
-use crate::{accounts, backup, csv_layouts, db, imports, nicknames, security, transactions};
+use crate::{
+    accounts, backup, builds, categories, categorize, csv_layouts, db, imports, jobs, nicknames,
+    ollama, overlay, review, security, spending, transactions,
+};
 
 const MAX_REASON_CHARS: usize = 200;
 
@@ -163,7 +171,7 @@ pub async fn commit_import(
     state: State<'_, AppState>,
     request: CommitImportRequest,
 ) -> Result<ImportSummary, AppError> {
-    imports::commit_import(&state, request).await
+    categorize::commit_import(&state, request).await
 }
 
 #[tauri::command]
@@ -351,6 +359,184 @@ pub async fn set_nickname_stale_days(
     nicknames::set_stale_days(&state, request).await
 }
 
+#[tauri::command]
+pub async fn list_categories(state: State<'_, AppState>) -> Result<Vec<Category>, AppError> {
+    categories::list(&state).await
+}
+
+#[tauri::command]
+pub async fn add_category(
+    state: State<'_, AppState>,
+    request: NewCategory,
+) -> Result<Category, AppError> {
+    categories::add(&state, request).await
+}
+
+#[tauri::command]
+pub async fn update_category(
+    state: State<'_, AppState>,
+    request: UpdateCategoryRequest,
+) -> Result<Category, AppError> {
+    categories::update(&state, request).await
+}
+
+#[tauri::command]
+pub async fn reorder_categories(
+    state: State<'_, AppState>,
+    request: ReorderCategoriesRequest,
+) -> Result<Vec<Category>, AppError> {
+    categories::reorder(&state, request).await
+}
+
+#[tauri::command]
+pub async fn delete_category(
+    state: State<'_, AppState>,
+    request: DeleteCategoryRequest,
+) -> Result<(), AppError> {
+    categories::delete(&state, request).await
+}
+
+#[tauri::command]
+pub async fn set_transaction_category(
+    state: State<'_, AppState>,
+    request: SetTransactionCategoryRequest,
+) -> Result<(), AppError> {
+    overlay::set_category(&state, request).await
+}
+
+#[tauri::command]
+pub async fn set_transactions_category(
+    state: State<'_, AppState>,
+    request: SetTransactionsCategoryRequest,
+) -> Result<u32, AppError> {
+    overlay::set_many(&state, request).await
+}
+
+#[tauri::command]
+pub async fn ollama_settings(state: State<'_, AppState>) -> Result<OllamaSettings, AppError> {
+    ollama::settings(&state).await
+}
+
+#[tauri::command]
+pub async fn set_ollama_port(
+    state: State<'_, AppState>,
+    request: SetOllamaPortRequest,
+) -> Result<OllamaSettings, AppError> {
+    ollama::set_port(&state, request).await
+}
+
+#[tauri::command]
+pub async fn set_base_model(
+    state: State<'_, AppState>,
+    request: SetBaseModelRequest,
+) -> Result<OllamaSettings, AppError> {
+    ollama::set_base_model(&state, request).await
+}
+
+#[tauri::command]
+pub async fn set_auto_categorize(
+    state: State<'_, AppState>,
+    request: SetAutoCategorizeRequest,
+) -> Result<OllamaSettings, AppError> {
+    ollama::set_auto_categorize(&state, request).await
+}
+
+#[tauri::command]
+pub async fn set_examples_per_category(
+    state: State<'_, AppState>,
+    request: SetExamplesPerCategoryRequest,
+) -> Result<OllamaSettings, AppError> {
+    ollama::set_examples_per_category(&state, request).await
+}
+
+#[tauri::command]
+pub async fn ollama_status(state: State<'_, AppState>) -> Result<OllamaStatus, AppError> {
+    ollama::status(&state).await
+}
+
+#[tauri::command]
+pub async fn start_model_download(
+    state: State<'_, AppState>,
+    request: StartModelDownloadRequest,
+) -> Result<JobStatus, AppError> {
+    ollama::start_download(&state, request).await
+}
+
+#[tauri::command]
+pub async fn start_categorize(
+    state: State<'_, AppState>,
+    request: StartCategorizeRequest,
+) -> Result<JobStatus, AppError> {
+    categorize::start(&state, request).await
+}
+
+#[tauri::command]
+pub async fn review_groups(state: State<'_, AppState>) -> Result<Vec<ReviewGroup>, AppError> {
+    review::groups(&state).await
+}
+
+#[tauri::command]
+pub async fn unreviewed_count(state: State<'_, AppState>) -> Result<u32, AppError> {
+    review::unreviewed_count(&state).await
+}
+
+#[tauri::command]
+pub async fn mark_reviewed(
+    state: State<'_, AppState>,
+    request: MarkReviewedRequest,
+) -> Result<(), AppError> {
+    review::mark_reviewed(&state, request).await
+}
+
+#[tauri::command]
+pub async fn list_builds(state: State<'_, AppState>) -> Result<Vec<ModelBuild>, AppError> {
+    builds::list(&state).await
+}
+
+#[tauri::command]
+pub async fn start_build(state: State<'_, AppState>) -> Result<JobStatus, AppError> {
+    builds::start(&state).await
+}
+
+#[tauri::command]
+pub async fn activate_build(
+    state: State<'_, AppState>,
+    request: BuildRequest,
+) -> Result<(), AppError> {
+    builds::activate(&state, request).await
+}
+
+#[tauri::command]
+pub async fn delete_build(
+    state: State<'_, AppState>,
+    request: BuildRequest,
+) -> Result<(), AppError> {
+    builds::delete(&state, request).await
+}
+
+#[tauri::command]
+pub async fn spending_summary(
+    state: State<'_, AppState>,
+    request: SpendingQuery,
+) -> Result<SpendingSummary, AppError> {
+    spending::summary(&state, request).await
+}
+
+#[tauri::command]
+pub fn job_status(state: State<'_, AppState>) -> JobStatus {
+    jobs::status(&state.jobs)
+}
+
+#[tauri::command]
+pub fn cancel_job(state: State<'_, AppState>) {
+    jobs::cancel(&state.jobs);
+}
+
+#[tauri::command]
+pub fn clear_job_outcome(state: State<'_, AppState>) {
+    jobs::clear_outcome(&state.jobs);
+}
+
 #[cfg(test)]
 mod tests {
     use sqlx::SqlitePool;
@@ -409,6 +595,7 @@ mod tests {
             session: Default::default(),
             backup: Default::default(),
             pending_import: Default::default(),
+            jobs: Default::default(),
         };
         let info = app_info_for(&state).unwrap();
         assert_eq!(
@@ -430,6 +617,7 @@ mod tests {
             session: Default::default(),
             backup: Default::default(),
             pending_import: Default::default(),
+            jobs: Default::default(),
         };
         let error = serde_json::to_value(app_info_for(&state).unwrap_err()).unwrap();
         assert_eq!(
@@ -453,6 +641,7 @@ mod tests {
             session: Default::default(),
             backup: Default::default(),
             pending_import: Default::default(),
+            jobs: Default::default(),
         };
         assert!(matches!(app_info_for(&state), Err(AppError::Database(_))));
     }

@@ -1,6 +1,7 @@
 import type { ComponentProps, ReactNode } from "react";
 import type { Account } from "@/types/bindings/Account";
 import type { BackupFile } from "@/types/bindings/BackupFile";
+import type { Category } from "@/types/bindings/Category";
 import type { CsvMapping } from "@/types/bindings/CsvMapping";
 import type { CsvMappingNeeded } from "@/types/bindings/CsvMappingNeeded";
 import type { ImportRecord } from "@/types/bindings/ImportRecord";
@@ -131,6 +132,14 @@ export type RenameDialogProps = {
   onCloseAutoFocus: (event: Event) => void;
 };
 
+export type CategorizeDialogProps = {
+  transaction: Transaction;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  // The dialog has no trigger, so the caller says where focus goes when it closes.
+  onCloseAutoFocus: (event: Event) => void;
+};
+
 // What the Nicknames page's form dialog is adding or editing.
 export type NicknameDialogTarget =
   | { kind: "add" }
@@ -161,3 +170,53 @@ export type NicknameMenuItem = {
 };
 
 export type NicknameRowMenuProps = { label: string; items: NicknameMenuItem[]; menuFor?: number };
+
+export type CategorySelectProps = {
+  // Adds an option with this label for no category (value null), for example "Uncategorized" or "Leave uncategorized".
+  uncategorizedLabel?: string;
+  // Leaves this category out, for example the one being deleted.
+  excludeId?: number;
+  id?: string;
+  "aria-label"?: string;
+  "aria-describedby"?: string;
+  disabled?: boolean;
+  // Mounts the list already open, for a control swapped in when the user activates it.
+  defaultOpen?: boolean;
+} & (
+  | { allLabel?: undefined; value: number | null; onChange: (value: number | null) => void }
+  // A first option with this label for every category, for example "All categories"; it is value undefined.
+  | { allLabel: string; value: number | null | undefined; onChange: (value: number | null | undefined) => void }
+);
+
+export type ReviewCategoryCellProps = { row: Transaction; onChange: (categoryId: number | null) => void };
+
+export type CategoryFormProps = {
+  // The category being edited, or null to add one.
+  editing: Category | null;
+  // Called after a save, or on Cancel while editing.
+  onDone: () => void;
+  // A categorize run is going; `lockId` is the element that says so.
+  locked: boolean;
+  lockId: string;
+};
+
+export type CategoryRowProps = {
+  category: Category;
+  position: number;
+  total: number;
+  // Set while a run goes or a reorder saves; `lockId` is the run notice, when there is one.
+  locked: boolean;
+  lockId?: string;
+  onEdit: (from: HTMLElement) => void;
+  onDelete: (from: HTMLElement) => void;
+};
+
+export type CategoryDeleteDialogProps = {
+  category: Category | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onCloseAutoFocus: (event: Event) => void;
+};
+
+// Text size choices, in percent of the default root font size.
+export type TextSize = 90 | 100 | 115 | 130 | 150;

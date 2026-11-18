@@ -5,13 +5,20 @@ import {
   appInfo,
   completeSetup,
   listAccounts,
+  jobStatus,
+  listBuilds,
+  listCategories,
   listCsvLayouts,
   listImports,
   listNicknames,
   listTransactions,
   nicknameSettings,
+  ollamaSettings,
+  ollamaStatus,
+  reviewGroups,
   securityStatus,
   unlock,
+  unreviewedCount,
 } from "@/lib/commands";
 import { routeTree } from "@/router";
 
@@ -46,6 +53,31 @@ vi.mock("@/lib/commands", () => ({
   deleteNicknameRule: vi.fn(),
   nicknameSettings: vi.fn(),
   setNicknameStaleDays: vi.fn(),
+  listCategories: vi.fn(),
+  addCategory: vi.fn(),
+  updateCategory: vi.fn(),
+  reorderCategories: vi.fn(),
+  deleteCategory: vi.fn(),
+  setTransactionCategory: vi.fn(),
+  ollamaSettings: vi.fn(),
+  setOllamaPort: vi.fn(),
+  setBaseModel: vi.fn(),
+  setAutoCategorize: vi.fn(),
+  setExamplesPerCategory: vi.fn(),
+  ollamaStatus: vi.fn(),
+  startModelDownload: vi.fn(),
+  jobStatus: vi.fn(),
+  cancelJob: vi.fn(),
+  clearJobOutcome: vi.fn(),
+  startCategorize: vi.fn(),
+  reviewGroups: vi.fn(),
+  unreviewedCount: vi.fn(),
+  markReviewed: vi.fn(),
+  listBuilds: vi.fn(),
+  startBuild: vi.fn(),
+  activateBuild: vi.fn(),
+  deleteBuild: vi.fn(),
+  spendingSummary: vi.fn(),
 }));
 beforeEach(() => {
   vi.resetAllMocks();
@@ -55,11 +87,25 @@ beforeEach(() => {
   vi.mocked(listImports).mockResolvedValue([]);
   vi.mocked(listCsvLayouts).mockResolvedValue([]);
   vi.mocked(nicknameSettings).mockResolvedValue({ staleDays: 90 });
+  vi.mocked(unreviewedCount).mockResolvedValue(0);
+  // Pages, the banner and the Ollama card read these once their tasks fill them in.
+  vi.mocked(listCategories).mockResolvedValue([]);
+  vi.mocked(jobStatus).mockResolvedValue({ running: null, last: null });
+  vi.mocked(ollamaSettings).mockResolvedValue({ port: 11434, baseModel: null, autoCategorize: true, examplesPerCategory: 5 });
+  vi.mocked(ollamaStatus).mockResolvedValue({ reachable: false, version: null, installed: [], recommended: [] });
+  vi.mocked(reviewGroups).mockResolvedValue([]);
+  vi.mocked(listBuilds).mockResolvedValue([]);
 });
 
 // jsdom lacks matchMedia (the sidebar's mobile check) and scrollTo (the router's scroll reset).
 window.matchMedia = () => ({ addEventListener() {}, removeEventListener() {} }) as unknown as MediaQueryList;
 window.scrollTo = () => {};
+// Radix Select (the Review and Categories pages) measures its trigger.
+globalThis.ResizeObserver = class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+};
 
 function renderApp() {
   const router = createRouter({ routeTree, history: createMemoryHistory({ initialEntries: ["/"] }) });
@@ -87,16 +133,60 @@ test("redirects to Transactions and navigates with the sidebar", async () => {
   expect(nav.getByRole("link", { name: "Transactions" }).getAttribute("aria-current")).toBeNull();
 });
 
-test("lists Nicknames after Transactions and opens the page", async () => {
+test("lists the pages in order and opens Nicknames", async () => {
   vi.mocked(listNicknames).mockResolvedValue([]);
   renderApp();
   await screen.findByRole("heading", { level: 1, name: "Transactions" });
   const nav = within(screen.getByRole("navigation", { name: "Main" }));
-  expect(nav.getAllByRole("link").map((link) => link.textContent)).toEqual(["Transactions", "Nicknames", "Accounts", "Settings"]);
+  expect(nav.getAllByRole("link").map((link) => link.textContent)).toEqual([
+    "Transactions",
+    "Review",
+    "Nicknames",
+    "Categories",
+    "Accounts",
+    "Settings",
+  ]);
+  // Nothing unreviewed, so no badge.
+  expect(document.querySelector("[data-sidebar=menu-badge]")).toBeNull();
 
   fireEvent.click(nav.getByRole("link", { name: "Nicknames" }));
   expect(await screen.findByRole("heading", { level: 1, name: "Nicknames" })).toBeTruthy();
   expect(nav.getByRole("link", { name: "Nicknames" }).getAttribute("aria-current")).toBe("page");
+});
+
+test("opens Review and Categories from the sidebar", async () => {
+  renderApp();
+  await screen.findByRole("heading", { level: 1, name: "Transactions" });
+  const nav = within(screen.getByRole("navigation", { name: "Main" }));
+
+  fireEvent.click(nav.getByRole("link", { name: "Review" }));
+  expect(await screen.findByRole("heading", { level: 1, name: "Review" })).toBeTruthy();
+  expect(nav.getByRole("link", { name: "Review" }).getAttribute("aria-current")).toBe("page");
+
+  fireEvent.click(nav.getByRole("link", { name: "Categories" }));
+  expect(await screen.findByRole("heading", { level: 1, name: "Categories" })).toBeTruthy();
+  expect(nav.getByRole("link", { name: "Categories" }).getAttribute("aria-current")).toBe("page");
+});
+
+test("shows the unreviewed count as a badge on Review", async () => {
+  vi.mocked(unreviewedCount).mockResolvedValue(3);
+  renderApp();
+  const nav = within(await screen.findByRole("navigation", { name: "Main" }));
+  const link = await nav.findByRole("link", { name: "Review, 3 unreviewed" });
+  const badge = link.closest("li")?.querySelector("[data-sidebar=menu-badge]");
+  expect(badge?.textContent).toBe("3");
+  expect(badge?.getAttribute("aria-hidden")).toBe("true");
+});
+
+test("shows no Review badge when the count fails", async () => {
+  vi.mocked(unreviewedCount).mockRejectedValue({ kind: "Locked", message: "Unlock Zeni first." });
+  renderApp();
+  await screen.findByRole("heading", { level: 1, name: "Transactions" });
+  await vi.waitFor(() => expect(unreviewedCount).toHaveBeenCalled());
+  const nav = within(screen.getByRole("navigation", { name: "Main" }));
+  expect(nav.getByRole("link", { name: "Review" })).toBeTruthy();
+  expect(document.querySelector("[data-sidebar=menu-badge]")).toBeNull();
+  expect(screen.queryByRole("alert")).toBeNull();
 });
 
 test("lists Accounts between Nicknames and Settings and opens the page", async () => {

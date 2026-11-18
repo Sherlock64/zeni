@@ -25,6 +25,20 @@ Zeni's domain terms as the code uses them. One line each; details live in the li
 - **Precedence**: which rule wins when several match: exact, then contains, then regex; then the longer pattern; then the older rule ([nicknames.md](nicknames.md#when-several-rules-match)).
 - **Stale**: a nickname that never matched, or whose last match is more than `nickname_stale_days` before the newest transaction; stale-exempt nicknames are never stale.
 
+## Categories
+
+- **Category**: one entry of the user's flat category list, with a kind ([categories.md](categories.md)).
+- **Kind**: `spending`, `income` or `transfer`; decides how a category counts in the spending query (`CategoryKind`).
+- **Effective category**: the category a row shows: set by user, else the enabled nickname's default, else the model's, else uncategorized (`effective_categories` view).
+- **Set by**: who set a row's category: `model`, `nickname` or `user` (`SetBy`).
+- **Reviewed**: a model answer the user confirmed; user- and nickname-set rows count as reviewed.
+- **Categorizer**: the backend that picks a category for a row; the Ollama one is `OllamaCategorizer` (`categorize.rs`).
+- **Base model**: the installed Ollama model chosen in Settings.
+- **Model build**: an Ollama model `zeni-<number>` made from the base model, the category list and reviewed examples (`model_builds`).
+- **Active build**: the model build used for categorizing; with none, the base model.
+- **Categorize run**: one background "Categorize now", "Recategorize all" or post-import pass.
+- **Job slot**: the one place (`AppState.jobs`) where the running Ollama job (run, download or build) and the last outcome live; the UI polls `job_status` ([ADR 0001](adr/0001-derived-effective-category-and-polled-job-slot.md)).
+
 ## Security
 
 - **Master password**: the user's password; an Argon2id key derived from it wraps the data key.
