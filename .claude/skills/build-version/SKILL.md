@@ -19,7 +19,7 @@ Usage gate: before every phase (each code wave, integration, docs and agents, ea
 3. If the PRD has open questions, or a decision you can't make from the PRD and `CLAUDE.md`, ask the user before you assign work.
 4. Find the checkpoints the PRD marks. Plan to stop at each one and wait for the user's decision.
 5. Run `git status`. If the tree isn't clean, ask the user before starting. Then `git fetch origin` and `git switch -c v<n>-<one or two words> origin/main`, following the branch rule in `CLAUDE.md`. All work for V<n> happens on this branch.
-6. Plan a task that sets the app version to `<major>.<minor>.<patch>` (`V7` → `7.0.0`, `V7.1` → `7.1.0`) in `src-tauri/Cargo.toml` and `package.json` (`core-dev`), and one that adds its `## <major>.<minor>.<patch>` section to `CHANGELOG.md` (`docs-writer`). The release gate (`scripts/release-check.sh`) refuses a tag without both.
+6. Plan a task that sets the app version to `<major>.<minor>.<patch>` (`V7` → `7.0.0`, `V7.1` → `7.1.0`) in `src-tauri/Cargo.toml` and `package.json` (`core-dev`), and one that adds its `## <major>.<minor>.<patch>` section to `CHANGELOG.md` (`docs-writer`). The release gate (`scripts/release-check.sh`) refuses a tag without both. Put both in wave 1, since tests read the version and the changelog. The version task also owns every test that names a version (`grep -rn '"<old version>"\|<old major>, <old minor>' src-tauri/src`) and makes it derive the version instead of hardcoding it.
 
 ## Design check
 
