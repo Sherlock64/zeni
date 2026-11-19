@@ -20,25 +20,31 @@ export function UpdateBanner() {
     },
   });
 
-  if (!banner) return null;
-
   return (
-    <div className="mx-auto flex w-full max-w-screen-2xl flex-col gap-3 px-8 pt-6">
-      <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border p-4 text-sm">
-        <p className="flex items-center gap-2 font-medium">
-          <CircleArrowUpIcon aria-hidden="true" className="size-4 text-primary" />
-          Zeni {banner.version} is available
-        </p>
-        <div className="flex shrink-0 gap-2">
-          <Button size="sm" onClick={() => openUrl(banner.url)}>
-            Download
-          </Button>
-          <Button variant="outline" size="sm" aria-disabled={dismiss.isPending} onClick={() => !dismiss.isPending && dismiss.mutate()}>
-            Dismiss
-          </Button>
+    <>
+      {/* Always mounted, so screen readers hear the banner appear even though focus lands after it. */}
+      <p role="status" className="sr-only">
+        {banner ? `Zeni ${banner.version} is available` : ""}
+      </p>
+      {banner && (
+        <div className="mx-auto flex w-full max-w-screen-2xl flex-col gap-3 px-8 pt-6">
+          <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border p-4 text-sm">
+            <p className="flex items-center gap-2 font-medium">
+              <CircleArrowUpIcon aria-hidden="true" className="size-4 text-primary" />
+              Zeni {banner.version} is available
+            </p>
+            <div className="flex shrink-0 gap-2">
+              <Button size="sm" onClick={() => openUrl(banner.url)}>
+                Download
+              </Button>
+              <Button variant="outline" size="sm" aria-disabled={dismiss.isPending} onClick={() => !dismiss.isPending && dismiss.mutate()}>
+                Dismiss
+              </Button>
+            </div>
+          </div>
+          {dismiss.isError && <CommandErrorAlert title="Couldn't dismiss the update" error={dismiss.error} />}
         </div>
-      </div>
-      {dismiss.isError && <CommandErrorAlert title="Couldn't dismiss the update" error={dismiss.error} />}
-    </div>
+      )}
+    </>
   );
 }

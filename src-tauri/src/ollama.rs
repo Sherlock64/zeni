@@ -6,6 +6,7 @@ use std::time::Duration;
 use serde_json::{Value, json};
 use sqlx::SqlitePool;
 
+use crate::db::{meta, set_meta};
 use crate::types::{
     AppError, AppState, InstalledModel, JobCtx, JobKind, JobOutcome, JobStatus, OllamaSettings,
     OllamaStatus, RecommendedModel, SetAutoCategorizeRequest, SetBaseModelRequest,
@@ -47,24 +48,6 @@ const RECOMMENDED: [(&str, u64, &str); 3] = [
 fn same_model(a: &str, b: &str) -> bool {
     let bare = |name: &str| name.strip_suffix(":latest").unwrap_or(name).to_string();
     bare(a) == bare(b)
-}
-
-async fn meta(pool: &SqlitePool, key: &str) -> Result<Option<String>, AppError> {
-    Ok(
-        sqlx::query_scalar("SELECT value FROM app_meta WHERE key = ?")
-            .bind(key)
-            .fetch_optional(pool)
-            .await?,
-    )
-}
-
-async fn set_meta(pool: &SqlitePool, key: &str, value: &str) -> Result<(), AppError> {
-    sqlx::query("INSERT OR REPLACE INTO app_meta (key, value) VALUES (?, ?)")
-        .bind(key)
-        .bind(value)
-        .execute(pool)
-        .await?;
-    Ok(())
 }
 
 async fn load_settings(pool: &SqlitePool) -> Result<OllamaSettings, AppError> {

@@ -92,6 +92,10 @@ export function ReleaseNotesButton() {
           <DialogTitle>{TITLE}</DialogTitle>
           <DialogDescription>Every version of Zeni, newest first.</DialogDescription>
         </DialogHeader>
+        {/* Always mounted, so screen readers announce the loading text and its clearing. */}
+        <p role="status" className="sr-only">
+          {notes.isPending ? "Loading release notes…" : ""}
+        </p>
         {notes.isError ? (
           <CommandErrorAlert title="Couldn't load the release notes" error={notes.error} />
         ) : notes.isPending ? (

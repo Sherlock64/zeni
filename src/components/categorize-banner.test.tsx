@@ -208,12 +208,12 @@ test.each([
 });
 
 test.each([
-  ["checking the job", () => vi.mocked(jobStatus).mockRejectedValue({ kind: "Sample", message: "Broke." }), null, "Couldn't check the running job"],
+  ["checking the job", () => vi.mocked(jobStatus).mockRejectedValue({ kind: "NotFound", message: "Broke." }), null, "Couldn't check the running job"],
   [
     "cancelling",
     () => {
       vi.mocked(jobStatus).mockResolvedValue(running(5));
-      vi.mocked(cancelJob).mockRejectedValue({ kind: "Sample", message: "Broke." });
+      vi.mocked(cancelJob).mockRejectedValue({ kind: "NotFound", message: "Broke." });
     },
     "Cancel",
     "Couldn't cancel the job",
@@ -222,7 +222,7 @@ test.each([
     "dismissing",
     () => {
       vi.mocked(jobStatus).mockResolvedValue(finished());
-      vi.mocked(clearJobOutcome).mockRejectedValue({ kind: "Sample", message: "Broke." });
+      vi.mocked(clearJobOutcome).mockRejectedValue({ kind: "NotFound", message: "Broke." });
     },
     "Dismiss",
     "Couldn't dismiss the summary",

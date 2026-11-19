@@ -8,7 +8,8 @@
 // `?startup=backupFailed|newerData|newerUnknown` blocks startup, `?update=newer|failed|never|checking|off` picks the
 // update status (omitted: up to date; `newer` shows the banner), `?notes=pending` opens What's new after unlock.
 // `?textSize=<percent>` saves that text size before the app starts.
-// `?fail=<command>[:<kind>]` (repeatable) makes that command reject, to show error states (kind defaults to Sample);
+// `?fail=<command>[:<kind>]` (repeatable) makes that command reject, to show error states (kind defaults to NotFound,
+// with a generic message so it does not read as a missing account);
 // the message is that command's own for the kind when it has one (`errorMessages["<command>:<kind>"]`), else the kind's.
 // Steps run in URL order once the app has loaded, to reach states behind a click:
 // `?fill=<input name>=<value>` types into the input with that name,
@@ -48,8 +49,10 @@ else if (importParam && importParam in importSteps) responses.import_file = impo
 
 mockIPC((command) => {
   if (failing.has(command)) {
-    const kind = failing.get(command) || "Sample";
-    throw { kind, message: errorMessages[`${command}:${kind}`] ?? errorMessages[kind] ?? `Snapshot failure for ${command}` };
+    const given = failing.get(command);
+    const kind = given || "NotFound";
+    const message = errorMessages[`${command}:${kind}`] ?? (given ? errorMessages[kind] : undefined);
+    throw { kind, message: message ?? `Snapshot failure for ${command}` };
   }
   if (!(command in responses)) throw { kind: "Invoke", message: `No snapshot fixture for ${command}` };
   // A successful undo leaves no restore to undo.

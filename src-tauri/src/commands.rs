@@ -1,5 +1,4 @@
-use std::path::{Path, PathBuf};
-use std::sync::PoisonError;
+use std::path::PathBuf;
 
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_dialog::{DialogExt, FilePath};
@@ -13,21 +12,18 @@ use crate::types::{
     MarkReviewedRequest, ModelBuild, NewCategory, Nickname, NicknameSettings, OllamaSettings,
     OllamaStatus, RecoverRequest, RecoveryCodes, ReleaseNotes, ReorderCategoriesRequest,
     RestoreBackupRequest, RevealAccountNumbersRequest, RevertImportRequest, ReviewGroup, RuleInput,
-    SampleErrorRequest, SaveCsvLayoutRequest, SaveNicknameRuleRequest, SecurityStatus,
-    SetAutoCategorizeRequest, SetBackupRetentionRequest, SetBaseModelRequest,
-    SetExamplesPerCategoryRequest, SetOllamaPortRequest, SetTransactionCategoryRequest,
-    SetTransactionsCategoryRequest, SetUpdateChecksRequest, SetupRequest, SetupResponse,
-    SpendingQuery, SpendingSummary, StartCategorizeRequest, StartModelDownloadRequest, Startup,
-    StartupProblem, StartupStatus, TransactionPage, TransactionQuery, UnlockRequest,
-    UpdateCategoryRequest, UpdateCsvLayoutRequest, UpdateNicknameRequest,
-    UpdateNicknameRuleRequest, UpdateStatus,
+    SaveCsvLayoutRequest, SaveNicknameRuleRequest, SecurityStatus, SetAutoCategorizeRequest,
+    SetBackupRetentionRequest, SetBaseModelRequest, SetExamplesPerCategoryRequest,
+    SetOllamaPortRequest, SetTransactionCategoryRequest, SetTransactionsCategoryRequest,
+    SetUpdateChecksRequest, SetupRequest, SetupResponse, SpendingQuery, SpendingSummary,
+    StartCategorizeRequest, StartModelDownloadRequest, Startup, StartupStatus, TransactionPage,
+    TransactionQuery, UnlockRequest, UpdateCategoryRequest, UpdateCsvLayoutRequest,
+    UpdateNicknameRequest, UpdateNicknameRuleRequest, UpdateStatus,
 };
 use crate::{
     accounts, backup, builds, categories, categorize, csv_layouts, db, imports, jobs, nicknames,
     ollama, overlay, release_notes, review, security, spending, startup, transactions, updates,
 };
-
-const MAX_REASON_CHARS: usize = 200;
 
 /// Shows the dialog `show` opens and waits for the chosen path. `None` when the user cancels;
 /// `unreadable` when the choice isn't a local path.
@@ -66,21 +62,6 @@ async fn load_app_info(
         db_path: db_path.display().to_string(),
         migrations_applied: db::applied_migrations(&pool).await?,
     })
-}
-
-/// Always fails, so the UI can show a typed error from Rust.
-#[tauri::command]
-pub fn sample_error(request: SampleErrorRequest) -> Result<(), AppError> {
-    let reason = request.reason.trim();
-    if reason.is_empty() {
-        return Err(AppError::Validation("reason must not be empty".into()));
-    }
-    if reason.chars().count() > MAX_REASON_CHARS {
-        return Err(AppError::Validation(format!(
-            "reason must be at most {MAX_REASON_CHARS} characters"
-        )));
-    }
-    Err(AppError::Sample(format!("Sample error: {reason}")))
 }
 
 #[tauri::command]
@@ -543,16 +524,7 @@ pub fn clear_job_outcome(state: State<'_, AppState>) {
 /// `Ready` unless startup is blocked; works without a database.
 #[tauri::command]
 pub fn startup_status(startup: State<'_, Startup>) -> StartupStatus {
-    current_startup(&startup)
-}
-
-fn current_startup(startup: &Startup) -> StartupStatus {
-    startup
-        .0
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner)
-        .clone()
-        .unwrap_or(StartupStatus::Ready)
+    startup::current(&startup)
 }
 
 /// Retries startup after a failed pre-update backup, optionally without the backup.
@@ -566,41 +538,11 @@ pub async fn continue_startup(
     let dir = app.path().app_data_dir().map_err(|error| {
         AppError::Database(format!("Couldn't find Zeni's data folder: {error}"))
     })?;
-    let status = continue_prepare(&state, &startup, &db::data_dir(dir), request).await?;
+    let status = startup::continue_prepare(&state, &startup, &db::data_dir(dir), request).await?;
     if status == StartupStatus::Ready {
         crate::spawn_ready_tasks(&app);
     }
     Ok(status)
-}
-
-async fn continue_prepare(
-    state: &AppState,
-    startup: &Startup,
-    data_dir: &Path,
-    request: ContinueStartupRequest,
-) -> Result<StartupStatus, AppError> {
-    if !matches!(current_startup(startup), StartupStatus::BackupFailed { .. }) {
-        return Err(AppError::Validation(
-            "Startup isn't waiting on a failed backup.".into(),
-        ));
-    }
-    let (db, status, result) = match startup::prepare(data_dir, request.without_backup).await {
-        Ok(database) => (Ok(database), None, Ok(StartupStatus::Ready)),
-        Err(StartupProblem::Blocked(status)) => (
-            Err(startup::blocked_text(&status)),
-            Some(status.clone()),
-            Ok(status),
-        ),
-        // Stays blocked, so the user can retry.
-        Err(StartupProblem::Failed(error)) => (
-            Err(error.clone()),
-            Some(current_startup(startup)),
-            Err(AppError::Database(error)),
-        ),
-    };
-    *state.db.write().unwrap_or_else(PoisonError::into_inner) = db;
-    *startup.0.lock().unwrap_or_else(PoisonError::into_inner) = status;
-    result
 }
 
 #[tauri::command]
@@ -643,178 +585,9 @@ mod tests {
     use super::*;
     use crate::types::Database;
 
-    fn sample(reason: &str) -> serde_json::Value {
-        let request = SampleErrorRequest {
-            reason: reason.into(),
-        };
-        serde_json::to_value(sample_error(request).unwrap_err()).unwrap()
-    }
-
     fn app_info_for(state: &AppState) -> Result<AppInfo, AppError> {
         let version = env!("CARGO_PKG_VERSION").to_string();
         tauri::async_runtime::block_on(load_app_info(state, "Zeni".into(), version))
-    }
-
-    #[test]
-    fn sample_error_returns_typed_error() {
-        assert_eq!(
-            sample("x"),
-            serde_json::json!({ "kind": "Sample", "message": "Sample error: x" })
-        );
-    }
-
-    #[test]
-    fn sample_error_rejects_empty_reason() {
-        let expected =
-            serde_json::json!({ "kind": "Validation", "message": "reason must not be empty" });
-        assert_eq!(sample(""), expected);
-        assert_eq!(sample("  "), expected);
-    }
-
-    #[test]
-    fn sample_error_limits_reason_to_200_chars() {
-        assert_eq!(
-            sample(&"a".repeat(201)),
-            serde_json::json!({
-                "kind": "Validation",
-                "message": "reason must be at most 200 characters"
-            })
-        );
-        assert_eq!(sample(&"a".repeat(200))["kind"], "Sample");
-        // Counted in characters, not bytes, and after trimming.
-        assert_eq!(sample(&"é".repeat(200))["kind"], "Sample");
-        assert_eq!(sample(&format!(" {} ", "a".repeat(200)))["kind"], "Sample");
-    }
-
-    #[test]
-    fn continue_startup_runs_only_after_a_failed_backup() {
-        let state = AppState {
-            db: std::sync::RwLock::new(Err("down".into())),
-            session: Default::default(),
-            backup: Default::default(),
-            pending_import: Default::default(),
-            jobs: Default::default(),
-        };
-        let startup = Startup::default();
-        assert_eq!(current_startup(&startup), StartupStatus::Ready);
-        for blocked in [None, Some(StartupStatus::NewerData { version: None })] {
-            *startup.0.lock().unwrap() = blocked.clone();
-            let request = ContinueStartupRequest {
-                without_backup: true,
-            };
-            let error = tauri::async_runtime::block_on(continue_prepare(
-                &state,
-                &startup,
-                Path::new("/nonexistent"),
-                request,
-            ))
-            .unwrap_err();
-            assert_eq!(serde_json::to_value(error).unwrap()["kind"], "Validation");
-            // Nothing changed.
-            assert_eq!(*startup.0.lock().unwrap(), blocked);
-            assert!(state.db.read().unwrap().is_err());
-        }
-    }
-
-    fn blocked_startup(reason: &str) -> (AppState, Startup) {
-        let state = AppState {
-            db: std::sync::RwLock::new(Err("blocked".into())),
-            session: Default::default(),
-            backup: Default::default(),
-            pending_import: Default::default(),
-            jobs: Default::default(),
-        };
-        let startup = Startup::default();
-        *startup.0.lock().unwrap() = Some(StartupStatus::BackupFailed {
-            reason: reason.into(),
-        });
-        (state, startup)
-    }
-
-    fn continue_with(
-        state: &AppState,
-        startup: &Startup,
-        dir: &Path,
-        without_backup: bool,
-    ) -> Result<StartupStatus, AppError> {
-        let request = ContinueStartupRequest { without_backup };
-        tauri::async_runtime::block_on(continue_prepare(state, startup, dir, request))
-    }
-
-    #[test]
-    fn continue_startup_stays_blocked_on_retry_and_opens_without_backup() {
-        use tauri::async_runtime::block_on as run;
-        let dir = db::temp_dir("continue-startup");
-        let _ = std::fs::remove_dir_all(&dir);
-        db::create_private_dir(&dir).unwrap();
-        // Data from an older Zeni (all but the newest migration) whose backup folder is gone.
-        let mut migrator = sqlx::migrate!("./migrations");
-        let newest = migrator.migrations.len();
-        migrator.migrations = migrator.migrations[..newest - 1].to_vec().into();
-        let pool = run(db::open_unmigrated(&dir.join("zeni.db"))).unwrap();
-        run(migrator.run(&pool)).unwrap();
-        let missing = dir.join("unplugged-drive");
-        run(
-            sqlx::query("INSERT INTO app_meta (key, value) VALUES ('backup_folder', ?)")
-                .bind(missing.to_str().unwrap())
-                .execute(&pool),
-        )
-        .unwrap();
-        run(pool.close());
-        let (state, startup) = blocked_startup("earlier");
-
-        // Retrying hits the same failure: the new reason is stored and returned.
-        let status = continue_with(&state, &startup, &dir, false).unwrap();
-        let StartupStatus::BackupFailed { reason } = &status else {
-            panic!("expected BackupFailed, got {status:?}");
-        };
-        assert!(reason.contains("is missing"), "{reason}");
-        assert_eq!(current_startup(&startup), status);
-        assert_eq!(
-            state.db.read().unwrap().as_ref().err(),
-            Some(&startup::blocked_text(&status))
-        );
-
-        // Continuing without a backup opens the database and clears the block.
-        assert_eq!(
-            continue_with(&state, &startup, &dir, true).unwrap(),
-            StartupStatus::Ready
-        );
-        assert_eq!(*startup.0.lock().unwrap(), None);
-        let Ok(Database { pool, .. }) = state.db.into_inner().unwrap() else {
-            panic!("db not open");
-        };
-        let applied: i64 =
-            run(sqlx::query_scalar("SELECT COUNT(*) FROM _sqlx_migrations").fetch_one(&pool))
-                .unwrap();
-        assert_eq!(applied as usize, newest);
-        run(pool.close());
-        assert!(!missing.exists());
-        std::fs::remove_dir_all(&dir).unwrap();
-    }
-
-    #[test]
-    fn continue_startup_keeps_the_block_when_the_database_cant_open() {
-        let blocker = db::temp_dir("continue-startup-blocker");
-        std::fs::write(&blocker, "").unwrap();
-        let (state, startup) = blocked_startup("earlier");
-        let result = continue_with(&state, &startup, &blocker.join("data"), false);
-        std::fs::remove_file(&blocker).unwrap();
-        let Err(AppError::Database(error)) = result else {
-            panic!("expected a Database error");
-        };
-        assert!(
-            error.starts_with("Couldn't open the database at "),
-            "{error}"
-        );
-        // The earlier status stays, so the user can retry.
-        assert_eq!(
-            current_startup(&startup),
-            StartupStatus::BackupFailed {
-                reason: "earlier".into()
-            }
-        );
-        assert_eq!(state.db.read().unwrap().as_ref().err(), Some(&error));
     }
 
     #[test]

@@ -29,11 +29,25 @@ function renderBanner() {
   return client;
 }
 
+test("announces the banner in a status region mounted before the status resolves", async () => {
+  let resolve!: (value: UpdateStatus) => void;
+  vi.mocked(updateStatus).mockReturnValue(new Promise((r) => (resolve = r)));
+  renderBanner();
+  const region = screen.getByRole("status");
+  expect(region.textContent).toBe("");
+  expect(screen.queryByRole("button", { name: "Download" })).toBeNull();
+
+  resolve(newer);
+  await waitFor(() => expect(region.textContent).toBe("Zeni 7.1.0 is available"));
+  expect(screen.getByRole("button", { name: "Download" })).toBeTruthy();
+});
+
 test("shows nothing without a banner", async () => {
   vi.mocked(updateStatus).mockResolvedValue(none);
   const client = renderBanner();
   await waitFor(() => expect(client.getQueryState(["update_status"])?.status).toBe("success"));
   expect(screen.queryByText(/is available/)).toBeNull();
+  expect(screen.getByRole("status").textContent).toBe("");
 });
 
 test("shows nothing when the status fails", async () => {
@@ -46,7 +60,7 @@ test("shows nothing when the status fails", async () => {
 
 test("Download opens the release page", async () => {
   renderBanner();
-  expect(await screen.findByText("Zeni 7.1.0 is available")).toBeTruthy();
+  expect(await screen.findByText("Zeni 7.1.0 is available", { selector: "p:not([role])" })).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Download" }));
   expect(openUrl).toHaveBeenCalledWith(url);
 });
@@ -72,5 +86,5 @@ test("shows a failed dismiss and keeps the banner", async () => {
   fireEvent.click(await screen.findByRole("button", { name: "Dismiss" }));
   const alert = await screen.findByRole("alert");
   expect(within(alert).getByText("Couldn't dismiss the update")).toBeTruthy();
-  expect(screen.getByText("Zeni 7.1.0 is available")).toBeTruthy();
+  expect(screen.getByText("Zeni 7.1.0 is available", { selector: "p:not([role])" })).toBeTruthy();
 });

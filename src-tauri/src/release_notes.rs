@@ -7,10 +7,7 @@ const CHANGELOG: &str = include_str!("../../CHANGELOG.md");
 
 pub async fn notes(state: &AppState) -> Result<ReleaseNotes, AppError> {
     let (pool, _) = db::current(state)?;
-    let since: Option<String> =
-        sqlx::query_scalar("SELECT value FROM app_meta WHERE key = 'release_notes_since'")
-            .fetch_optional(&pool)
-            .await?;
+    let since = db::meta(&pool, "release_notes_since").await?;
     Ok(build(CHANGELOG, since.as_deref(), version::APP_VERSION))
 }
 
@@ -119,9 +116,16 @@ mod tests {
         assert_eq!(notes.all[2].lines, ["- a"]);
     }
 
+    /// The built-in changelog's version just below this one, so these tests hold every release.
+    fn previous_version() -> String {
+        build(CHANGELOG, None, version::APP_VERSION).all[1]
+            .version
+            .clone()
+    }
+
     #[test]
     fn the_built_in_changelog_has_this_version() {
-        let notes = build(CHANGELOG, Some("0.0.0"), version::APP_VERSION);
+        let notes = build(CHANGELOG, Some(&previous_version()), version::APP_VERSION);
         assert_eq!(versions(&notes.pending), [version::APP_VERSION]);
         assert!(!notes.pending[0].lines.is_empty());
     }
@@ -164,7 +168,7 @@ mod tests {
         let (pool, _) = db::current(&state).unwrap();
         run(
             sqlx::query("INSERT INTO app_meta (key, value) VALUES ('release_notes_since', ?)")
-                .bind("0.0.0")
+                .bind(previous_version())
                 .execute(&pool),
         )
         .unwrap();
@@ -179,7 +183,7 @@ mod tests {
         let reopened = state_for(&dir);
         let notes = run(notes(&reopened)).unwrap();
         assert!(notes.pending.is_empty());
-        assert_eq!(versions(&notes.all), [version::APP_VERSION]);
+        assert_eq!(notes.all[0].version, version::APP_VERSION);
         let _ = fs::remove_dir_all(&dir);
     }
 }

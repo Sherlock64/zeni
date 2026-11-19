@@ -75,6 +75,26 @@ pub fn current(state: &AppState) -> Result<(SqlitePool, PathBuf), AppError> {
     }
 }
 
+/// The `app_meta` value for `key`, if set.
+pub(crate) async fn meta(pool: &SqlitePool, key: &str) -> Result<Option<String>, AppError> {
+    Ok(
+        sqlx::query_scalar("SELECT value FROM app_meta WHERE key = ?")
+            .bind(key)
+            .fetch_optional(pool)
+            .await?,
+    )
+}
+
+/// Sets the `app_meta` value for `key`.
+pub(crate) async fn set_meta(pool: &SqlitePool, key: &str, value: &str) -> Result<(), AppError> {
+    sqlx::query("INSERT OR REPLACE INTO app_meta (key, value) VALUES (?, ?)")
+        .bind(key)
+        .bind(value)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
 pub async fn applied_migrations(pool: &SqlitePool) -> Result<u32, AppError> {
     let count = sqlx::query_scalar("SELECT COUNT(*) FROM _sqlx_migrations WHERE success")
         .fetch_one(pool)

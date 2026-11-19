@@ -76,4 +76,4 @@ jobs:
 
       - name: Build the .deb
         if: github.event_name == 'pull_request'
-        run: pnpm tauri build
+        run: pnpm tauri build -- --locked

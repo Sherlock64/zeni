@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { countRuleMatches, listCategories, listNicknames, listTransactions, setTransactionCategory } from "@/lib/commands";
+import { formatCents } from "@/lib/money";
 import { TransactionsPage } from "@/pages/transactions";
 import type { Category } from "@/types/bindings/Category";
 import type { Transaction } from "@/types/bindings/Transaction";
@@ -315,6 +316,45 @@ test("a long description truncates to one line, with its full text and memo in a
   expect(tooltip.textContent).toBe(`Description: ${description}Memo: Card purchase`);
   fireEvent.blur(tableRow);
   await vi.waitFor(() => expect(screen.queryByRole("tooltip")).toBeNull());
+});
+
+test("below lg the description tooltip also shows the row's category, balance and type", async () => {
+  vi.mocked(listTransactions).mockResolvedValue({
+    rows: [{ ...row, categoryId: 9, category: "Subscriptions", runningBalanceCents: 1027941, transactionType: "Debit" }],
+    total: 1,
+  });
+  renderPage();
+  fireEvent.focus((await screen.findByText("CORNER COFFEE")).closest("tr")!);
+  const tooltip = await screen.findByRole("tooltip");
+  expect(tooltip.textContent).toBe(
+    `Description: CORNER COFFEEMemo: Card purchaseCategory: SubscriptionsBalance: ${formatCents(1027941)}Type: Debit`,
+  );
+});
+
+test("below lg screen readers get the row's balance and type with its description or nickname", async () => {
+  vi.mocked(listTransactions).mockResolvedValue({
+    rows: [
+      { ...row, runningBalanceCents: 1027941, transactionType: "Debit" },
+      { ...row, id: 2, nickname: "Paycheck", description: "PAYROLL", memo: null, transactionType: "Credit" },
+      { ...row, id: 3, description: "PLAIN" },
+    ],
+    total: 3,
+  });
+  renderPage();
+  const hidden = (text: string) => screen.getByText(text, { exact: false, selector: "span.sr-only.lg\\:hidden" });
+  expect((await screen.findByText("CORNER COFFEE")).closest("tr")!.textContent).toContain(
+    `CORNER COFFEECard purchase, balance ${formatCents(1027941)}, type Debit`,
+  );
+  expect(hidden(", type Credit").textContent).toBe(", type Credit");
+  expect(screen.getByText("PLAIN").closest("tr")!.querySelector("span.sr-only")).toBeNull();
+});
+
+test("a row without category, balance or type leaves those lines out of the tooltip", async () => {
+  vi.mocked(listTransactions).mockResolvedValue({ rows: [row], total: 1 });
+  renderPage();
+  fireEvent.focus((await screen.findByText("CORNER COFFEE")).closest("tr")!);
+  const tooltip = await screen.findByRole("tooltip");
+  expect(tooltip.textContent).toBe("Description: CORNER COFFEEMemo: Card purchase");
 });
 
 test("the search placeholder mentions nicknames and notes", async () => {

@@ -266,11 +266,24 @@ export function TransactionsPage() {
                                     {row.memo && <p className="sr-only truncate text-muted-foreground lg:not-sr-only">{row.memo}</p>}
                                   </>
                                 )}
+                                {/* Below lg the Balance and Type cells are hidden from screen readers too, so the trigger names them. */}
+                                {(row.runningBalanceCents !== null || row.transactionType) && (
+                                  <span className="sr-only lg:hidden">
+                                    {row.runningBalanceCents !== null && `, balance ${formatCents(row.runningBalanceCents)}`}
+                                    {row.transactionType && `, type ${row.transactionType}`}
+                                  </span>
+                                )}
                               </div>
                             </TooltipTrigger>
                             <TooltipContent side="bottom" align="start" className="flex-col items-start break-words">
                               <p>Description: {row.description}</p>
                               {row.memo && <p>Memo: {row.memo}</p>}
+                              {/* Below lg these columns hide or truncate, so the tooltip carries their values. */}
+                              {row.category && <p className="lg:hidden">Category: {row.category}</p>}
+                              {row.runningBalanceCents !== null && (
+                                <p className="lg:hidden">Balance: {formatCents(row.runningBalanceCents)}</p>
+                              )}
+                              {row.transactionType && <p className="lg:hidden">Type: {row.transactionType}</p>}
                             </TooltipContent>
                           </Tooltip>
                         </TableCell>

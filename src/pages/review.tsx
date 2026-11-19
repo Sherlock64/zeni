@@ -34,7 +34,7 @@ const groupToggle = (categoryId: number | undefined) =>
 
 // Looks like the select's trigger; hundreds of Radix Selects mounting at once took seconds, so the real one mounts on use.
 const TRIGGER =
-  "flex h-8 w-full items-center justify-between gap-1.5 rounded-lg border border-input bg-transparent py-2 pr-2 pl-2.5 text-sm whitespace-nowrap transition-colors outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30 dark:hover:bg-input/50";
+  "flex h-8 w-full items-center justify-between gap-1.5 rounded-lg border border-input bg-input/30 py-2 pr-2 pl-2.5 text-sm whitespace-nowrap transition-colors outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 hover:bg-input/50";
 
 function RowCategory({ row, onChange }: ReviewCategoryCellProps) {
   const queryClient = useQueryClient();

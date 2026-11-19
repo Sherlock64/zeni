@@ -96,13 +96,6 @@ pub struct AppInfo {
     pub migrations_applied: u32,
 }
 
-#[derive(Debug, Deserialize, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export)]
-pub struct SampleErrorRequest {
-    pub reason: String,
-}
-
 #[derive(Debug, Serialize, TS)]
 #[serde(
     tag = "state",
@@ -617,8 +610,6 @@ pub enum AppError {
     Database(String),
     #[error("{0}")]
     Validation(String),
-    #[error("{0}")]
-    Sample(String),
     /// The data key isn't loaded, or setup is already done / not done for the called command.
     #[error("{0}")]
     Locked(String),
@@ -1382,10 +1373,10 @@ mod tests {
 
     #[test]
     fn app_error_serializes_as_kind_and_message() {
-        let json = serde_json::to_value(AppError::Sample("boom".into())).unwrap();
+        let json = serde_json::to_value(AppError::Validation("boom".into())).unwrap();
         assert_eq!(
             json,
-            serde_json::json!({ "kind": "Sample", "message": "boom" })
+            serde_json::json!({ "kind": "Validation", "message": "boom" })
         );
     }
 

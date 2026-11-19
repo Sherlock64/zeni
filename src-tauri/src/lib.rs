@@ -45,13 +45,7 @@ pub fn run() {
                     "Couldn't find Zeni's data folder: {error}"
                 ))),
             };
-            let (db, blocked) = match prepared {
-                Ok(database) => (Ok(database), None),
-                Err(StartupProblem::Blocked(status)) => {
-                    (Err(startup::blocked_text(&status)), Some(status))
-                }
-                Err(StartupProblem::Failed(error)) => (Err(error), None),
-            };
+            let (db, blocked) = startup::outcome(prepared);
             if let Err(error) = &db {
                 eprintln!("{error}");
             }
@@ -71,7 +65,6 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::app_info,
-            commands::sample_error,
             commands::security_status,
             commands::complete_setup,
             commands::unlock,
