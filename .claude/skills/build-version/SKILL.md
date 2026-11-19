@@ -8,7 +8,7 @@ argument-hint: V<n>
 
 You are the organizer. You plan, delegate, verify and decide. Leave all code and docs edits to the dev agents.
 
-Flow: plan → code waves (`core-dev` + `ui-dev`, parallel) → integration → docs and agents (only where needed) → council (risk-selected) → blocking findings go back to the code waves; otherwise PR, metrics and hand-off.
+Flow: plan → code waves (`core-dev` + `ui-dev`, plus `devops` for pipeline files, parallel) → integration → docs and agents (only where needed) → council (risk-selected) → blocking findings go back to the code waves; otherwise PR → CI green → metrics and hand-off → tag after merge.
 
 Usage gate: before every phase (each code wave, integration, docs and agents, each council round, each fix wave, PR), call `mcp__ccd_session_mgmt__get_usage`. If the 5-hour window is at about 80% or more, or the weekly window at about 90% or more, start no new agents: let in-flight ones finish, notify the user with PushNotification and a message naming the window and its reset time so they can reset the limit. In the same turn, unasked, start a cache-warm timer: `sleep 3300` with `run_in_background`. On each wake, call `get_usage` again: restart the timer while a window is still over the gate, and resume the work once it has reset. Resume an agent cut off by a limit with SendMessage; never respawn it.
 
@@ -19,6 +19,7 @@ Usage gate: before every phase (each code wave, integration, docs and agents, ea
 3. If the PRD has open questions, or a decision you can't make from the PRD and `CLAUDE.md`, ask the user before you assign work.
 4. Find the checkpoints the PRD marks. Plan to stop at each one and wait for the user's decision.
 5. Run `git status`. If the tree isn't clean, ask the user before starting. Then `git fetch origin` and `git switch -c v<n>-<one or two words> origin/main`, following the branch rule in `CLAUDE.md`. All work for V<n> happens on this branch.
+6. Plan a task that sets the app version to `<major>.<minor>.<patch>` (`V7` → `7.0.0`, `V7.1` → `7.1.0`) in `src-tauri/Cargo.toml` and `package.json` (`core-dev`), and one that adds its `## <major>.<minor>.<patch>` section to `CHANGELOG.md` (`docs-writer`). The release gate (`scripts/release-check.sh`) refuses a tag without both.
 
 ## Design check
 
@@ -31,7 +32,7 @@ Run it, also inside `fix-bug` or `investigate`, only when the work involves encr
 
 ## 1. Plan the task graph
 
-1. The PRD's tasks (`S<k>-T<m>`) are the task graph: each is one complete behaviour slice for one owner (backend: `core-dev`; UI: `ui-dev`), with its criteria and deps already set. Keep their IDs. To each task add the exact files it may create or edit, its acceptance proof (the tests or snapshots that show each criterion holds), and the exact interfaces it provides or consumes (contract sections). Split a task (`S1-T2a`, `S1-T2b`) or add a dep only when step 1.2's file ownership forces it. A task that edits any `.tsx` under `src/pages/` or `src/components/` lists at least one snapshot, copy-only edits included.
+1. The PRD's tasks (`S<k>-T<m>`) are the task graph: each is one complete behaviour slice for one owner (backend: `core-dev`; UI: `ui-dev`; pipeline and packaging: `devops`), with its criteria and deps already set. Keep their IDs. To each task add the exact files it may create or edit, its acceptance proof (the tests or snapshots that show each criterion holds), and the exact interfaces it provides or consumes (contract sections). Split a task (`S1-T2a`, `S1-T2b`) or add a dep only when step 1.2's file ownership forces it. A task that edits any `.tsx` under `src/pages/` or `src/components/` lists at least one snapshot, copy-only edits included.
 2. Give every file exactly one task. Two tasks that must edit the same file either merge into one task or run in sequence (one depends on the other). Watch the hub files every feature touches: `src-tauri/src/types.rs`, `src-tauri/src/commands.rs`, `src-tauri/src/lib.rs` (`generate_handler!`), `src/lib/commands.ts`, `src/router.tsx`, `src/components/app-shell.tsx` (`navItems`), `src/lib/snapshot-fixtures.ts`. A task that adds a field to a struct tests build as literals (such as `AppState`) also owns every file with a literal of it (`grep -rln 'AppState {' src-tauri/src`).
 3. Split along files, not along layers: put each backend feature in its own domain module (for example `src-tauri/src/imports.rs`) and each page in its own files, so tasks can run side by side.
 4. Run the Design check above if it applies. Then write the cross-boundary contracts to `snapshots/V<n>/contracts.md` before anyone starts: each new command's name, its request and response types with field names and Rust types, and any new `AppError` variants. For every UI mutation, state the success message, the error next step and any credential prompt. Quote every PRD formula or rule verbatim and add one worked example per edge it names (same date, re-import, empty). Every task on either side of a contract reads the same file. Before wave 1, re-read the contracts once for self-contradictions.
@@ -64,7 +65,7 @@ Start only after step 3 is green. Spawn `docs-writer` only if user-facing behavi
 3. If it fails, turn each `BLOCKING` finding into a fix task for the owner of the cited file. Decide every `CONFLICT` yourself first. Keep each finding's severity, `file:line`, Problem and Fix verbatim. Send each fix task by the reuse rule in step 2.2, or spawn fresh when the original agent is gone. Build a small task graph for the fixes with the step 1 rules (one task per file set, parallel where files don't overlap), and run it through steps 2 and 3, updating `coverage.md` from the fix reports. Each UI fix task names the exact snapshots to retake (path, route, state); the next round gets only those PNGs. Run `docs-writer` or `prompt-engineer` only if a finding targets their files or a fix changes what they describe.
 4. Leave every `NON-BLOCKING` finding, medium or low, as a follow-up; don't fold it into a fix task. Non-blocking mediums are filed and fixed later (`factory-cleanup`); lows are filed only if the user picks them. They are already in `snapshots/V<n>/council-findings.md` (`council-review` step 10). `snapshots/` is gitignored, so the findings stay on this machine. The `retrospective` skill triages them into `factory-bug` issues or `SB-<n>` entries (step 6.2).
 5. Re-review only what the fixes can affect. If a fix changed a contract, a migration, auth or secrets handling, a sensitive path (`council-review` step 2) or semantics other code shares, rerun step 3 and let `council-review` select members from scratch. Otherwise rerun step 3, then convene only the members with a blocking finding, plus each member whose dimension the fixes' files touch, plus `council-prd-compliance` in every round. Pass along the rejected findings and their reasons.
-6. If the same blocking finding survives three rounds, or two members still contradict each other after a full-eight round, stop and ask the user.
+6. If the same blocking finding survives three rounds, or two members still contradict each other after a full-nine round, stop and ask the user.
 
 ## 6. Pull request and hand-off
 
@@ -82,6 +83,8 @@ Start only after step 3 is green. Spawn `docs-writer` only if user-facing behavi
    - Triage: `council-security` sorts every other non-blocking finding, and each retrospective item that is a concrete code, copy, test or docs defect, into `public` or `private` by its judgement (`retrospective` step 4). When unsure: private.
    - `public` becomes a `factory-bug` issue, with the user's yes. `private` goes only to `snapshots/security-bugs.md` (gitignored) as `SB-<n>`. Everything committed or pushed for an `SB-<n>` fix (branch, test names, code comments, docs, commit message, PR body) uses neutral wording ("Harden restore validation", `v4.0.4-hardening`) and never names the weakness or the SB number.
    - Process ideas are never filed; they stay retro recommendations.
+
+   Wait for CI on the PR. Where the session's PR tooling offers CI monitoring (for example `mcp__ccd_pr__set_monitor`), turn it on and wait for its notice; otherwise run `gh pr checks <pr> --watch --fail-fast` once in the background. Never poll in a loop yourself. Each failing job becomes a fix task for the owner of the file its log cites (`gh run view <run-id> --log-failed`; pipeline files go to `devops`), handled like a blocking council finding (step 5.3, then 5.5's re-review). Push each fix as a new commit and wait again, until every check is green.
 3. Run `pnpm tauri dev` in the background. Watch its output until the app window is up with no build errors. If it fails, go back to section 2 with the error.
 4. Tell the user:
    - The PR link, and that the app is running.
@@ -89,7 +92,7 @@ Start only after step 3 is green. Spawn `docs-writer` only if user-facing behavi
    - The key snapshots: show one per changed page.
    - Every `RUNTIME` acceptance criterion as a step they can check in the window (for example "Open Settings and press Trigger sample error").
 5. Always run the retrospective tally (`retrospective` skill, steps 1.1 and 1.2); only the HTML write-up is optional. Append to `snapshots/V<n>/metrics.md`: weighted tokens per phase (plan, code waves, integration, docs and agents, each council round, each fix wave), agent launches, council member launches, full integration runs, and fix and review rounds, each beside the V3.1 baseline in `retros/2026-11-15-v3.1-csv-import.html`.
-6. Stop here. Don't merge. The next version gets its own chat.
+6. Stop here. Don't merge. The next version gets its own chat. Once the user merges the PR, ask them once whether to push the release tag. On a yes, `git fetch origin`, `git tag v<major>.<minor>.<patch> origin/main` and `git push origin v<major>.<minor>.<patch>`; `Release` then publishes the `.deb`. On a no, leave it.
 7. Work after the PR is open (user-testing fixes, more council rounds) starts in a fresh session, not this one. Write `snapshots/V<n>/state.md` (branch, PR, contracts and coverage paths, the last council round number, open findings, approved dependencies, what the user asked for) and offer a new session that starts from it with this skill's sections 2-6.
 
 ## Replies to the user

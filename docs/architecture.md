@@ -28,6 +28,8 @@ flowchart LR
       Cat["Categories<br/>categories.rs, overlay.rs, review.rs,<br/>spending.rs"]
       Jobs["jobs.rs<br/>one job slot (AppState.jobs)"]
       Run["categorize.rs, builds.rs"]
+      Start["startup.rs, version.rs<br/>pre-update backup"]
+      Updates["updates.rs, release_notes.rs<br/>update check, CHANGELOG.md notes"]
       Oll["ollama.rs<br/>client, 127.0.0.1 only"]
       Wrappers --> Security & Accounts & Import & Tx & Backup & Cat & Run & Jobs
       Run --> Jobs & Oll
@@ -42,12 +44,15 @@ flowchart LR
     DB[("SQLite zeni.db<br/>raw imports: imports, raw_transactions (never updated)<br/>derived: accounts, CSV layouts, nicknames, categories, model builds, settings")]
     OSK[("OS keyring<br/>Secret Service: data key")]
     BK[("Backup folder<br/>timestamped zeni.db copies")]
-    OL[("Ollama on this computer<br/>127.0.0.1:port, the only outside call")]
+    OL[("Ollama on this computer<br/>127.0.0.1:port")]
+    GH[("GitHub Releases<br/>daily update check, the only call outside this computer")]
   end
   Oll --> OL
+  Updates --> GH
   Accounts & Import & Tx & Security & Cat & Run --> DB
   Keyring --> OSK
   Backup --> BK
+  Start --> Backup
   Backup --> DB
 ```
 
@@ -101,6 +106,34 @@ sequenceDiagram
   else cancel
     UI->>BE: cancel_import (pending import dropped)
   end
+```
+
+### Startup and update check
+
+```mermaid
+sequenceDiagram
+  participant UI as React UI
+  participant ST as startup.rs
+  participant DB as SQLite
+  participant BK as Backup folder
+  participant UP as updates.rs
+  participant GH as GitHub Releases
+  ST->>DB: read last run version
+  alt data from a newer Zeni
+    ST-->>UI: newerData, nothing opened or changed
+  else older data
+    ST->>BK: pre-update backup
+    alt backup failed
+      ST-->>UI: backupFailed, Retry or Continue without backup
+    else backed up
+      ST->>DB: migrate, store the app version
+    end
+  else same version
+    ST->>DB: migrate (no-op)
+  end
+  ST->>UP: ready, launch check (once a day, if on)
+  UP->>GH: GET latest release
+  UP-->>UI: update banner when newer
 ```
 
 ### Backup and restore

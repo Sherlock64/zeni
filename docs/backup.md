@@ -19,6 +19,7 @@ Each backup is one file named `zeni-YYYYMMDD-HHMMSS-<kind>.db`, stamped with you
 | `manual` | Manual | You click **Back up now**. |
 | `daily` | Daily | Zeni starts for the first time on a day. |
 | `pre-revert` | Before revert | You revert an import, just before Zeni deletes it. |
+| `pre-update` | Before update | A newer Zeni starts on older data, just before it migrates. Never deleted ([install.md](install.md#update)). |
 | `safety` | Safety copy | You restore a backup, just before Zeni replaces your data. |
 
 Zeni lists only files in the backup folder that follow this naming pattern. It ignores other files there.
@@ -33,6 +34,8 @@ Zeni lists only files in the backup folder that follow this naming pattern. It i
 Daily and before-revert backups are automatic. Zeni keeps the newest 14 of them together and deletes older ones. Manual backups and safety copies are never deleted; remove them yourself when you no longer need them.
 
 To change the number, enter a value from 1 to 365 in **Automatic backups to keep** and click **Save**. Zeni deletes extra automatic backups right away.
+
+To restore a backup when Zeni can't open (for example after data from a newer Zeni), see [Restore a backup by hand](install.md#restore-a-backup-by-hand).
 
 ## Back up now
 

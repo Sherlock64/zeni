@@ -6,7 +6,7 @@ use std::sync::PoisonError;
 use sqlx::SqlitePool;
 use sqlx::sqlite::SqliteConnectOptions;
 
-use crate::types::{AppError, AppState, Database};
+use crate::types::{AppError, AppState};
 
 /// Debug builds (`pnpm tauri dev`) keep their own database in `dev/`, so they never touch real data.
 pub fn data_dir(app_data_dir: PathBuf) -> PathBuf {
@@ -17,16 +17,22 @@ pub fn data_dir(app_data_dir: PathBuf) -> PathBuf {
     }
 }
 
-/// Startup: opens `zeni.db` inside `data_dir`, describing any failure for the UI.
-pub async fn connect(data_dir: &Path) -> Result<Database, String> {
+/// Opens and migrates `zeni.db` inside `data_dir` for tests; the app starts through `startup::prepare`.
+#[cfg(test)]
+pub async fn connect(data_dir: &Path) -> Result<crate::types::Database, String> {
     let path = data_dir.join("zeni.db");
     let pool = async {
         create_private_dir(data_dir)?;
         open(&path).await
     }
     .await
-    .map_err(|error| format!("Couldn't open the database at {}: {error}", path.display()))?;
-    Ok(Database { pool, path })
+    .map_err(|error| open_failed(&path, error))?;
+    Ok(crate::types::Database { pool, path })
+}
+
+/// Describes a failure opening the database at `path` for the UI.
+pub fn open_failed(path: &Path, error: AppError) -> String {
+    format!("Couldn't open the database at {}: {error}", path.display())
 }
 
 /// Creates `dir` (and parents) readable only by the current user; tightens it if it already exists.
@@ -38,6 +44,13 @@ pub fn create_private_dir(dir: &Path) -> Result<(), AppError> {
 
 /// Opens (creating if missing) the database, makes it owner-only, and applies pending migrations.
 pub async fn open(path: &Path) -> Result<SqlitePool, AppError> {
+    let pool = open_unmigrated(path).await?;
+    migrate(&pool).await?;
+    Ok(pool)
+}
+
+/// Opens (creating if missing) the database and makes it owner-only, without migrating.
+pub async fn open_unmigrated(path: &Path) -> Result<SqlitePool, AppError> {
     // Create it owner-only before SQLite opens it: SQLite gives its -journal/-wal/-shm files the same mode.
     OpenOptions::new()
         .write(true)
@@ -46,9 +59,12 @@ pub async fn open(path: &Path) -> Result<SqlitePool, AppError> {
         .mode(0o600)
         .open(path)?;
     fs::set_permissions(path, Permissions::from_mode(0o600))?; // tighten a file from an older run
-    let pool = SqlitePool::connect_with(SqliteConnectOptions::new().filename(path)).await?;
-    sqlx::migrate!("./migrations").run(&pool).await?;
-    Ok(pool)
+    Ok(SqlitePool::connect_with(SqliteConnectOptions::new().filename(path)).await?)
+}
+
+/// Applies pending migrations.
+pub async fn migrate(pool: &SqlitePool) -> Result<(), AppError> {
+    Ok(sqlx::migrate!("./migrations").run(pool).await?)
 }
 
 /// The current pool and database path, read under the lock once and without holding it.
@@ -107,6 +123,27 @@ mod tests {
 
             // A second launch finds nothing new to apply.
             let pool = open(&path).await.unwrap();
+            assert_eq!(applied_migrations(&pool).await.unwrap(), expected);
+            pool.close().await;
+        });
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn open_unmigrated_creates_a_private_db_that_migrate_then_fills() {
+        let dir = temp_dir("unmigrated");
+        let path = dir.join("zeni.db");
+        let expected = sqlx::migrate!("./migrations").migrations.len() as u32;
+        create_private_dir(&dir).unwrap();
+        tauri::async_runtime::block_on(async {
+            let pool = open_unmigrated(&path).await.unwrap();
+            assert_eq!(mode(&path), 0o600);
+            let tables: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sqlite_master")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+            assert_eq!(tables, 0);
+            migrate(&pool).await.unwrap();
             assert_eq!(applied_migrations(&pool).await.unwrap(), expected);
             pool.close().await;
         });

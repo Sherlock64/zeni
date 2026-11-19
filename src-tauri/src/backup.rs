@@ -15,11 +15,12 @@ use crate::types::{
 };
 use crate::{db, jobs, security};
 
-const KINDS: [(BackupKind, &str); 4] = [
+const KINDS: [(BackupKind, &str); 5] = [
     (BackupKind::Manual, "manual"),
     (BackupKind::Daily, "daily"),
     (BackupKind::PreRevert, "pre-revert"),
     (BackupKind::Safety, "safety"),
+    (BackupKind::PreUpdate, "pre-update"),
 ];
 const DEFAULT_KEEP: u32 = 14;
 const ZENI_TABLES: [&str; 6] = [
@@ -391,6 +392,12 @@ async fn run_daily(state: &AppState) -> Result<(), AppError> {
     write(&pool, &folder, BackupKind::Daily).await?;
     prune(&folder, keep_automatic(&pool).await?)?;
     set_meta(&pool, "last_daily_backup", &today).await
+}
+
+/// The backup startup takes before migrating data from an older Zeni. Never pruned.
+pub async fn pre_update(pool: &SqlitePool, db_path: &Path) -> Result<PathBuf, AppError> {
+    let folder = ready_folder(pool, db_path).await?;
+    write(pool, &folder, BackupKind::PreUpdate).await
 }
 
 /// The backup `imports::revert` takes first. A prune failure afterwards doesn't stop the revert.
@@ -833,6 +840,29 @@ mod tests {
             .collect();
         assert_eq!(listed, [second.file_name.clone(), first.file_name.clone()]);
         assert_eq!(fs::read_dir(f.folder()).unwrap().count(), 2);
+    }
+
+    #[test]
+    fn pre_update_writes_a_private_backup_that_pruning_keeps() {
+        let f = fixture("pre-update");
+        f.setup(PASSWORD, "Checking");
+        let (pool, db_path) = db::current(&f.state).unwrap();
+        let path = run(pre_update(&pool, &db_path)).unwrap();
+        assert_eq!(path.parent(), Some(f.folder().as_path()));
+        assert_eq!(mode(&path), 0o600);
+        run(validate(&path)).unwrap();
+        assert_eq!(f.backups().len(), 1);
+        assert_eq!(f.backups()[0].1, BackupKind::PreUpdate);
+        prune(&f.folder(), 0).unwrap();
+        assert_eq!(f.backups()[0].1, BackupKind::PreUpdate);
+
+        // Listed with the others, and restorable.
+        let listed = run(list(&f.state)).unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].kind, BackupKind::PreUpdate);
+        run(sqlx::query("UPDATE accounts SET name = 'Renamed'").execute(&f.pool())).unwrap();
+        f.restore(by_name(&listed[0])).unwrap();
+        assert_eq!(f.accounts(), ["Checking"]);
     }
 
     #[test]

@@ -655,6 +655,8 @@ pub enum BackupKind {
     Daily,
     PreRevert,
     Safety,
+    /// Taken at startup before migrating data from an older Zeni; never pruned.
+    PreUpdate,
     Other,
 }
 
@@ -1245,6 +1247,115 @@ pub struct SpendingSummary {
     /// The sum of amounts of uncategorized rows.
     #[ts(type = "number")]
     pub uncategorized_cents: i64,
+}
+
+/// What startup is waiting on. `Ready` lets the security gate run.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(
+    tag = "state",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+#[ts(export)]
+pub enum StartupStatus {
+    Ready,
+    /// The pre-update backup failed, so nothing was migrated.
+    BackupFailed {
+        reason: String,
+    },
+    /// The data was written by a newer Zeni; `version` is its last run version when known.
+    NewerData {
+        version: Option<String>,
+    },
+}
+
+/// Why `startup::prepare` returned no database (Rust only).
+#[derive(Debug)]
+pub enum StartupProblem {
+    /// One of the two blocking states the UI explains.
+    Blocked(StartupStatus),
+    /// The database couldn't open; the text goes to `AppState.db`.
+    Failed(String),
+}
+
+/// Managed Tauri state beside `AppState` (Rust only): `Some` while startup is blocked.
+#[derive(Default)]
+pub struct Startup(pub std::sync::Mutex<Option<StartupStatus>>);
+
+#[derive(Debug, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ContinueStartupRequest {
+    pub without_backup: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(
+    tag = "state",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+#[ts(export)]
+pub enum UpdateResult {
+    UpToDate,
+    Newer { version: String, url: String },
+    Failed { reason: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct UpdateCheck {
+    /// Local `YYYY-MM-DD`.
+    pub date: String,
+    pub result: UpdateResult,
+}
+
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct UpdateStatus {
+    pub checks_enabled: bool,
+    /// A check is in flight (launch or Check now).
+    pub checking: bool,
+    pub last: Option<UpdateCheck>,
+    /// `Some` only for a `Newer` result whose version isn't dismissed.
+    pub banner: Option<NewerRelease>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct NewerRelease {
+    pub version: String,
+    pub url: String,
+}
+
+#[derive(Debug, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct SetUpdateChecksRequest {
+    pub enabled: bool,
+}
+
+/// One `CHANGELOG.md` section.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ReleaseNote {
+    pub version: String,
+    /// The section body's lines, trimmed; empty lines dropped.
+    pub lines: Vec<String>,
+}
+
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ReleaseNotes {
+    /// Sections not yet acknowledged since the upgrade, newest first.
+    pub pending: Vec<ReleaseNote>,
+    /// Every section up to this version, newest first.
+    pub all: Vec<ReleaseNote>,
 }
 
 impl From<sqlx::Error> for AppError {

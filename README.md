@@ -14,6 +14,10 @@ Personal finance desktop app: import bank data, build a budget, analyze spending
 sudo apt install libwebkit2gtk-4.1-dev librsvg2-dev libssl-dev build-essential
 ```
 
+## Install
+
+Install the `.deb` from GitHub Releases, update it and uninstall it: [docs/install.md](docs/install.md).
+
 ## First run
 
 Zeni opens a setup screen on first launch: set a master password, add the checking account, and save the 8 recovery codes it shows. Where the data lives, what is encrypted, and how recovery works: [docs/security.md](docs/security.md).
@@ -34,7 +38,7 @@ How the app fits together: [docs/architecture.md](docs/architecture.md). How the
 pnpm install
 pnpm tauri dev      # run in dev mode (own database under dev/; import the files in samples/)
 pnpm test           # frontend tests
-pnpm tauri build    # release build (.deb)
+pnpm tauri build    # release build (.deb in src-tauri/target/release/bundle/deb/)
 
 cd src-tauri
 cargo test          # Rust tests

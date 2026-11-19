@@ -24,6 +24,16 @@ Schema detail for backend work. The rules (location, permissions, migrations, im
 
 `app_meta` holds `backup_folder` (the chosen folder; absent means `<data dir>/backups`), `backup_keep` (automatic backups kept, 1-365, default 14) and `last_daily_backup` (local date, `YYYY-MM-DD`, of the last successful daily backup). Behaviour: [backup.md](backup.md).
 
+## Release and update settings
+
+All in `app_meta`, plain text:
+
+- `last_run_version`: the app version that last opened the database, set after migrations succeed.
+- `release_notes_since`: the version to show notes after; `0.0.0` for a database from before V7. Deleted when the user closes the What's new dialog.
+- `update_checks`: `on` or `off`; absent means on.
+- `update_last`: JSON `{"date":"YYYY-MM-DD","result":...}` of the last check.
+- `update_dismissed`: the version whose banner the user dismissed.
+
 ## Nicknames
 
 - `nicknames`: one row per nickname; `name` is unique ignoring case, `enabled` and `stale_exempt` are 0/1.

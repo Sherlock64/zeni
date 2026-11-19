@@ -3,4 +3,4 @@
 /**
  * What made a backup file. `Other` is a picked file whose name doesn't match the backup pattern.
  */
-export type BackupKind = "manual" | "daily" | "preRevert" | "safety" | "other";
+export type BackupKind = "manual" | "daily" | "preRevert" | "safety" | "preUpdate" | "other";

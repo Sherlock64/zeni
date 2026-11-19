@@ -1,6 +1,6 @@
 [package]
 name = "zeni"
-version = "0.1.0"
+version = "7.0.0"
 edition = "2024"
 
 [lib]
@@ -26,4 +26,5 @@ ts-rs = "12"
 reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "json"] }
 serde_json = "1"
 tokio = { version = "1", features = ["sync", "macros"] }
+tauri-plugin-opener = "2"
 

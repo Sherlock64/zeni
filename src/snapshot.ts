@@ -4,7 +4,9 @@
 // and `?import=mapping|review|csv|mismatch` import_file with the mapping dialog, the review dialog, or a CSV summary (running balance passed or mismatch).
 // `?nicknames=empty` answers list_nicknames with no nicknames.
 // Every key of `variants` in snapshot-fixtures.ts is a param too, for example `?job=categorizing`, `?ollama=unreachable`,
-// `?categories=empty`, `?review=empty` or `?builds=empty`; see that map for the values.
+// `?categories=empty`, `?review=empty`, `?builds=empty` or `?notice=ollama` (commit_import's categorize notice); see that map for the values.
+// `?startup=backupFailed|newerData|newerUnknown` blocks startup, `?update=newer|failed|never|checking|off` picks the
+// update status (omitted: up to date; `newer` shows the banner), `?notes=pending` opens What's new after unlock.
 // `?textSize=<percent>` saves that text size before the app starts.
 // `?fail=<command>[:<kind>]` (repeatable) makes that command reject, to show error states (kind defaults to Sample);
 // the message is that command's own for the kind when it has one (`errorMessages["<command>:<kind>"]`), else the kind's.

@@ -18,6 +18,7 @@ Each member owns one dimension. Every `CLAUDE.md` rule has exactly one owner.
 | `council-ux-design` | Flows, states, feedback, copy | - |
 | `council-accessibility` | WCAG 2.1 AA: semantics, keyboard, focus, names, contrast | - |
 | `council-test-quality` | Tests run and pass, cover the change, and are meaningful; bindings are fresh | - |
+| `council-devops` | CI/CD and packaging: the user's pipeline limits, permissions, concurrency, caching, release gating, reproducibility, `scripts/check.sh` gate coverage | - |
 | `council-prd-compliance` | Every story task and acceptance criterion, one by one, against the coverage map and tests | Stop and ask at marked checkpoints; branch from `main` with the version naming rule |
 
 ## Steps
@@ -39,11 +40,12 @@ Each member owns one dimension. Every `CLAUDE.md` rule has exactly one owner.
    | `routine` | Backend or script code outside the sensitive paths, no new external interface | `council-prd-compliance`, `council-code-cleanliness`, plus `council-minimalism` when code, files or abstractions were added |
    | `ui` | UI code under `src/` (pages, components, hooks, `src/lib/` except `commands.ts`, styles) | `council-prd-compliance`, `council-ux-design`, `council-accessibility`, plus `council-ui-design` when visuals changed |
    | `sensitive` | Any sensitive path below, a new or changed external interface (Tauri command, file format, IPC permission), or a change to how data is stored, imported, exported or deleted | `council-security`, `council-test-quality`, `council-prd-compliance`, `council-code-cleanliness`, plus the `ui` members when UI changed |
-   | `cross-cutting` | A major redesign across layers, or members contradicting each other across rounds | All eight |
+   | `pipeline` | `.github/workflows/**`, `scripts/release-check*`, `scripts/check.sh`, `src-tauri/deb/**` or the `bundle` section of `src-tauri/tauri.conf.json` changed | `council-devops`, `council-prd-compliance` |
+   | `cross-cutting` | A major redesign across layers, or members contradicting each other across rounds | All nine |
 
    Sensitive paths: `src-tauri/src/crypto.rs`, `security.rs`, `keyring.rs`, `accounts.rs`, `imports.rs`, `ofx.rs`, `csv_import.rs`, `db.rs`, `backup.rs`, `commands.rs`, `types.rs`, `lib.rs`, `src-tauri/migrations/**`, `src-tauri/capabilities/**`, `src-tauri/tauri.conf.json` (CSP/permissions), `Cargo.toml`/`package.json` deps, and any change to account/routing-number handling or raw-import immutability in any file.
 
-   Escalate one row (to `sensitive`, or from `sensitive` to all eight) on a critical unknown, a security-sensitive dependency, or a blast radius you can't bound. A risk row only picks reviewers: every `CLAUDE.md` rule still applies, and a change that touches what a `CLAUDE.md` security rule covers is `sensitive` whatever its paths.
+   Escalate one row (to `sensitive`, or from `sensitive` to all nine) on a critical unknown, a security-sensitive dependency, or a blast radius you can't bound. A risk row only picks reviewers: every `CLAUDE.md` rule still applies, and a change that touches what a `CLAUDE.md` security rule covers is `sensitive` whatever its paths.
 
    Write the `review:` block at the end of the manifest (`scripts/check.sh` keeps it on rewrite): `requirements` (the PRD path or the task brief's items), `risk`, `snapshots`, `reviewers_required`, and `reviewers_skipped` with one `"<member>: <reason>"` per member not selected (in a re-review: `not affected by round <k> fixes`).
 3. Spawn the selected members in one message so they run in parallel. Give each this prompt, filled in:

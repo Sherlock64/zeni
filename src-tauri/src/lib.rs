@@ -17,29 +17,45 @@ mod nicknames;
 mod ofx;
 mod ollama;
 mod overlay;
+mod release_notes;
 mod review;
 mod security;
 mod spending;
+mod startup;
 mod transactions;
 mod types;
+mod updates;
+mod version;
 
 use tauri::Manager;
 
-use types::AppState;
+use types::{AppState, Startup, StartupProblem};
 
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             // Never fail startup over the database: the UI explains the problem instead.
-            let db = match app.path().app_data_dir() {
-                Ok(dir) => tauri::async_runtime::block_on(db::connect(&db::data_dir(dir))),
-                Err(error) => Err(format!("Couldn't find Zeni's data folder: {error}")),
+            let prepared = match app.path().app_data_dir() {
+                Ok(dir) => {
+                    tauri::async_runtime::block_on(startup::prepare(&db::data_dir(dir), false))
+                }
+                Err(error) => Err(StartupProblem::Failed(format!(
+                    "Couldn't find Zeni's data folder: {error}"
+                ))),
+            };
+            let (db, blocked) = match prepared {
+                Ok(database) => (Ok(database), None),
+                Err(StartupProblem::Blocked(status)) => {
+                    (Err(startup::blocked_text(&status)), Some(status))
+                }
+                Err(StartupProblem::Failed(error)) => (Err(error), None),
             };
             if let Err(error) = &db {
                 eprintln!("{error}");
             }
-            let daily_due = db.is_ok();
+            let ready = db.is_ok();
             app.manage(AppState {
                 db: std::sync::RwLock::new(db),
                 session: Default::default(),
@@ -47,12 +63,9 @@ pub fn run() {
                 pending_import: Default::default(),
                 jobs: Default::default(),
             });
-            if daily_due {
-                // Off the setup thread, so the window isn't blocked by the copy.
-                let handle = app.handle().clone();
-                tauri::async_runtime::spawn(async move {
-                    backup::daily_backup(&handle.state::<AppState>()).await;
-                });
+            app.manage(Startup(std::sync::Mutex::new(blocked)));
+            if ready {
+                spawn_ready_tasks(app.handle());
             }
             Ok(())
         })
@@ -120,7 +133,15 @@ pub fn run() {
             commands::spending_summary,
             commands::job_status,
             commands::cancel_job,
-            commands::clear_job_outcome
+            commands::clear_job_outcome,
+            commands::startup_status,
+            commands::continue_startup,
+            commands::update_status,
+            commands::check_for_updates,
+            commands::dismiss_update,
+            commands::set_update_checks,
+            commands::release_notes,
+            commands::acknowledge_release_notes
         ])
         .build(tauri::generate_context!())
         .expect("error while running Zeni")
@@ -129,4 +150,16 @@ pub fn run() {
                 jobs::cancel(&state.jobs);
             }
         });
+}
+
+/// Once the database is ready: the daily backup and the launch update check, off the setup thread.
+fn spawn_ready_tasks(handle: &tauri::AppHandle) {
+    let backup_handle = handle.clone();
+    tauri::async_runtime::spawn(async move {
+        backup::daily_backup(&backup_handle.state::<AppState>()).await;
+    });
+    let update_handle = handle.clone();
+    tauri::async_runtime::spawn(async move {
+        updates::launch_check(&update_handle.state::<AppState>()).await;
+    });
 }

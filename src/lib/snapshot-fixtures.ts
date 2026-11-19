@@ -81,7 +81,7 @@ const backupFolder = "/home/user/.local/share/com.sherlock64.zeni/backups";
 export const fixtures: Record<string, unknown> = {
   app_info: {
     name: "Zeni",
-    version: "0.1.0",
+    version: "7.0.0",
     dbPath: "/home/user/.local/share/com.sherlock64.zeni/zeni.db",
     migrationsApplied: 3,
   },
@@ -207,6 +207,7 @@ export const fixtures: Record<string, unknown> = {
 const backups = [
   { fileName: "zeni-20261115-090012-daily.db", kind: "daily", createdAt: "2026-11-15 09:00:12", sizeBytes: 1843200 },
   { fileName: "zeni-20261114-183045-manual.db", kind: "manual", createdAt: "2026-11-14 18:30:45", sizeBytes: 1839104 },
+  { fileName: "zeni-20261113-080005-pre-update.db", kind: "preUpdate", createdAt: "2026-11-13 08:00:05", sizeBytes: 1810432 },
   { fileName: "zeni-20261112-150301-pre-revert.db", kind: "preRevert", createdAt: "2026-11-12 15:03:01", sizeBytes: 1802240 },
   { fileName: "zeni-20261102-101500-safety.db", kind: "safety", createdAt: "2026-11-02 10:15:00", sizeBytes: 1622016 },
 ].map((file) => ({ ...file, path: `${backupFolder}/${file.fileName}` }));
@@ -231,6 +232,24 @@ Object.assign(fixtures, {
   pick_restore_file: { fileName: "zeni-copy.db", path: "/home/user/Documents/zeni-copy.db", kind: "other", createdAt: "2026-10-30 21:12:05", sizeBytes: 1720320 },
   restore_backup: null,
   undo_restore: null,
+});
+
+// Startup ready, up to date and nothing pending by default, so other snapshots don't change.
+const upToDate = { checksEnabled: true, checking: false, last: { date: "2026-11-15", result: { state: "upToDate" } }, banner: null };
+const newer = { version: "7.1.0", url: "https://github.com/Sherlock64/zeni/releases/tag/v7.1.0" };
+const notes = [
+  { version: "7.1.0", lines: ["Zeni now shows spending by month.", "- Monthly totals on the Transactions page.", "- Export a month as CSV."] },
+  { version: "7.0.0", lines: ["- Zeni now tells you when an update is out.", "- A backup is taken before an update changes your data.", "- See what changed in Settings > About."] },
+];
+Object.assign(fixtures, {
+  startup_status: { state: "ready" },
+  continue_startup: { state: "ready" },
+  update_status: upToDate,
+  check_for_updates: upToDate,
+  dismiss_update: upToDate,
+  set_update_checks: { ...upToDate, checksEnabled: false },
+  release_notes: { pending: [], all: notes },
+  acknowledge_release_notes: null,
 });
 
 // Nicknames ordered by name: one stale, one disabled, one stale-exempt, one never matched.
@@ -428,6 +447,20 @@ export const variants: Record<string, Record<string, Record<string, unknown>>> =
     noModel: { ollama_settings: { ...ollamaSettings, baseModel: null } },
     autoOff: { ollama_settings: { ...ollamaSettings, autoCategorize: false } },
   },
+  startup: {
+    backupFailed: { startup_status: { state: "backupFailed", reason: "The backup folder /media/usb/zeni-backups doesn't exist." } },
+    newerData: { startup_status: { state: "newerData", version: "7.1.0" } },
+    newerUnknown: { startup_status: { state: "newerData", version: null } },
+  },
+  update: {
+    newer: { update_status: { ...upToDate, last: { date: "2026-11-15", result: { state: "newer", ...newer } }, banner: newer } },
+    failed: { update_status: { ...upToDate, last: { date: "2026-11-15", result: { state: "failed", reason: "Couldn't reach GitHub: connection timed out" } } } },
+    never: { update_status: { ...upToDate, last: null } },
+    // Stays checking, so the poll keeps the spinner up.
+    checking: { update_status: { ...upToDate, checking: true } },
+    off: { update_status: { ...upToDate, checksEnabled: false } },
+  },
+  notes: { pending: { release_notes: { pending: notes, all: notes } } },
   notice: {
     ollama: { commit_import: { ...csvSummary, categorizeNotice: "Imported. Categorizing didn't start: Ollama isn't running." } },
   },

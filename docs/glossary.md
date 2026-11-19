@@ -49,10 +49,18 @@ Zeni's domain terms as the code uses them. One line each; details live in the li
 
 ## Backups
 
-- **Backup**: a `VACUUM INTO` copy of the database, kind `manual`, `daily`, `pre-revert` or `safety` ([backup.md](backup.md#file-names-and-kinds)).
+- **Backup**: a `VACUUM INTO` copy of the database, kind `manual`, `daily`, `pre-revert`, `pre-update` or `safety` ([backup.md](backup.md#file-names-and-kinds)).
 - **Automatic backup**: a `daily` or `pre-revert` backup; only these are pruned ([backup.md](backup.md#how-many-backups-zeni-keeps)).
 - **Safety copy**: the backup written just before a restore ([backup.md](backup.md#file-names-and-kinds)).
 - **Restore**: replaces the database with a backup file ([backup.md](backup.md)).
+
+## Releases
+
+- **App version**: the semver version Zeni is built as (`version.rs`); it equals the release tag without the `v`.
+- **Last run version**: the app version that last opened the database (`app_meta.last_run_version`).
+- **Pre-update backup**: a backup of kind `pre-update` ("Before update"), taken before a newer version migrates the data; never pruned ([install.md](install.md#update)).
+- **Update check**: the daily request to GitHub Releases for the latest Zeni version (`updates.rs`).
+- **Release notes**: a version's section of `CHANGELOG.md`, shown on its GitHub Release and in the app (`release_notes.rs`).
 
 ## Workflow
 

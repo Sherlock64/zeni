@@ -1,27 +1,30 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::PoisonError;
 
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 use tauri_plugin_dialog::{DialogExt, FilePath};
 
 use crate::keyring::SecretService;
 use crate::types::{
     Account, AccountNumbers, AppError, AppInfo, AppState, BackupFile, BackupSettings, BuildRequest,
-    Category, CommitImportRequest, CsvLayout, CsvMapping, CsvPreviewRow, DeleteCategoryRequest,
-    DeleteCsvLayoutRequest, DeleteNicknameRequest, DeleteNicknameRuleRequest, ImportRecord,
-    ImportStep, ImportSummary, JobStatus, MarkReviewedRequest, ModelBuild, NewCategory, Nickname,
-    NicknameSettings, OllamaSettings, OllamaStatus, RecoverRequest, RecoveryCodes,
-    ReorderCategoriesRequest, RestoreBackupRequest, RevealAccountNumbersRequest,
-    RevertImportRequest, ReviewGroup, RuleInput, SampleErrorRequest, SaveCsvLayoutRequest,
-    SaveNicknameRuleRequest, SecurityStatus, SetAutoCategorizeRequest, SetBackupRetentionRequest,
-    SetBaseModelRequest, SetExamplesPerCategoryRequest, SetOllamaPortRequest,
-    SetTransactionCategoryRequest, SetTransactionsCategoryRequest, SetupRequest, SetupResponse,
-    SpendingQuery, SpendingSummary, StartCategorizeRequest, StartModelDownloadRequest,
-    TransactionPage, TransactionQuery, UnlockRequest, UpdateCategoryRequest,
-    UpdateCsvLayoutRequest, UpdateNicknameRequest, UpdateNicknameRuleRequest,
+    Category, CommitImportRequest, ContinueStartupRequest, CsvLayout, CsvMapping, CsvPreviewRow,
+    DeleteCategoryRequest, DeleteCsvLayoutRequest, DeleteNicknameRequest,
+    DeleteNicknameRuleRequest, ImportRecord, ImportStep, ImportSummary, JobStatus,
+    MarkReviewedRequest, ModelBuild, NewCategory, Nickname, NicknameSettings, OllamaSettings,
+    OllamaStatus, RecoverRequest, RecoveryCodes, ReleaseNotes, ReorderCategoriesRequest,
+    RestoreBackupRequest, RevealAccountNumbersRequest, RevertImportRequest, ReviewGroup, RuleInput,
+    SampleErrorRequest, SaveCsvLayoutRequest, SaveNicknameRuleRequest, SecurityStatus,
+    SetAutoCategorizeRequest, SetBackupRetentionRequest, SetBaseModelRequest,
+    SetExamplesPerCategoryRequest, SetOllamaPortRequest, SetTransactionCategoryRequest,
+    SetTransactionsCategoryRequest, SetUpdateChecksRequest, SetupRequest, SetupResponse,
+    SpendingQuery, SpendingSummary, StartCategorizeRequest, StartModelDownloadRequest, Startup,
+    StartupProblem, StartupStatus, TransactionPage, TransactionQuery, UnlockRequest,
+    UpdateCategoryRequest, UpdateCsvLayoutRequest, UpdateNicknameRequest,
+    UpdateNicknameRuleRequest, UpdateStatus,
 };
 use crate::{
     accounts, backup, builds, categories, categorize, csv_layouts, db, imports, jobs, nicknames,
-    ollama, overlay, review, security, spending, transactions,
+    ollama, overlay, release_notes, review, security, spending, startup, transactions, updates,
 };
 
 const MAX_REASON_CHARS: usize = 200;
@@ -537,6 +540,102 @@ pub fn clear_job_outcome(state: State<'_, AppState>) {
     jobs::clear_outcome(&state.jobs);
 }
 
+/// `Ready` unless startup is blocked; works without a database.
+#[tauri::command]
+pub fn startup_status(startup: State<'_, Startup>) -> StartupStatus {
+    current_startup(&startup)
+}
+
+fn current_startup(startup: &Startup) -> StartupStatus {
+    startup
+        .0
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .clone()
+        .unwrap_or(StartupStatus::Ready)
+}
+
+/// Retries startup after a failed pre-update backup, optionally without the backup.
+#[tauri::command]
+pub async fn continue_startup(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    startup: State<'_, Startup>,
+    request: ContinueStartupRequest,
+) -> Result<StartupStatus, AppError> {
+    let dir = app.path().app_data_dir().map_err(|error| {
+        AppError::Database(format!("Couldn't find Zeni's data folder: {error}"))
+    })?;
+    let status = continue_prepare(&state, &startup, &db::data_dir(dir), request).await?;
+    if status == StartupStatus::Ready {
+        crate::spawn_ready_tasks(&app);
+    }
+    Ok(status)
+}
+
+async fn continue_prepare(
+    state: &AppState,
+    startup: &Startup,
+    data_dir: &Path,
+    request: ContinueStartupRequest,
+) -> Result<StartupStatus, AppError> {
+    if !matches!(current_startup(startup), StartupStatus::BackupFailed { .. }) {
+        return Err(AppError::Validation(
+            "Startup isn't waiting on a failed backup.".into(),
+        ));
+    }
+    let (db, status, result) = match startup::prepare(data_dir, request.without_backup).await {
+        Ok(database) => (Ok(database), None, Ok(StartupStatus::Ready)),
+        Err(StartupProblem::Blocked(status)) => (
+            Err(startup::blocked_text(&status)),
+            Some(status.clone()),
+            Ok(status),
+        ),
+        // Stays blocked, so the user can retry.
+        Err(StartupProblem::Failed(error)) => (
+            Err(error.clone()),
+            Some(current_startup(startup)),
+            Err(AppError::Database(error)),
+        ),
+    };
+    *state.db.write().unwrap_or_else(PoisonError::into_inner) = db;
+    *startup.0.lock().unwrap_or_else(PoisonError::into_inner) = status;
+    result
+}
+
+#[tauri::command]
+pub async fn update_status(state: State<'_, AppState>) -> Result<UpdateStatus, AppError> {
+    updates::status(&state).await
+}
+
+#[tauri::command]
+pub async fn check_for_updates(state: State<'_, AppState>) -> Result<UpdateStatus, AppError> {
+    updates::check_now(&state).await
+}
+
+#[tauri::command]
+pub async fn dismiss_update(state: State<'_, AppState>) -> Result<UpdateStatus, AppError> {
+    updates::dismiss(&state).await
+}
+
+#[tauri::command]
+pub async fn set_update_checks(
+    state: State<'_, AppState>,
+    request: SetUpdateChecksRequest,
+) -> Result<UpdateStatus, AppError> {
+    updates::set_enabled(&state, request).await
+}
+
+#[tauri::command]
+pub async fn release_notes(state: State<'_, AppState>) -> Result<ReleaseNotes, AppError> {
+    release_notes::notes(&state).await
+}
+
+#[tauri::command]
+pub async fn acknowledge_release_notes(state: State<'_, AppState>) -> Result<(), AppError> {
+    release_notes::acknowledge(&state).await
+}
+
 #[cfg(test)]
 mod tests {
     use sqlx::SqlitePool;
@@ -585,6 +684,137 @@ mod tests {
         // Counted in characters, not bytes, and after trimming.
         assert_eq!(sample(&"é".repeat(200))["kind"], "Sample");
         assert_eq!(sample(&format!(" {} ", "a".repeat(200)))["kind"], "Sample");
+    }
+
+    #[test]
+    fn continue_startup_runs_only_after_a_failed_backup() {
+        let state = AppState {
+            db: std::sync::RwLock::new(Err("down".into())),
+            session: Default::default(),
+            backup: Default::default(),
+            pending_import: Default::default(),
+            jobs: Default::default(),
+        };
+        let startup = Startup::default();
+        assert_eq!(current_startup(&startup), StartupStatus::Ready);
+        for blocked in [None, Some(StartupStatus::NewerData { version: None })] {
+            *startup.0.lock().unwrap() = blocked.clone();
+            let request = ContinueStartupRequest {
+                without_backup: true,
+            };
+            let error = tauri::async_runtime::block_on(continue_prepare(
+                &state,
+                &startup,
+                Path::new("/nonexistent"),
+                request,
+            ))
+            .unwrap_err();
+            assert_eq!(serde_json::to_value(error).unwrap()["kind"], "Validation");
+            // Nothing changed.
+            assert_eq!(*startup.0.lock().unwrap(), blocked);
+            assert!(state.db.read().unwrap().is_err());
+        }
+    }
+
+    fn blocked_startup(reason: &str) -> (AppState, Startup) {
+        let state = AppState {
+            db: std::sync::RwLock::new(Err("blocked".into())),
+            session: Default::default(),
+            backup: Default::default(),
+            pending_import: Default::default(),
+            jobs: Default::default(),
+        };
+        let startup = Startup::default();
+        *startup.0.lock().unwrap() = Some(StartupStatus::BackupFailed {
+            reason: reason.into(),
+        });
+        (state, startup)
+    }
+
+    fn continue_with(
+        state: &AppState,
+        startup: &Startup,
+        dir: &Path,
+        without_backup: bool,
+    ) -> Result<StartupStatus, AppError> {
+        let request = ContinueStartupRequest { without_backup };
+        tauri::async_runtime::block_on(continue_prepare(state, startup, dir, request))
+    }
+
+    #[test]
+    fn continue_startup_stays_blocked_on_retry_and_opens_without_backup() {
+        use tauri::async_runtime::block_on as run;
+        let dir = db::temp_dir("continue-startup");
+        let _ = std::fs::remove_dir_all(&dir);
+        db::create_private_dir(&dir).unwrap();
+        // Data from an older Zeni (all but the newest migration) whose backup folder is gone.
+        let mut migrator = sqlx::migrate!("./migrations");
+        let newest = migrator.migrations.len();
+        migrator.migrations = migrator.migrations[..newest - 1].to_vec().into();
+        let pool = run(db::open_unmigrated(&dir.join("zeni.db"))).unwrap();
+        run(migrator.run(&pool)).unwrap();
+        let missing = dir.join("unplugged-drive");
+        run(
+            sqlx::query("INSERT INTO app_meta (key, value) VALUES ('backup_folder', ?)")
+                .bind(missing.to_str().unwrap())
+                .execute(&pool),
+        )
+        .unwrap();
+        run(pool.close());
+        let (state, startup) = blocked_startup("earlier");
+
+        // Retrying hits the same failure: the new reason is stored and returned.
+        let status = continue_with(&state, &startup, &dir, false).unwrap();
+        let StartupStatus::BackupFailed { reason } = &status else {
+            panic!("expected BackupFailed, got {status:?}");
+        };
+        assert!(reason.contains("is missing"), "{reason}");
+        assert_eq!(current_startup(&startup), status);
+        assert_eq!(
+            state.db.read().unwrap().as_ref().err(),
+            Some(&startup::blocked_text(&status))
+        );
+
+        // Continuing without a backup opens the database and clears the block.
+        assert_eq!(
+            continue_with(&state, &startup, &dir, true).unwrap(),
+            StartupStatus::Ready
+        );
+        assert_eq!(*startup.0.lock().unwrap(), None);
+        let Ok(Database { pool, .. }) = state.db.into_inner().unwrap() else {
+            panic!("db not open");
+        };
+        let applied: i64 =
+            run(sqlx::query_scalar("SELECT COUNT(*) FROM _sqlx_migrations").fetch_one(&pool))
+                .unwrap();
+        assert_eq!(applied as usize, newest);
+        run(pool.close());
+        assert!(!missing.exists());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn continue_startup_keeps_the_block_when_the_database_cant_open() {
+        let blocker = db::temp_dir("continue-startup-blocker");
+        std::fs::write(&blocker, "").unwrap();
+        let (state, startup) = blocked_startup("earlier");
+        let result = continue_with(&state, &startup, &blocker.join("data"), false);
+        std::fs::remove_file(&blocker).unwrap();
+        let Err(AppError::Database(error)) = result else {
+            panic!("expected a Database error");
+        };
+        assert!(
+            error.starts_with("Couldn't open the database at "),
+            "{error}"
+        );
+        // The earlier status stays, so the user can retry.
+        assert_eq!(
+            current_startup(&startup),
+            StartupStatus::BackupFailed {
+                reason: "earlier".into()
+            }
+        );
+        assert_eq!(state.db.read().unwrap().as_ref().err(), Some(&error));
     }
 
     #[test]

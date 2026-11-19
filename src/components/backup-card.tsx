@@ -38,6 +38,7 @@ const kindLabels: Record<BackupKind, string> = {
   manual: "Manual",
   daily: "Daily",
   preRevert: "Before revert",
+  preUpdate: "Before update",
   safety: "Safety copy",
   other: "Other file",
 };
@@ -47,6 +48,7 @@ const kindNouns: Record<BackupKind, string> = {
   manual: "manual backup",
   daily: "daily backup",
   preRevert: "before-revert backup",
+  preUpdate: "before-update backup",
   safety: "safety copy",
   other: "backup",
 };
@@ -171,7 +173,7 @@ export function BackupCard() {
           </h2>
         </CardTitle>
         <CardDescription>
-          Copies of your Zeni data. Zeni backs up on the first start of each day and before every import revert.
+          Copies of your Zeni data. Zeni backs up on the first start of each day, before every import revert and before an update changes your data.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-6">
@@ -241,7 +243,7 @@ export function BackupCard() {
                 max={365}
                 className="w-32"
                 announce
-                hint="Between 1 and 365. Older daily and before-revert backups are deleted; manual backups and safety copies are always kept."
+                hint="Between 1 and 365. Older daily and before-revert backups are deleted; manual and before-update backups and safety copies are always kept."
                 value={keep ?? String(settings.data.keepAutomatic)}
                 onChange={(event) => {
                   // An edit makes "Saved." stale; a save in flight keeps its busy state.
