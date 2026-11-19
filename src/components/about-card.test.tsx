@@ -209,6 +209,51 @@ test("shows an update status error", async () => {
   expect(within(alert).getByText("Couldn't load the update status")).toBeTruthy();
   expect(screen.queryByRole("switch")).toBeNull();
   expect(screen.getByRole("button", { name: "Release notes" })).toBeTruthy();
+  expect(within(alert).getByText("Try again. If it keeps failing, restart Zeni.")).toBeTruthy();
+});
+
+test("retries a failed update status once while busy, then shows the status and focuses the switch", async () => {
+  let resolveRetry!: (value: UpdateStatus) => void;
+  vi.mocked(updateStatus)
+    .mockRejectedValueOnce(invokeError)
+    .mockReturnValueOnce(new Promise((resolve) => (resolveRetry = resolve)));
+  renderPage();
+  await screen.findByRole("alert");
+
+  const retry = screen.getByRole("button", { name: "Try again" });
+  fireEvent.click(retry);
+  await waitFor(() => expect(retry.getAttribute("aria-disabled")).toBe("true"));
+  expect(retry.hasAttribute("disabled")).toBe(false);
+  expect(screen.getByRole("alert")).toBeTruthy();
+  fireEvent.click(retry);
+  expect(updateStatus).toHaveBeenCalledTimes(2);
+
+  await act(async () => resolveRetry(upToDate));
+  await lastCheck("Up to date (Nov 15, 2026)");
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(document.activeElement).toBe(toggle());
+});
+
+test("remounts the update status alert when a retry fails again", async () => {
+  vi.mocked(updateStatus).mockRejectedValue(invokeError);
+  renderPage();
+  const firstAlert = await screen.findByRole("alert");
+
+  fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+  await vi.waitFor(() => expect(screen.getByRole("alert")).not.toBe(firstAlert));
+  expect(updateStatus).toHaveBeenCalledTimes(2);
+  expect(screen.getByRole("button", { name: "Try again" }).getAttribute("aria-disabled")).toBe("false");
+});
+
+test("keeps the switch off and busy while the update status loads", async () => {
+  vi.mocked(updateStatus).mockReturnValue(new Promise(() => {}));
+  renderPage();
+  await screen.findByText("/data/zeni.db");
+  expect(screen.getByText("Last check", { selector: "dt" }).closest("dl")?.getAttribute("aria-busy")).toBe("true");
+  expect(toggle().getAttribute("aria-disabled")).toBe("true");
+  expect(toggle().getAttribute("aria-checked")).toBe("false");
+  fireEvent.click(toggle());
+  expect(setUpdateChecks).not.toHaveBeenCalled();
 });
 
 test("Release notes opens every section and returns focus to the button", async () => {

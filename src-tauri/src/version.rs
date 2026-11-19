@@ -20,7 +20,7 @@ mod tests {
 
     #[test]
     fn app_version_parses() {
-        assert_eq!(parse(APP_VERSION), Some((7, 0, 0)));
+        assert!(parse(APP_VERSION).is_some(), "{APP_VERSION}");
     }
 
     #[test]

@@ -415,7 +415,7 @@ test("shows the update banner in the app only, never on setup or unlock", async 
 
   vi.mocked(securityStatus).mockResolvedValue({ state: "unlocked", keyringSaved: true, recoveryCodesLeft: 8 });
   await act(() => client.refetchQueries({ queryKey: ["security_status"] }));
-  expect(await screen.findByText("Zeni 7.1.0 is available")).toBeTruthy();
+  expect(await screen.findByText("Zeni 7.1.0 is available", { selector: "p:not([role])" })).toBeTruthy();
   expect(screen.getByRole("button", { name: "Download" })).toBeTruthy();
 });
 

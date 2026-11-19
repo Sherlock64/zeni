@@ -8,6 +8,7 @@ use reqwest::header::{ACCEPT, HeaderValue, USER_AGENT};
 use serde_json::Value;
 use sqlx::SqlitePool;
 
+use crate::db::{meta, set_meta};
 use crate::types::{
     AppError, AppState, NewerRelease, SetUpdateChecksRequest, UpdateCheck, UpdateResult,
     UpdateStatus,
@@ -15,7 +16,7 @@ use crate::types::{
 use crate::{db, version};
 
 const LATEST: &str = "https://api.github.com/repos/Sherlock64/zeni/releases/latest";
-const RELEASES: &str = "https://github.com/Sherlock64/zeni/releases/";
+const RELEASES_PATH: &str = "/Sherlock64/zeni/releases/";
 const ENABLED_KEY: &str = "update_checks";
 const LAST_KEY: &str = "update_last";
 const DISMISSED_KEY: &str = "update_dismissed";
@@ -46,24 +47,6 @@ fn checking() -> std::sync::MutexGuard<'static, Vec<PathBuf>> {
     CHECKING.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-async fn meta(pool: &SqlitePool, key: &str) -> Result<Option<String>, AppError> {
-    Ok(
-        sqlx::query_scalar("SELECT value FROM app_meta WHERE key = ?")
-            .bind(key)
-            .fetch_optional(pool)
-            .await?,
-    )
-}
-
-async fn set_meta(pool: &SqlitePool, key: &str, value: &str) -> Result<(), AppError> {
-    sqlx::query("INSERT OR REPLACE INTO app_meta (key, value) VALUES (?, ?)")
-        .bind(key)
-        .bind(value)
-        .execute(pool)
-        .await?;
-    Ok(())
-}
-
 async fn enabled(pool: &SqlitePool) -> Result<bool, AppError> {
     Ok(meta(pool, ENABLED_KEY).await?.as_deref() != Some("off"))
 }
@@ -75,9 +58,11 @@ async fn last(pool: &SqlitePool) -> Result<Option<UpdateCheck>, AppError> {
         .and_then(|json| serde_json::from_str(&json).ok()))
 }
 
-async fn today(pool: &SqlitePool) -> Result<String, AppError> {
+/// Today's local date, `YYYY-MM-DD`; read only by the public entry points.
+async fn today(state: &AppState) -> Result<String, AppError> {
+    let (pool, _) = db::current(state)?;
     Ok(sqlx::query_scalar("SELECT date('now','localtime')")
-        .fetch_one(pool)
+        .fetch_one(&pool)
         .await?)
 }
 
@@ -112,7 +97,7 @@ pub async fn status(state: &AppState) -> Result<UpdateStatus, AppError> {
 
 /// Always checks once, setting on or off; keeps any dismissal.
 pub async fn check_now(state: &AppState) -> Result<UpdateStatus, AppError> {
-    check_with(state, github).await
+    check_with(state, &today(state).await?, github).await
 }
 
 /// Hides the banner for its current version.
@@ -136,7 +121,10 @@ pub async fn set_enabled(
 
 /// The launch check: once a day when checks are on; failures are stored, not returned.
 pub async fn launch_check(state: &AppState) {
-    launch_with(state, github).await
+    // A database error here leaves the check for the next launch; nothing to show.
+    if let Ok(today) = today(state).await {
+        launch_with(state, &today, github).await
+    }
 }
 
 /// The status code and body of one request, or why it never got an answer.
@@ -173,21 +161,22 @@ fn request() -> reqwest::Request {
 
 async fn launch_with(
     state: &AppState,
+    today: &str,
     fetch: impl AsyncFn(reqwest::Request) -> Result<(u16, String), String>,
 ) {
     // A database error here leaves the check for the next launch; nothing to show.
-    let _ = try_launch(state, fetch).await;
+    let _ = try_launch(state, today, fetch).await;
 }
 
 async fn try_launch(
     state: &AppState,
+    today: &str,
     fetch: impl AsyncFn(reqwest::Request) -> Result<(u16, String), String>,
 ) -> Result<(), AppError> {
     let (pool, _) = db::current(state)?;
     if !enabled(&pool).await? {
         return Ok(());
     }
-    let today = today(&pool).await?;
     if last(&pool).await?.is_some_and(|check| check.date == today) {
         return Ok(());
     }
@@ -195,11 +184,12 @@ async fn try_launch(
         .bind(DISMISSED_KEY)
         .execute(&pool)
         .await?;
-    check_with(state, fetch).await.map(drop)
+    check_with(state, today, fetch).await.map(drop)
 }
 
 async fn check_with(
     state: &AppState,
+    today: &str,
     fetch: impl AsyncFn(reqwest::Request) -> Result<(u16, String), String>,
 ) -> Result<UpdateStatus, AppError> {
     let (pool, path) = db::current(state)?;
@@ -208,13 +198,29 @@ async fn check_with(
         outcome(fetch(request()).await, version::APP_VERSION)
     };
     let check = UpdateCheck {
-        date: today(&pool).await?,
+        date: today.into(),
         result,
     };
     let json =
         serde_json::to_string(&check).map_err(|error| AppError::Database(error.to_string()))?;
     set_meta(&pool, LAST_KEY, &json).await?;
     load(&pool, &path).await
+}
+
+/// The release link must be a Zeni release page on github.com over https.
+fn is_release_page(link: &str) -> bool {
+    if link.contains("/../") || link.contains("/./") {
+        return false;
+    }
+    let Ok(url) = reqwest::Url::parse(link) else {
+        return false;
+    };
+    url.scheme() == "https"
+        && url.host_str() == Some("github.com")
+        && url.port().is_none()
+        && url.username().is_empty()
+        && url.password().is_none()
+        && url.path().starts_with(RELEASES_PATH)
 }
 
 fn outcome(answer: Result<(u16, String), String>, app_version: &str) -> UpdateResult {
@@ -233,7 +239,7 @@ fn outcome(answer: Result<(u16, String), String>, app_version: &str) -> UpdateRe
     let Some(latest) = tag.strip_prefix('v').and_then(version::parse) else {
         return failed(format!("GitHub sent a tag that isn't a version: {tag}"));
     };
-    if !url.starts_with(RELEASES) {
+    if !is_release_page(url) {
         return failed("GitHub sent an unexpected release link".into());
     }
     if version::parse(app_version).is_some_and(|app| latest <= app) {
@@ -264,12 +270,24 @@ mod tests {
         }
     }
 
-    fn fixture(name: &str) -> (PathBuf, AppState) {
+    /// A test's temp dir, removed when dropped.
+    struct Dir(PathBuf);
+
+    impl Drop for Dir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn fixture(name: &str) -> (Dir, AppState) {
         let dir = db::temp_dir(&format!("updates-{name}"));
         let _ = std::fs::remove_dir_all(&dir);
         let state = open(&dir);
-        (dir, state)
+        (Dir(dir), state)
     }
+
+    const DAY: &str = "2026-01-01";
+    const NEXT_DAY: &str = "2026-01-02";
 
     /// A stand-in for GitHub that answers every request the same way and keeps each request.
     struct Fake {
@@ -309,11 +327,11 @@ mod tests {
     }
 
     fn check(state: &AppState, fake: &Fake) -> UpdateStatus {
-        run(check_with(state, async |r| fake.fetch(r).await)).unwrap()
+        run(check_with(state, DAY, async |r| fake.fetch(r).await)).unwrap()
     }
 
-    fn launch(state: &AppState, fake: &Fake) {
-        run(launch_with(state, async |r| fake.fetch(r).await));
+    fn launch(state: &AppState, today: &str, fake: &Fake) {
+        run(launch_with(state, today, async |r| fake.fetch(r).await));
     }
 
     fn store_last(state: &AppState, last: &UpdateCheck) {
@@ -332,11 +350,6 @@ mod tests {
                 .fetch_optional(&pool),
         )
         .unwrap()
-    }
-
-    fn today(state: &AppState) -> String {
-        let (pool, _) = db::current(state).unwrap();
-        run(sqlx::query_scalar("SELECT date('now','localtime')").fetch_one(&pool)).unwrap()
     }
 
     fn newer(version: &str) -> UpdateResult {
@@ -402,6 +415,13 @@ mod tests {
             "http://github.com/Sherlock64/zeni/releases/tag/v7.1.0",
             "https://evil.example/Sherlock64/zeni/releases/tag/v7.1.0",
             "https://github.com/Other/zeni/releases/tag/v7.1.0",
+            "https://github.com/Sherlock64/zeni/releases/../../../other/repo",
+            "https://github.com/Sherlock64/zeni/releases/./tag/v7.1.0",
+            "https://github.com.evil.example/Sherlock64/zeni/releases/tag/v7.1.0",
+            "https://github.com:8443/Sherlock64/zeni/releases/tag/v7.1.0",
+            "https://user@github.com/Sherlock64/zeni/releases/tag/v7.1.0",
+            "https://github.com/Sherlock64/zeni/releases/%2e%2e/%2e%2e/other",
+            "not a url",
         ] {
             let reply = serde_json::json!({"tag_name": "v7.1.0", "html_url": url}).to_string();
             assert_eq!(
@@ -410,6 +430,13 @@ mod tests {
                 "{url}"
             );
         }
+    }
+
+    #[test]
+    fn accepts_a_zeni_release_tag_link() {
+        let link = "https://github.com/Sherlock64/zeni/releases/tag/v7.1.0";
+        let reply = serde_json::json!({"tag_name": "v7.1.0", "html_url": link}).to_string();
+        assert_eq!(outcome(Ok((200, reply)), "7.0.0"), newer("7.1.0"));
     }
 
     #[test]
@@ -445,13 +472,16 @@ mod tests {
         let (_dir, state) = fixture("launch-on");
         assert!(run(status(&state)).unwrap().checks_enabled);
         let github = release("v99.0.0");
-        launch(&state, &github);
+        launch(&state, DAY, &github);
         assert_eq!(github.calls(), 1);
         let last = run(status(&state)).unwrap().last.unwrap();
-        assert_eq!(last.date, today(&state));
+        assert_eq!(last.date, DAY);
         assert_eq!(last.result, newer("99.0.0"));
-        launch(&state, &github);
+        launch(&state, DAY, &github);
         assert_eq!(github.calls(), 1, "already ran today");
+        launch(&state, NEXT_DAY, &github);
+        assert_eq!(github.calls(), 2, "a new day");
+        assert_eq!(run(status(&state)).unwrap().last.unwrap().date, NEXT_DAY);
     }
 
     #[test]
@@ -462,12 +492,12 @@ mod tests {
         assert!(!shown.checks_enabled);
         assert_eq!(meta(&state, "update_checks").as_deref(), Some("off"));
         let github = release("v99.0.0");
-        launch(&state, &github);
+        launch(&state, DAY, &github);
         assert_eq!(github.calls(), 0);
         assert!(run(status(&state)).unwrap().last.is_none());
         let on = SetUpdateChecksRequest { enabled: true };
         assert!(run(set_enabled(&state, on)).unwrap().checks_enabled);
-        launch(&state, &github);
+        launch(&state, DAY, &github);
         assert_eq!(github.calls(), 1);
     }
 
@@ -496,19 +526,14 @@ mod tests {
         assert_eq!(run(dismiss(&state)).unwrap().banner, None);
         assert_eq!(meta(&state, "update_dismissed").as_deref(), Some("99.0.0"));
         assert_eq!(check(&state, &github).banner, None, "check now keeps it");
-        launch(&state, &github);
+        launch(&state, DAY, &github);
         assert_eq!(github.calls(), 2, "already ran today");
         assert_eq!(run(status(&state)).unwrap().banner, None);
         // A newer version than the dismissed one shows again.
         assert!(check(&state, &release("v99.1.0")).banner.is_some());
         check(&state, &github);
         // Tomorrow's launch check clears the dismissal.
-        let yesterday = UpdateCheck {
-            date: "2000-01-01".into(),
-            result: UpdateResult::UpToDate,
-        };
-        store_last(&state, &yesterday);
-        launch(&state, &github);
+        launch(&state, NEXT_DAY, &github);
         assert_eq!(github.calls(), 4);
         assert_eq!(meta(&state, "update_dismissed"), None);
         assert_eq!(run(status(&state)).unwrap().banner, Some(banner));
@@ -540,7 +565,7 @@ mod tests {
             shown.last.unwrap().result,
             failed("Couldn't reach GitHub: connection refused")
         );
-        launch(&state, &down);
+        launch(&state, DAY, &down);
         assert!(run(dismiss(&state)).is_ok());
         let off = SetUpdateChecksRequest { enabled: false };
         assert!(run(set_enabled(&state, off)).is_ok());
@@ -561,14 +586,13 @@ mod tests {
     fn result_and_date_survive_reopening() {
         let (dir, state) = fixture("reopen");
         check(&state, &release("v99.0.0"));
-        let date = today(&state);
         drop(state);
-        let reopened = open(&dir);
+        let reopened = open(&dir.0);
         let last = run(status(&reopened)).unwrap().last.unwrap();
         assert_eq!(
             last,
             UpdateCheck {
-                date,
+                date: DAY.into(),
                 result: newer("99.0.0")
             }
         );
@@ -579,14 +603,14 @@ mod tests {
         let (_dir, state) = fixture("checking");
         assert!(!run(status(&state)).unwrap().checking);
         let during = Mutex::new(None);
-        let shown = run(check_with(&state, async |_| {
+        let shown = run(check_with(&state, DAY, async |_| {
             *during.lock().unwrap() = Some(status(&state).await.unwrap().checking);
             Ok((200, body("v7.0.0")))
         }))
         .unwrap();
         assert_eq!(*during.lock().unwrap(), Some(true));
         assert!(!shown.checking);
-        let unrelated = fixture("checking-other").1;
+        let (_other, unrelated) = fixture("checking-other");
         assert!(!run(status(&unrelated)).unwrap().checking);
     }
 
@@ -602,7 +626,7 @@ mod tests {
         let github = release("v99.0.0");
         assert!(matches!(run(status(&state)), Err(AppError::Database(_))));
         assert!(matches!(
-            run(check_with(&state, async |r| github.fetch(r).await)),
+            run(check_with(&state, DAY, async |r| github.fetch(r).await)),
             Err(AppError::Database(_))
         ));
         assert!(matches!(run(dismiss(&state)), Err(AppError::Database(_))));
@@ -611,7 +635,7 @@ mod tests {
             run(set_enabled(&state, on)),
             Err(AppError::Database(_))
         ));
-        launch(&state, &github);
+        launch(&state, DAY, &github);
         assert_eq!(github.calls(), 0);
     }
 }

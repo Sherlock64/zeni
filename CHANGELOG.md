@@ -1,5 +1,12 @@
 # Changelog
 
+## 7.1.0
+
+- Screen readers now hear when an update is available and when release notes load.
+- Settings > About offers Try again when the update status fails to load.
+- On narrow windows the Transactions description tooltip shows category, balance and type.
+- General hardening and test fixes.
+
 ## 7.0.0
 
 - Zeni is now a `.deb` package you install from GitHub Releases, with a new green Z icon.

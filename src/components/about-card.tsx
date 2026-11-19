@@ -46,6 +46,7 @@ export function AboutCard() {
   const switchId = useId();
   const hintId = useId();
   const aboutHeading = useRef<HTMLHeadingElement>(null);
+  const focusSwitchOnMount = useRef(false);
   const setUpdateStatus = (status: UpdateStatus) => queryClient.setQueryData(UPDATE_STATUS_KEY, status);
   const check = useMutation({ mutationFn: checkForUpdates, onSuccess: setUpdateStatus });
   const toggle = useMutation({ mutationFn: setUpdateChecks, onSuccess: setUpdateStatus });
@@ -56,9 +57,22 @@ export function AboutCard() {
   const [retriedError, setRetriedError] = useState<CommandError | null>(null);
   const infoError = info.error ?? retriedError;
 
+  const [retriedUpdateError, setRetriedUpdateError] = useState<CommandError | null>(null);
+  const updateError = update.error ?? retriedUpdateError;
+
+  async function retryUpdate() {
+    if (update.isFetching || !update.error) return;
+    setRetriedUpdateError(update.error);
+    const result = await update.refetch();
+    // The retry button unmounts on success, so focus moves to the switch that replaces it once it mounts.
+    focusSwitchOnMount.current = result.isSuccess;
+    setRetriedUpdateError(null);
+  }
+
   function infoStatus() {
     if (infoError) return info.isFetching ? "Retrying…" : "";
     if (info.isPending) return "Loading app info…";
+    if (updateError && update.isFetching) return "Retrying…";
     return "";
   }
 
@@ -112,13 +126,27 @@ export function AboutCard() {
           </dl>
         )}
 
-        {update.isError ? (
-          <CommandErrorAlert title="Couldn't load the update status" error={update.error} />
+        {updateError ? (
+          <div className="flex flex-col items-start gap-3">
+            <CommandErrorAlert
+              key={update.errorUpdatedAt}
+              title="Couldn't load the update status"
+              error={updateError}
+              nextStep="Try again. If it keeps failing, restart Zeni."
+            />
+            <Button variant="outline" onClick={retryUpdate} aria-disabled={update.isFetching}>
+              Try again
+            </Button>
+          </div>
         ) : (
           <div className="flex flex-col items-start gap-4">
             <div className="flex flex-col gap-1.5">
               <div className="flex items-center gap-3">
                 <Switch
+                  ref={(node) => {
+                    if (node && focusSwitchOnMount.current) node.focus();
+                    focusSwitchOnMount.current = false;
+                  }}
                   id={switchId}
                   aria-describedby={hintId}
                   checked={checksEnabled ?? false}

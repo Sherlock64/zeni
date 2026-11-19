@@ -45,13 +45,7 @@ pub fn run() {
                     "Couldn't find Zeni's data folder: {error}"
                 ))),
             };
-            let (db, blocked) = match prepared {
-                Ok(database) => (Ok(database), None),
-                Err(StartupProblem::Blocked(status)) => {
-                    (Err(startup::blocked_text(&status)), Some(status))
-                }
-                Err(StartupProblem::Failed(error)) => (Err(error), None),
-            };
+            let (db, blocked) = startup::outcome(prepared);
             if let Err(error) = &db {
                 eprintln!("{error}");
             }

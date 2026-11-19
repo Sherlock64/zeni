@@ -78,7 +78,18 @@ chmod 600 zeni.db
 
 6. Start the older Zeni. If it shows **Data from a newer Zeni** again, the backup is also from the newer version; pick an earlier one and repeat step 5 only. Never repeat step 4: `aside/` already holds your newer data.
 
-Changes made after that backup are not in it. They stay in `aside/zeni.db`. To undo, quit Zeni and move `aside/zeni.db` back.
+Changes made after that backup are not in it. They stay in `aside/zeni.db`. To undo, quit Zeni first, then move the files back. Run these only with Zeni closed:
+
+```sh
+cd ~/.local/share/com.sherlock64.zeni
+mkdir restored
+mv -n zeni.db restored/
+mv -n zeni.db-wal zeni.db-shm restored/   # only if these files exist
+mv -n aside/zeni.db .
+mv -n aside/zeni.db-wal aside/zeni.db-shm .   # only if these files are in aside/
+```
+
+The first three commands keep the restored copy in `restored/`; never delete it. Afterwards, check that `aside/` is empty. A file left there means a move was skipped.
 
 ## Require the CI check on `main` (repository owner)
 

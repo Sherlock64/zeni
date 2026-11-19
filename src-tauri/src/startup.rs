@@ -1,10 +1,13 @@
 //! Startup: newer-data and pre-update backup checks around migrating `zeni.db`.
 
 use std::path::Path;
+use std::sync::PoisonError;
 
 use sqlx::SqlitePool;
 
-use crate::types::{AppError, Database, StartupProblem, StartupStatus};
+use crate::types::{
+    AppError, AppState, ContinueStartupRequest, Database, Startup, StartupProblem, StartupStatus,
+};
 use crate::{backup, db, version};
 
 /// Opens `zeni.db` in `data_dir`, taking a pre-update backup before migrating older data.
@@ -70,10 +73,7 @@ async fn check_and_migrate(
     .await?;
     let mut since = None;
     if !fresh {
-        let last: Option<String> =
-            sqlx::query_scalar("SELECT value FROM app_meta WHERE key = 'last_run_version'")
-                .fetch_optional(pool)
-                .await?;
+        let last = db::meta(pool, "last_run_version").await?;
         let last_parsed = last.as_deref().and_then(version::parse);
         let applied: Vec<i64> = sqlx::query_scalar("SELECT version FROM _sqlx_migrations")
             .fetch_all(pool)
@@ -103,23 +103,62 @@ async fn check_and_migrate(
     db::migrate(pool).await?;
     // Notes first: a crash before the version write just repeats the upgrade next launch.
     if let Some(since) = since {
-        set_meta(pool, "release_notes_since", &since).await?;
+        db::set_meta(pool, "release_notes_since", &since).await?;
     }
-    set_meta(pool, "last_run_version", app).await?;
+    db::set_meta(pool, "last_run_version", app).await?;
     Ok(())
 }
 
-async fn set_meta(pool: &SqlitePool, key: &str, value: &str) -> Result<(), sqlx::Error> {
-    sqlx::query("INSERT OR REPLACE INTO app_meta (key, value) VALUES (?, ?)")
-        .bind(key)
-        .bind(value)
-        .execute(pool)
-        .await?;
-    Ok(())
+/// The `AppState.db` value and the blocked status `prepare`'s result leads to.
+pub fn outcome(
+    prepared: Result<Database, StartupProblem>,
+) -> (Result<Database, String>, Option<StartupStatus>) {
+    match prepared {
+        Ok(database) => (Ok(database), None),
+        Err(StartupProblem::Blocked(status)) => (Err(blocked_text(&status)), Some(status)),
+        Err(StartupProblem::Failed(error)) => (Err(error), None),
+    }
+}
+
+/// The blocked status, or `Ready`.
+pub fn current(startup: &Startup) -> StartupStatus {
+    startup
+        .0
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .clone()
+        .unwrap_or(StartupStatus::Ready)
+}
+
+/// Retries `prepare` after a failed pre-update backup and stores the outcome in `state` and
+/// `startup`.
+pub async fn continue_prepare(
+    state: &AppState,
+    startup: &Startup,
+    data_dir: &Path,
+    request: ContinueStartupRequest,
+) -> Result<StartupStatus, AppError> {
+    if !matches!(current(startup), StartupStatus::BackupFailed { .. }) {
+        return Err(AppError::Validation(
+            "Startup isn't waiting on a failed backup.".into(),
+        ));
+    }
+    let (db, blocked) = outcome(prepare(data_dir, request.without_backup).await);
+    let result = match (&db, &blocked) {
+        (Ok(_), _) => Ok(StartupStatus::Ready),
+        (Err(_), Some(status)) => Ok(status.clone()),
+        // Stays blocked, so the user can retry.
+        (Err(error), None) => Err(AppError::Database(error.clone())),
+    };
+    *state.db.write().unwrap_or_else(PoisonError::into_inner) = db;
+    if result.is_ok() {
+        *startup.0.lock().unwrap_or_else(PoisonError::into_inner) = blocked;
+    }
+    result
 }
 
 /// The one-line text `AppState.db` holds while startup is blocked.
-pub fn blocked_text(status: &StartupStatus) -> String {
+fn blocked_text(status: &StartupStatus) -> String {
     match status {
         StartupStatus::Ready => "Zeni is starting.".into(),
         StartupStatus::BackupFailed { reason } => format!("Backup before update failed: {reason}"),
@@ -180,7 +219,7 @@ mod tests {
         }
         fn set(&self, key: &str, value: &str) {
             let pool = run(db::open_unmigrated(&self.db_path())).unwrap();
-            run(set_meta(&pool, key, value)).unwrap();
+            run(db::set_meta(&pool, key, value)).unwrap();
             run(pool.close());
         }
         fn sql(&self, query: &'static str) {
@@ -345,16 +384,50 @@ mod tests {
         use std::os::unix::fs::PermissionsExt;
         let dir = Dir::new("read-only");
         dir.older_schema();
-        let folder = dir.0.join("backups");
+        // A chosen folder: startup resets the default one to 0700 before writing.
+        let folder = dir.0.join("chosen");
         db::create_private_dir(&folder).unwrap();
+        dir.set("backup_folder", folder.to_str().unwrap());
         fs::set_permissions(&folder, fs::Permissions::from_mode(0o500)).unwrap();
+        if fs::write(folder.join("probe"), "").is_ok() {
+            return; // Root ignores the mode, so the folder can't be made unwritable here.
+        }
         let status = dir.prepare(false, "7.0.0");
         fs::set_permissions(&folder, fs::Permissions::from_mode(0o700)).unwrap();
-        // Root ignores the mode, so only assert when the write was refused.
-        if let Err(StartupProblem::Blocked(StartupStatus::BackupFailed { reason })) = status {
-            assert!(reason.starts_with("Couldn't write a backup to"), "{reason}");
-            assert_eq!(dir.state().0, migration_count() - 1);
-        }
+        assert!(
+            matches!(
+                &status,
+                Err(StartupProblem::Blocked(StartupStatus::BackupFailed { reason }))
+                    if reason.starts_with("Couldn't write a backup to")
+            ),
+            "{:?}",
+            status.as_ref().err()
+        );
+        assert_eq!(dir.state().0, migration_count() - 1);
+    }
+
+    #[test]
+    fn outcome_maps_each_startup_problem() {
+        let newer = StartupStatus::NewerData { version: None };
+        let (db, blocked) = outcome(Err(StartupProblem::Blocked(newer.clone())));
+        assert_eq!(db.err(), Some(blocked_text(&newer)));
+        assert_eq!(blocked, Some(newer));
+
+        let failed = StartupStatus::BackupFailed {
+            reason: "gone".into(),
+        };
+        let (db, blocked) = outcome(Err(StartupProblem::Blocked(failed.clone())));
+        assert_eq!(db.err(), Some(blocked_text(&failed)));
+        assert_eq!(blocked, Some(failed));
+
+        let (db, blocked) = outcome(Err(StartupProblem::Failed("broken".into())));
+        assert_eq!(db.err().as_deref(), Some("broken"));
+        assert_eq!(blocked, None);
+
+        let dir = Dir::new("outcome");
+        let (db, blocked) = outcome(run(prepare_as(&dir.0, false, "7.0.0")));
+        run(db.unwrap().pool.close());
+        assert_eq!(blocked, None);
     }
 
     #[test]
@@ -408,6 +481,136 @@ mod tests {
             dir.state(),
             (migration_count(), some("7.0.0"), some("0.0.0"))
         );
+    }
+
+    #[test]
+    fn continue_startup_runs_only_after_a_failed_backup() {
+        let state = AppState {
+            db: std::sync::RwLock::new(Err("down".into())),
+            session: Default::default(),
+            backup: Default::default(),
+            pending_import: Default::default(),
+            jobs: Default::default(),
+        };
+        let startup = Startup::default();
+        assert_eq!(current(&startup), StartupStatus::Ready);
+        for blocked in [None, Some(StartupStatus::NewerData { version: None })] {
+            *startup.0.lock().unwrap() = blocked.clone();
+            let request = ContinueStartupRequest {
+                without_backup: true,
+            };
+            let error = tauri::async_runtime::block_on(continue_prepare(
+                &state,
+                &startup,
+                Path::new("/nonexistent"),
+                request,
+            ))
+            .unwrap_err();
+            assert_eq!(serde_json::to_value(error).unwrap()["kind"], "Validation");
+            // Nothing changed.
+            assert_eq!(*startup.0.lock().unwrap(), blocked);
+            assert!(state.db.read().unwrap().is_err());
+        }
+    }
+
+    fn blocked_startup(reason: &str) -> (AppState, Startup) {
+        let state = AppState {
+            db: std::sync::RwLock::new(Err("blocked".into())),
+            session: Default::default(),
+            backup: Default::default(),
+            pending_import: Default::default(),
+            jobs: Default::default(),
+        };
+        let startup = Startup::default();
+        *startup.0.lock().unwrap() = Some(StartupStatus::BackupFailed {
+            reason: reason.into(),
+        });
+        (state, startup)
+    }
+
+    fn continue_with(
+        state: &AppState,
+        startup: &Startup,
+        dir: &Path,
+        without_backup: bool,
+    ) -> Result<StartupStatus, AppError> {
+        let request = ContinueStartupRequest { without_backup };
+        tauri::async_runtime::block_on(continue_prepare(state, startup, dir, request))
+    }
+
+    #[test]
+    fn continue_startup_stays_blocked_on_retry_and_opens_without_backup() {
+        let dir = db::temp_dir("continue-startup");
+        let _ = std::fs::remove_dir_all(&dir);
+        db::create_private_dir(&dir).unwrap();
+        // Data from an older Zeni (all but the newest migration) whose backup folder is gone.
+        let mut migrator = sqlx::migrate!("./migrations");
+        let newest = migrator.migrations.len();
+        migrator.migrations = migrator.migrations[..newest - 1].to_vec().into();
+        let pool = run(db::open_unmigrated(&dir.join("zeni.db"))).unwrap();
+        run(migrator.run(&pool)).unwrap();
+        let missing = dir.join("unplugged-drive");
+        run(
+            sqlx::query("INSERT INTO app_meta (key, value) VALUES ('backup_folder', ?)")
+                .bind(missing.to_str().unwrap())
+                .execute(&pool),
+        )
+        .unwrap();
+        run(pool.close());
+        let (state, startup) = blocked_startup("earlier");
+
+        // Retrying hits the same failure: the new reason is stored and returned.
+        let status = continue_with(&state, &startup, &dir, false).unwrap();
+        let StartupStatus::BackupFailed { reason } = &status else {
+            panic!("expected BackupFailed, got {status:?}");
+        };
+        assert!(reason.contains("is missing"), "{reason}");
+        assert_eq!(current(&startup), status);
+        assert_eq!(
+            state.db.read().unwrap().as_ref().err(),
+            Some(&blocked_text(&status))
+        );
+
+        // Continuing without a backup opens the database and clears the block.
+        assert_eq!(
+            continue_with(&state, &startup, &dir, true).unwrap(),
+            StartupStatus::Ready
+        );
+        assert_eq!(*startup.0.lock().unwrap(), None);
+        let Ok(Database { pool, .. }) = state.db.into_inner().unwrap() else {
+            panic!("db not open");
+        };
+        let applied: i64 =
+            run(sqlx::query_scalar("SELECT COUNT(*) FROM _sqlx_migrations").fetch_one(&pool))
+                .unwrap();
+        assert_eq!(applied as usize, newest);
+        run(pool.close());
+        assert!(!missing.exists());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn continue_startup_keeps_the_block_when_the_database_cant_open() {
+        let blocker = db::temp_dir("continue-startup-blocker");
+        std::fs::write(&blocker, "").unwrap();
+        let (state, startup) = blocked_startup("earlier");
+        let result = continue_with(&state, &startup, &blocker.join("data"), false);
+        std::fs::remove_file(&blocker).unwrap();
+        let Err(AppError::Database(error)) = result else {
+            panic!("expected a Database error");
+        };
+        assert!(
+            error.starts_with("Couldn't open the database at "),
+            "{error}"
+        );
+        // The earlier status stays, so the user can retry.
+        assert_eq!(
+            current(&startup),
+            StartupStatus::BackupFailed {
+                reason: "earlier".into()
+            }
+        );
+        assert_eq!(state.db.read().unwrap().as_ref().err(), Some(&error));
     }
 
     #[test]

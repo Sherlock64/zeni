@@ -92,7 +92,7 @@ fast() {
   step policy policy
   step "pnpm exec tsc" pnpm exec tsc
   step "cargo fmt --check" bash -c 'cd src-tauri && cargo fmt --check'
-  step "cargo clippy --all-targets -- -D warnings" bash -c 'cd src-tauri && cargo clippy --all-targets -- -D warnings'
+  step "cargo clippy --all-targets -- -D warnings" bash -c 'cd src-tauri && cargo clippy --locked --all-targets -- -D warnings'
 }
 
 usage() { sed -n '/^# Usage:/,/^# Overrides:/p' "$0" >&2; exit 2; }
@@ -137,7 +137,7 @@ case $mode in
       esac
     done
     fast
-    for r in "${rust[@]}"; do step "cargo test $r" bash -c 'cd src-tauri && cargo test "$1"' _ "$r"; done
+    for r in "${rust[@]}"; do step "cargo test $r" bash -c 'cd src-tauri && cargo test --locked "$1"' _ "$r"; done
     ((${#ts[@]})) && step "pnpm test ${ts[*]}" pnpm test "${ts[@]}"
     ((${#rust[@]} + ${#ts[@]})) || echo "no --rust or --ts filters given: ran fast checks only"
     ;;
@@ -149,7 +149,7 @@ case $mode in
     fi
     fast
     before=$(tree_sha src/types/bindings)
-    step "cargo test" bash -c 'cd src-tauri && cargo test'
+    step "cargo test" bash -c 'cd src-tauri && cargo test --locked'
     step "pnpm test" pnpm test
     step "bindings freshness" test "$(tree_sha src/types/bindings)" = "$before"
     [[ -n $evidence ]] && write_evidence "$evidence"

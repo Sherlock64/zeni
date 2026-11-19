@@ -99,3 +99,16 @@ test("the Release notes button shows loading, empty and error states", async () 
   fireEvent.click(screen.getByRole("button", { name: "Release notes" }));
   expect(within(await screen.findByRole("alert")).getByText("Couldn't load the release notes")).toBeTruthy();
 });
+
+test("the Release notes button says it is loading until the notes show", async () => {
+  let resolve!: (value: ReleaseNotes) => void;
+  vi.mocked(releaseNotes).mockReturnValue(new Promise((r) => (resolve = r)));
+  renderWith(<ReleaseNotesButton />);
+  fireEvent.click(screen.getByRole("button", { name: "Release notes" }));
+  const dialog = await screen.findByRole("dialog");
+  expect(within(dialog).getByRole("status").textContent).toBe("Loading release notes…");
+  resolve(notes);
+  expect(await within(dialog).findAllByRole("heading", { level: 3 })).toHaveLength(2);
+  expect(within(dialog).getByRole("status").textContent).toBe("");
+  expect(within(dialog).queryByText("Loading release notes…")).toBeNull();
+});

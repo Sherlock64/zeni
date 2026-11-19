@@ -9,11 +9,12 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use sqlx::SqlitePool;
 use sqlx::sqlite::SqliteConnectOptions;
 
+use crate::db::{meta, set_meta};
 use crate::types::{
     AppError, AppState, BackupFile, BackupKind, BackupSettings, Database, RestoreBackupRequest,
     RestoreSource, SetBackupRetentionRequest,
 };
-use crate::{db, jobs, security};
+use crate::{db, jobs, security, version};
 
 const KINDS: [(BackupKind, &str); 5] = [
     (BackupKind::Manual, "manual"),
@@ -99,24 +100,6 @@ fn unlocked(state: &AppState) -> Result<(SqlitePool, PathBuf), AppError> {
 
 fn data_dir(db_path: &Path) -> &Path {
     db_path.parent().unwrap_or(Path::new("."))
-}
-
-async fn meta(pool: &SqlitePool, key: &str) -> Result<Option<String>, AppError> {
-    Ok(
-        sqlx::query_scalar("SELECT value FROM app_meta WHERE key = ?")
-            .bind(key)
-            .fetch_optional(pool)
-            .await?,
-    )
-}
-
-async fn set_meta(pool: &SqlitePool, key: &str, value: &str) -> Result<(), AppError> {
-    sqlx::query("INSERT OR REPLACE INTO app_meta (key, value) VALUES (?, ?)")
-        .bind(key)
-        .bind(value)
-        .execute(pool)
-        .await?;
-    Ok(())
 }
 
 /// The backup folder in use and whether it is the default `<data_dir>/backups`.
@@ -565,6 +548,9 @@ async fn replace(
     }
     match reopen(db_path).await {
         Ok(database) => {
+            // Migrated on reopen, so the data is now this version's; best effort, as startup
+            // only repeats its checks when this is behind.
+            let _ = set_meta(&database.pool, "last_run_version", version::APP_VERSION).await;
             set_db(state, Ok(database));
             Ok(())
         }
@@ -683,6 +669,7 @@ mod tests {
     use super::*;
     use crate::accounts::sample_account;
     use crate::security::tests::{FakeKeyring, PASSWORD};
+    use crate::startup;
     use crate::types::{JobKind, JobOutcome, SecurityStatus, SetupRequest, UnlockRequest};
 
     const OTHER_PASSWORD: &str = "a different long password";
@@ -1159,6 +1146,40 @@ mod tests {
         assert_eq!(f.undo_path(), None);
         assert!(safety.exists(), "the safety copy stays in the folder");
         assert_eq!(f.status()["state"], "unlocked");
+    }
+
+    #[test]
+    fn restore_and_undo_record_the_running_version() {
+        let f = fixture("running-version");
+        f.setup(PASSWORD, "Checking");
+        run(set_meta(&f.pool(), "last_run_version", "0.1.0")).unwrap();
+        let old = f.back_up();
+        let current = |key: &str| run(meta(&db::current(&f.state).unwrap().0, key)).unwrap();
+        // Startup on the active data takes no pre-update backup and marks no notes pending.
+        let starts_quietly = || {
+            let database = run(startup::prepare(&f.dir, false)).unwrap();
+            run(database.pool.close());
+            assert!(
+                !f.backups()
+                    .iter()
+                    .any(|(_, kind)| *kind == BackupKind::PreUpdate)
+            );
+            assert_eq!(current("release_notes_since"), None);
+        };
+
+        f.restore(by_name(&old)).unwrap();
+        assert_eq!(
+            current("last_run_version").as_deref(),
+            Some(version::APP_VERSION)
+        );
+        starts_quietly();
+
+        run(undo_restore(&f.state)).unwrap();
+        assert_eq!(
+            current("last_run_version").as_deref(),
+            Some(version::APP_VERSION)
+        );
+        starts_quietly();
     }
 
     #[test]
