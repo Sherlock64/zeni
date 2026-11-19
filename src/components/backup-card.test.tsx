@@ -67,7 +67,7 @@ const liveStatus = () => screen.getAllByRole("status")[0];
 const never = () => new Promise<never>(() => {});
 
 test("lists backups with date, kind and size, and the folder in use", async () => {
-  vi.mocked(listBackups).mockResolvedValue([daily, manual, preRevert]);
+  vi.mocked(listBackups).mockResolvedValue([daily, manual, preRevert, { ...preRevert, fileName: "zeni-20261112-080000-pre-update.db", kind: "preUpdate", createdAt: "2026-11-12 08:00:00" }]);
   renderCard();
   expect(liveStatus().textContent).toBe("Loading backups…");
   const rows = await screen.findAllByRole("row");
@@ -75,6 +75,7 @@ test("lists backups with date, kind and size, and the folder in use", async () =
     ["Nov 15, 2026 at 09:00", "Daily", "1.8 MB"],
     ["Nov 14, 2026 at 18:30", "Manual", "1.8 MB"],
     ["Nov 13, 2026 at 12:00", "Before revert", "1.8 MB"],
+    ["Nov 12, 2026 at 08:00", "Before update", "1.8 MB"],
   ]);
   expect(screen.getByText("/data/backups")).toBeTruthy();
   expect(screen.getByText("(default)")).toBeTruthy();
@@ -352,6 +353,7 @@ test("names each restore button with the backup's kind and date", async () => {
     at("preRevert", "03"),
     at("safety", "04"),
     at("other", "05"),
+    at("preUpdate", "06"),
   ]);
   renderCard();
   await screen.findAllByRole("row");
@@ -362,6 +364,7 @@ test("names each restore button with the backup's kind and date", async () => {
     "Restore the before-revert backup from Nov 15, 2026 at 09:03",
     "Restore the safety copy from Nov 15, 2026 at 09:04",
     "Restore the backup from Nov 15, 2026 at 09:05",
+    "Restore the before-update backup from Nov 15, 2026 at 09:06",
   ]);
 });
 

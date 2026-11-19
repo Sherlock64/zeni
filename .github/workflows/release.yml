@@ -1,0 +1,64 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions: {}
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write # gh release create
+    env:
+      CARGO_TERM_COLOR: always
+      COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # Fails on a tag/app version mismatch or a missing CHANGELOG.md section; release=false for v7.0.0-rc1 (v7 and v7.1 never trigger).
+      - id: check
+        run: scripts/release-check.sh "$GITHUB_REF_NAME" release-notes.md
+
+      # No caches here: this job holds a write token, so it builds from scratch.
+      # Tauri 2 Linux prerequisites: https://v2.tauri.app/start/prerequisites/
+      - name: Install system packages
+        if: steps.check.outputs.release == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev \
+            build-essential curl wget file libxdo-dev libssl-dev \
+            libayatana-appindicator3-dev librsvg2-dev
+
+      - name: Install Rust
+        if: steps.check.outputs.release == 'true'
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - uses: actions/setup-node@v7
+        if: steps.check.outputs.release == 'true'
+        with:
+          node-version: 22
+
+      - name: Build the .deb
+        if: steps.check.outputs.release == 'true'
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile
+          pnpm tauri build
+
+      # Runs only after the build succeeded, so a failed build publishes nothing.
+      - name: Publish the release
+        if: steps.check.outputs.release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ steps.check.outputs.version }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" src-tauri/target/release/bundle/deb/*.deb \
+            --title "Zeni $VERSION" --notes-file release-notes.md

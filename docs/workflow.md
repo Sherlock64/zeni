@@ -24,18 +24,22 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-  Plan["Plan: PRD tasks S#-T# become the task graph<br/>files, acceptance proof, contracts.md, waves"] --> Waves
-  Waves["Code waves: core-dev + ui-dev in parallel<br/>one owner per file; reports with COVERS"] --> Cov["coverage.md<br/>criterion to test map"]
+  Plan["Plan: PRD tasks S#-T# become the task graph<br/>files, acceptance proof, contracts.md, waves<br/>incl. app version and CHANGELOG.md section"] --> Waves
+  Waves["Code waves: core-dev + ui-dev, devops for pipeline files<br/>in parallel, one owner per file; reports with COVERS"] --> Cov["coverage.md<br/>criterion to test map"]
   Cov --> Int["Integration: scripts/check.sh integration<br/>writes evidence.yaml"]
   Int --> Docs{"Docs or workflow changed?"}
   Docs -- yes --> DW["docs-writer and/or prompt-engineer"]
   Docs -- no --> Council
-  DW --> Council["council-review<br/>members selected by risk"]
+  DW --> Council["council-review<br/>members selected by risk<br/>council-devops for pipeline files"]
   Council -- "blocking findings" --> FixW["Fix waves to the file owners"]
   FixW --> Int2["Integration again"] --> Re["Targeted re-review:<br/>members with findings, affected dimensions,<br/>prd-compliance every round"]
   Re -- "still blocking" --> FixW
   Re -- pass --> PR
-  Council -- pass --> PR["PR to main, app running, metrics"]
+  Council -- pass --> PR["PR to main"]
+  PR --> CI{"CI green?<br/>host CI monitor or gh pr checks --watch"}
+  CI -- "failing job" --> CIFix["Fix task to the cited file's owner<br/>pipeline files: devops"]
+  CIFix --> Int2
+  CI -- green --> Hand["App running, metrics, hand-off"]
 ```
 
 `scripts/check.sh` tiers: `fast` (policy, type-check, fmt, clippy), `task` (fast plus named tests, run by each dev), `integration` (full suites, bindings freshness, evidence manifest) and `fresh` (whether the manifest still matches the tree).
@@ -45,6 +49,8 @@ flowchart TD
 ```mermaid
 flowchart LR
   PR["PR opened"] --> Retro["retrospective<br/>tally, HTML write-up in retros/"]
+  PR --> Merge["User merges"] --> Ask{"Push release tag vX.Y.Z?<br/>ask once"}
+  Ask -- yes --> Tag["git push origin tag"] --> Rel["Release workflow<br/>release-check.sh, .deb, GitHub Release"]
   Retro --> Triage["One security triage pass<br/>(council-security)"]
   Triage -- public --> Issue["factory-bug issue<br/>with a severity label, after the user's yes"]
   Triage -- private --> SB["SB-n in snapshots/security-bugs.md<br/>(gitignored)"]

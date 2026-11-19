@@ -21,11 +21,15 @@ import {
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PendingReleaseNotes } from "@/components/release-notes-dialog";
+import { UpdateBanner } from "@/components/update-banner";
 import { useAppInfo } from "@/hooks/use-app-info";
 import { useSecurityStatus } from "@/hooks/use-security-status";
+import { useStartupStatus } from "@/hooks/use-startup-status";
 import { unreviewedCount } from "@/lib/commands";
 import { UNREVIEWED_COUNT_KEY } from "@/lib/query-keys";
 import { SetupPage } from "@/pages/setup";
+import { StartupProblemPage } from "@/pages/startup-problem";
 import { UnlockPage } from "@/pages/unlock";
 import type { GateScreenProps } from "@/types/ui";
 
@@ -44,9 +48,11 @@ function GateScreen({ children }: GateScreenProps) {
 }
 
 export function AppShell() {
+  const startup = useStartupStatus();
   const info = useAppInfo();
   const status = useSecurityStatus();
-  const state = status.data?.state;
+  const blocked = startup.data && startup.data.state !== "ready" ? startup.data.state : undefined;
+  const state = blocked ?? status.data?.state;
   const previousState = useRef(state);
   // The resolved location updates only once the new page has rendered.
   const shownPathname = useRouterState({ select: (state) => state.resolvedLocation?.pathname });
@@ -58,11 +64,37 @@ export function AppShell() {
     previousPathname.current = shownPathname;
   }, [shownPathname]);
 
-  // Setup, unlock and the app swap the whole window, so move focus to the new screen's heading.
+  // Startup problems, setup, unlock and the app swap the whole window, so move focus to the new screen's heading.
+  // The loading screen between them doesn't count as a screen.
   useEffect(() => {
+    if (!state) return;
     if (previousState.current && previousState.current !== state) document.querySelector<HTMLElement>("main h1")?.focus();
     previousState.current = state;
   }, [state]);
+
+  // A held-back startup leaves no database, so it comes before every other screen.
+  if (blocked) {
+    return (
+      <GateScreen>
+        <StartupProblemPage />
+      </GateScreen>
+    );
+  }
+
+  if (startup.isError) {
+    return (
+      <GateScreen>
+        <h1 className="text-2xl font-semibold tracking-tight">Zeni</h1>
+        <div className="flex w-full max-w-lg flex-col items-start gap-3">
+          <CommandErrorAlert title="Couldn't check how Zeni started" error={startup.error} />
+          {/* A refetch shows the loading screen, so this button can't be pressed twice. */}
+          <Button variant="outline" onClick={() => startup.refetch()}>
+            Try again
+          </Button>
+        </div>
+      </GateScreen>
+    );
+  }
 
   // Without its database Zeni can't do anything, so block the app. Other errors are shown where they happen.
   if (info.error?.kind === "Database") {
@@ -92,7 +124,7 @@ export function AppShell() {
     );
   }
 
-  if (status.isPending) {
+  if (startup.isPending || status.isPending) {
     return (
       <GateScreen>
         <h1 className="text-2xl font-semibold tracking-tight">Zeni</h1>
@@ -184,8 +216,10 @@ function AppLayout() {
           <SidebarTrigger aria-expanded={isMobile ? openMobile : open} />
         </header>
         {/* In the shell, not a page, so a running job's banner stays across navigation. */}
+        <UpdateBanner />
         <CategorizeBanner />
         <Outlet />
+        <PendingReleaseNotes />
       </SidebarInset>
     </>
   );

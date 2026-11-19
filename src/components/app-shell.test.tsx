@@ -2,7 +2,9 @@ import { focusManager, QueryClient, QueryClientProvider } from "@tanstack/react-
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import {
+  acknowledgeReleaseNotes,
   appInfo,
+  continueStartup,
   completeSetup,
   listAccounts,
   jobStatus,
@@ -15,10 +17,13 @@ import {
   nicknameSettings,
   ollamaSettings,
   ollamaStatus,
+  releaseNotes,
   reviewGroups,
   securityStatus,
+  startupStatus,
   unlock,
   unreviewedCount,
+  updateStatus,
 } from "@/lib/commands";
 import { UNREVIEWED_COUNT_KEY } from "@/lib/query-keys";
 import { routeTree } from "@/router";
@@ -79,7 +84,16 @@ vi.mock("@/lib/commands", () => ({
   activateBuild: vi.fn(),
   deleteBuild: vi.fn(),
   spendingSummary: vi.fn(),
+  startupStatus: vi.fn(),
+  continueStartup: vi.fn(),
+  updateStatus: vi.fn(),
+  checkForUpdates: vi.fn(),
+  dismissUpdate: vi.fn(),
+  setUpdateChecks: vi.fn(),
+  releaseNotes: vi.fn(),
+  acknowledgeReleaseNotes: vi.fn(),
 }));
+vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: vi.fn() }));
 beforeEach(() => {
   vi.resetAllMocks();
   vi.mocked(appInfo).mockReturnValue(new Promise(() => {}));
@@ -96,6 +110,9 @@ beforeEach(() => {
   vi.mocked(ollamaStatus).mockResolvedValue({ reachable: false, version: null, installed: [], recommended: [] });
   vi.mocked(reviewGroups).mockResolvedValue([]);
   vi.mocked(listBuilds).mockResolvedValue([]);
+  vi.mocked(startupStatus).mockResolvedValue({ state: "ready" });
+  vi.mocked(updateStatus).mockResolvedValue({ checksEnabled: true, checking: false, last: null, banner: null });
+  vi.mocked(releaseNotes).mockResolvedValue({ pending: [], all: [] });
 });
 
 // jsdom lacks matchMedia (the sidebar's mobile check) and scrollTo (the router's scroll reset).
@@ -333,4 +350,82 @@ test("keeps the app when a background status refetch fails", async () => {
   await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
   expect(screen.getByRole("navigation", { name: "Main" })).toBeTruthy();
   expect(screen.queryByText("Couldn't check Zeni's security status")).toBeNull();
+});
+
+const newerStatus = {
+  checksEnabled: true,
+  checking: false,
+  last: null,
+  banner: { version: "7.1.0", url: "https://github.com/Sherlock64/zeni/releases/tag/v7.1.0" },
+};
+
+test("shows a failed pre-update backup instead of unlock, then the app once Retry succeeds", async () => {
+  vi.mocked(startupStatus).mockResolvedValue({ state: "backupFailed", reason: "The backup folder doesn't exist." });
+  vi.mocked(appInfo).mockRejectedValue({ kind: "Database", message: "Startup is waiting on the pre-update backup." });
+  vi.mocked(securityStatus).mockResolvedValue({ state: "locked", reason: "keyringUnavailable", canUndoRestore: false });
+  vi.mocked(continueStartup).mockResolvedValue({ state: "ready" });
+  renderApp();
+  expect(await screen.findByRole("heading", { level: 1, name: "Backup before update failed" })).toBeTruthy();
+  expect(screen.getByText("The backup folder doesn't exist.")).toBeTruthy();
+  expect(screen.queryByText("Zeni couldn't open its database")).toBeNull();
+  expect(screen.queryByRole("heading", { name: "Unlock Zeni" })).toBeNull();
+
+  vi.mocked(appInfo).mockReturnValue(new Promise(() => {}));
+  vi.mocked(securityStatus).mockResolvedValue({ state: "unlocked", keyringSaved: true, recoveryCodesLeft: 8 });
+  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+  const heading = await screen.findByRole("heading", { level: 1, name: "Transactions" });
+  expect(vi.mocked(continueStartup).mock.calls.map(([request]) => request)).toEqual([{ withoutBackup: false }]);
+  expect(screen.getByRole("navigation", { name: "Main" })).toBeTruthy();
+  await vi.waitFor(() => expect(document.activeElement).toBe(heading));
+});
+
+test("shows newer data instead of the database error, and nothing else", async () => {
+  vi.mocked(startupStatus).mockResolvedValue({ state: "newerData", version: "7.1.0" });
+  vi.mocked(appInfo).mockRejectedValue({ kind: "Database", message: "Data from a newer Zeni." });
+  renderApp();
+  expect(await screen.findByRole("heading", { level: 1, name: "Data from a newer Zeni" })).toBeTruthy();
+  expect(screen.queryByText("Zeni couldn't open its database")).toBeNull();
+  expect(screen.queryByRole("navigation")).toBeNull();
+  expect(screen.queryByRole("button")).toBeNull();
+});
+
+test("shows a startup status error with a retry", async () => {
+  vi.mocked(startupStatus).mockRejectedValueOnce({ kind: "Invoke", message: "not running in Tauri" });
+  renderApp();
+  const alert = await screen.findByRole("alert");
+  expect(within(alert).getByText("Couldn't check how Zeni started")).toBeTruthy();
+  expect(screen.queryByRole("navigation")).toBeNull();
+
+  fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+  expect(await screen.findByRole("heading", { level: 1, name: "Transactions" })).toBeTruthy();
+  expect(startupStatus).toHaveBeenCalledTimes(2);
+});
+
+test("shows the update banner in the app only, never on setup or unlock", async () => {
+  vi.mocked(updateStatus).mockResolvedValue(newerStatus);
+  vi.mocked(securityStatus).mockResolvedValue({ state: "needsSetup", defaultOwner: "sam" });
+  const client = renderApp();
+  await screen.findByRole("heading", { level: 1, name: "Set up Zeni" });
+  expect(screen.queryByText("Zeni 7.1.0 is available")).toBeNull();
+
+  vi.mocked(securityStatus).mockResolvedValue({ state: "locked", reason: "keyringUnavailable", canUndoRestore: false });
+  await act(() => client.refetchQueries({ queryKey: ["security_status"] }));
+  await screen.findByRole("heading", { level: 1, name: "Unlock Zeni" });
+  expect(screen.queryByText("Zeni 7.1.0 is available")).toBeNull();
+
+  vi.mocked(securityStatus).mockResolvedValue({ state: "unlocked", keyringSaved: true, recoveryCodesLeft: 8 });
+  await act(() => client.refetchQueries({ queryKey: ["security_status"] }));
+  expect(await screen.findByText("Zeni 7.1.0 is available")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Download" })).toBeTruthy();
+});
+
+test("opens What's new after unlock when notes are pending, and acknowledges once on close", async () => {
+  vi.mocked(releaseNotes).mockResolvedValue({ pending: [{ version: "7.0.0", lines: ["- Update notice."] }], all: [] });
+  vi.mocked(acknowledgeReleaseNotes).mockResolvedValue(null);
+  renderApp();
+  const dialog = await screen.findByRole("dialog", { name: "What's new in Zeni" });
+  fireEvent.keyDown(dialog, { key: "Escape" });
+  await vi.waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(acknowledgeReleaseNotes).toHaveBeenCalledTimes(1);
+  await vi.waitFor(() => expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Transactions" })));
 });

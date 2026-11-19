@@ -1,0 +1,7 @@
+#!/bin/sh
+# Never deletes user data; on purge only says where it is.
+set -e
+if [ "$1" = "purge" ]; then
+  echo "Zeni left your data in ~/.local/share/com.sherlock64.zeni. To delete it, run: rm -rf ~/.local/share/com.sherlock64.zeni"
+fi
+exit 0

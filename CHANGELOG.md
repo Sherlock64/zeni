@@ -1,0 +1,11 @@
+# Changelog
+
+## 7.0.0
+
+- Zeni is now a `.deb` package you install from GitHub Releases, with a new green Z icon.
+- Zeni tells you when an update is out, with Download and Dismiss on a banner. Settings > About checks on demand and turns the daily check off.
+- Zeni backs up your data before a newer version changes it. Those "Before update" backups are never deleted.
+- If that backup fails, Zeni stops and lets you retry or continue without it.
+- Zeni refuses data from a newer Zeni, changes nothing and says which version to install.
+- A "What's new" dialog shows these notes once after an update, and again from Settings > About.
+- Removing the package never deletes your data, and purging tells you where it is.

@@ -1,14 +1,15 @@
 # Dev contract
 
-Every dev agent (`core-dev`, `ui-dev`, `docs-writer`, `prompt-engineer`) follows this file.
+Every dev agent (`core-dev`, `ui-dev`, `devops`, `docs-writer`, `prompt-engineer`) follows this file.
 
 ## Default file ownership
 
 | Owner | Files |
 |---|---|
-| `core-dev` | `src-tauri/**` (incl. `migrations/`, `capabilities/`, `Cargo.toml`, `tauri.conf.json`, `build.rs`), `src/lib/commands.ts` and its test, `src/types/**` except `ui.ts` (incl. generated `src/types/bindings/`), `package.json`, `pnpm-lock.yaml`, `vite.config.ts`, `tsconfig.json`, `index.html`, `snapshot.html`, `scripts/**`, `.gitignore` |
+| `core-dev` | `src-tauri/**` except `deb/` (incl. `migrations/`, `capabilities/`, `Cargo.toml`, `tauri.conf.json`, `build.rs`), `src/lib/commands.ts` and its test, `src/types/**` except `ui.ts` (incl. generated `src/types/bindings/`), `package.json`, `pnpm-lock.yaml`, `vite.config.ts`, `tsconfig.json`, `index.html`, `snapshot.html`, `scripts/**` except `release-check*.sh`, `.gitignore` |
 | `ui-dev` | `src/pages/**`, `src/components/**` (incl. `ui/`), `src/hooks/**`, `src/lib/**` except `commands.ts` and its test (incl. `snapshot-fixtures.ts`), `src/router.tsx`, `src/main.tsx`, `src/snapshot.ts`, `src/index.css`, `components.json`, `src/types/ui.ts`, and every UI test (`*.test.tsx`) |
-| `docs-writer` | `CLAUDE.md`, `README.md`, `docs/**` except `docs/workflow.md` |
+| `devops` | `.github/workflows/**`, `scripts/release-check*.sh`, `src-tauri/deb/**`, and the `bundle` section of `src-tauri/tauri.conf.json` (the file stays `core-dev`'s; edit that section only when the task message lists the file) |
+| `docs-writer` | `CLAUDE.md`, `README.md`, `CHANGELOG.md`, `docs/**` except `docs/workflow.md` |
 | `prompt-engineer` | `.claude/agents/**`, `.claude/skills/**`, `docs/workflow.md` |
 
 Nobody edits `plans/`; the user writes PRDs, or the organizer does with the user through the `write-prd` skill. Several instances of `core-dev` or `ui-dev` may run at once, so your task message names the exact files you may touch. That list overrides this table for the task.

@@ -1,7 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import {
-  appInfo,
   nicknameSettings,
   regenerateRecoveryCodes,
   sampleError,
@@ -9,14 +8,13 @@ import {
   setNicknameStaleDays,
 } from "@/lib/commands";
 import { SettingsPage } from "@/pages/settings";
-import type { AppInfo } from "@/types/bindings/AppInfo";
 
-// The layouts, backup and Ollama cards have their own tests and status regions.
+// The layouts, backup, Ollama and About cards have their own tests and status regions.
 vi.mock("@/components/csv-layouts-card", () => ({ CsvLayoutsCard: () => null }));
 vi.mock("@/components/backup-card", () => ({ BackupCard: () => null }));
 vi.mock("@/components/ollama-card", () => ({ OllamaCard: () => null }));
+vi.mock("@/components/about-card", async (actual) => ({ ...(await actual<object>()), AboutCard: () => null }));
 vi.mock("@/lib/commands", () => ({
-  appInfo: vi.fn(),
   sampleError: vi.fn(),
   securityStatus: vi.fn(),
   regenerateRecoveryCodes: vi.fn(),
@@ -29,7 +27,6 @@ beforeEach(() => {
   vi.mocked(nicknameSettings).mockResolvedValue({ staleDays: 90 });
 });
 
-const info = { name: "Zeni", version: "0.1.0", dbPath: "/data/zeni.db", migrationsApplied: 1 };
 const invokeError = { kind: "Invoke", message: "not running in Tauri" } as const;
 const invokeHint = "The request never reached Zeni's backend. Restart Zeni and try again.";
 
@@ -43,65 +40,9 @@ function renderPage() {
   return vi.spyOn(client, "invalidateQueries");
 }
 
-const aboutCard = () => within(screen.getByRole("heading", { name: "About" }).closest<HTMLElement>("[data-slot=card]")!);
 const valueOf = (label: string) => screen.getByText(label, { selector: "dt" }).nextElementSibling?.textContent;
 
-test("shows a loading status, then every app info value", async () => {
-  vi.mocked(appInfo).mockResolvedValue(info);
-  renderPage();
-  const status = aboutCard().getByRole("status");
-  expect(status.textContent).toBe("Loading app info…");
-
-  await screen.findByText("/data/zeni.db");
-  expect(valueOf("Name")).toBe("Zeni");
-  expect(valueOf("Version")).toBe("0.1.0");
-  expect(valueOf("Database")).toBe("/data/zeni.db");
-  expect(valueOf("Migrations applied")).toBe("1");
-  expect(aboutCard().getByRole("status")).toBe(status);
-  expect(status.textContent).toBe("");
-});
-
-test("shows a typed Invoke error, retries once while busy, then focuses the loaded section", async () => {
-  let resolveRetry: (value: AppInfo) => void = () => {};
-  vi.mocked(appInfo)
-    .mockRejectedValueOnce(invokeError)
-    .mockReturnValueOnce(new Promise((resolve) => (resolveRetry = resolve)));
-  renderPage();
-  const status = aboutCard().getByRole("status");
-  const alert = await screen.findByRole("alert");
-  expect(status.textContent).toBe("");
-  expect(within(alert).getByText("Couldn't load app info")).toBeTruthy();
-  expect(within(alert).getByText("Invoke")).toBeTruthy();
-  expect(within(alert).getByText("not running in Tauri")).toBeTruthy();
-  expect(within(alert).getByText(invokeHint)).toBeTruthy();
-
-  const retry = screen.getByRole("button", { name: "Try again" });
-  fireEvent.click(retry);
-  await vi.waitFor(() => expect(status.textContent).toBe("Retrying…"));
-  expect(aboutCard().getByRole("status")).toBe(status);
-  expect(retry.getAttribute("aria-disabled")).toBe("true");
-  expect(retry.hasAttribute("disabled")).toBe(false);
-  fireEvent.click(retry);
-  expect(appInfo).toHaveBeenCalledTimes(2);
-
-  resolveRetry(info);
-  expect(await screen.findByText("/data/zeni.db")).toBeTruthy();
-  expect(status.textContent).toBe("");
-  expect(document.activeElement).toBe(screen.getByRole("heading", { name: "About" }));
-});
-
-test("remounts the alert when a retry fails again, so it is announced again", async () => {
-  vi.mocked(appInfo).mockRejectedValue(invokeError);
-  renderPage();
-  const firstAlert = await screen.findByRole("alert");
-
-  fireEvent.click(screen.getByRole("button", { name: "Try again" }));
-  await vi.waitFor(() => expect(screen.getByRole("alert")).not.toBe(firstAlert));
-  expect(appInfo).toHaveBeenCalledTimes(2);
-});
-
 test("shows the kind and message of the sample error from Rust", async () => {
-  vi.mocked(appInfo).mockResolvedValue(info);
   vi.mocked(sampleError).mockRejectedValue({ kind: "Sample", message: "Sample error: triggered from Settings" });
   renderPage();
 
@@ -114,7 +55,6 @@ test("shows the kind and message of the sample error from Rust", async () => {
 });
 
 test("marks the sample error button busy without disabling it", async () => {
-  vi.mocked(appInfo).mockResolvedValue(info);
   vi.mocked(sampleError).mockReturnValue(new Promise(() => {}));
   renderPage();
 
@@ -132,7 +72,6 @@ const security = (keyringSaved: boolean, recoveryCodesLeft: number) =>
   vi.mocked(securityStatus).mockResolvedValue({ state: "unlocked", keyringSaved, recoveryCodesLeft });
 
 test("shows that the key is in the keyring and how many recovery codes are left", async () => {
-  vi.mocked(appInfo).mockReturnValue(new Promise(() => {}));
   renderPage();
   expect(await screen.findByText("Key saved in your system keyring")).toBeTruthy();
   expect(valueOf("Recovery codes left")).toBe("8");
@@ -140,7 +79,6 @@ test("shows that the key is in the keyring and how many recovery codes are left"
 });
 
 test("says Zeni asks for the master password when the key isn't in the keyring", async () => {
-  vi.mocked(appInfo).mockReturnValue(new Promise(() => {}));
   security(false, 8);
   renderPage();
   expect(await screen.findByText(/Not in your keyring — Zeni asks for your master password/)).toBeTruthy();
@@ -151,7 +89,6 @@ test.each([
   [1, "Only 1 recovery code left"],
   [0, "No recovery codes left"],
 ])("warns when %i recovery codes are left", async (left, title) => {
-  vi.mocked(appInfo).mockReturnValue(new Promise(() => {}));
   security(true, left);
   renderPage();
   const alert = await screen.findByRole("alert");
@@ -160,7 +97,6 @@ test.each([
 });
 
 async function openRegenerate() {
-  vi.mocked(appInfo).mockReturnValue(new Promise(() => {}));
   const invalidate = renderPage();
   await screen.findByText("Key saved in your system keyring");
   fireEvent.click(screen.getByRole("button", { name: "Generate new recovery codes" }));
@@ -252,7 +188,6 @@ const staleField = () => screen.findByLabelText("Flag nicknames as stale after (
 const nicknamesCard = () => within(screen.getByRole("heading", { name: "Nicknames" }).closest<HTMLElement>("[data-slot=card]")!);
 
 test("shows the stale days setting and saves a new value", async () => {
-  vi.mocked(appInfo).mockResolvedValue(info);
   vi.mocked(setNicknameStaleDays).mockResolvedValue({ staleDays: 30 });
   const invalidate = renderPage();
   const field = (await staleField()) as HTMLInputElement;
@@ -266,7 +201,6 @@ test("shows the stale days setting and saves a new value", async () => {
 });
 
 test.each(["0", "3651", "1.5", ""])("rejects %j inline without saving", async (value) => {
-  vi.mocked(appInfo).mockResolvedValue(info);
   renderPage();
   const field = await staleField();
   fireEvent.change(field, { target: { value } });
@@ -279,7 +213,6 @@ test.each(["0", "3651", "1.5", ""])("rejects %j inline without saving", async (v
 });
 
 test("shows a backend validation error under the field and other errors in an alert", async () => {
-  vi.mocked(appInfo).mockResolvedValue(info);
   vi.mocked(setNicknameStaleDays)
     .mockRejectedValueOnce({ kind: "Validation", message: "Stale days must be 1 to 3650." })
     .mockRejectedValueOnce(invokeError);
@@ -297,7 +230,6 @@ test("shows a backend validation error under the field and other errors in an al
 });
 
 test("marks Save busy while saving and ignores repeat presses", async () => {
-  vi.mocked(appInfo).mockResolvedValue(info);
   vi.mocked(setNicknameStaleDays).mockReturnValue(new Promise(() => {}));
   renderPage();
   await staleField();
@@ -309,7 +241,6 @@ test("marks Save busy while saving and ignores repeat presses", async () => {
 });
 
 test.each(["1", "3650"])("saves the boundary value %s", async (value) => {
-  vi.mocked(appInfo).mockResolvedValue(info);
   vi.mocked(setNicknameStaleDays).mockResolvedValue({ staleDays: Number(value) });
   renderPage();
   fireEvent.change(await staleField(), { target: { value } });
@@ -319,17 +250,15 @@ test.each(["1", "3650"])("saves the boundary value %s", async (value) => {
 });
 
 test("shows no stale days field or Save while the setting loads", async () => {
-  vi.mocked(appInfo).mockResolvedValue(info);
   vi.mocked(nicknameSettings).mockReturnValue(new Promise(() => {}));
   renderPage();
-  await screen.findByText("/data/zeni.db");
+  await screen.findByRole("heading", { name: "Nicknames" });
   expect(screen.queryByLabelText("Flag nicknames as stale after (days)")).toBeNull();
   expect(nicknamesCard().getByRole("status").textContent).toBe("Loading nickname settings…");
   expect(nicknamesCard().queryByRole("button", { name: "Save" })).toBeNull();
 });
 
 test("shows an error when the stale days setting can't load, retries once while busy, then focuses the card", async () => {
-  vi.mocked(appInfo).mockResolvedValue(info);
   let resolveRetry: (value: { staleDays: number }) => void = () => {};
   vi.mocked(nicknameSettings)
     .mockRejectedValueOnce(invokeError)
@@ -357,7 +286,6 @@ test("shows an error when the stale days setting can't load, retries once while 
 });
 
 test("remounts the nickname settings alert when a retry fails again", async () => {
-  vi.mocked(appInfo).mockResolvedValue(info);
   vi.mocked(nicknameSettings).mockRejectedValue(invokeError);
   renderPage();
   const firstAlert = (await screen.findByText("Couldn't load nickname settings")).closest("[role=alert]");

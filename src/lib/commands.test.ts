@@ -64,6 +64,14 @@ import {
   updateCsvLayout,
   updateNickname,
   updateNicknameRule,
+  startupStatus,
+  continueStartup,
+  updateStatus,
+  checkForUpdates,
+  dismissUpdate,
+  setUpdateChecks,
+  releaseNotes,
+  acknowledgeReleaseNotes,
 } from "@/lib/commands";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -317,6 +325,12 @@ test("category, Ollama, job, review, build and spending wrappers invoke their co
     running: { kind: "categorizeNow", label: "Categorize now", done: 1, total: 3 },
     last: null,
   } as const;
+  const updates = {
+    checksEnabled: true,
+    checking: false,
+    last: { date: "2026-11-18", result: { state: "newer", version: "7.1.0", url: "https://github.com/Sherlock64/zeni/releases/tag/v7.1.0" } },
+    banner: { version: "7.1.0", url: "https://github.com/Sherlock64/zeni/releases/tag/v7.1.0" },
+  } as const;
   const cases: [() => Promise<unknown>, string, unknown, unknown][] = [
     [listCategories, "list_categories", undefined, [category]],
     [() => addCategory(newCategory), "add_category", { request: newCategory }, category],
@@ -379,6 +393,19 @@ test("category, Ollama, job, review, build and spending wrappers invoke their co
       { request: { from: "2026-10-01", to: "2026-10-31" } },
       { categories: [], uncategorizedCount: 0, uncategorizedCents: 0 },
     ],
+    [startupStatus, "startup_status", undefined, { state: "ready" }],
+    [
+      () => continueStartup({ withoutBackup: true }),
+      "continue_startup",
+      { request: { withoutBackup: true } },
+      { state: "ready" },
+    ],
+    [updateStatus, "update_status", undefined, updates],
+    [checkForUpdates, "check_for_updates", undefined, updates],
+    [dismissUpdate, "dismiss_update", undefined, updates],
+    [() => setUpdateChecks({ enabled: false }), "set_update_checks", { request: { enabled: false } }, updates],
+    [releaseNotes, "release_notes", undefined, { pending: [], all: [{ version: "7.0.0", lines: ["- New"] }] }],
+    [acknowledgeReleaseNotes, "acknowledge_release_notes", undefined, null],
   ];
   for (const [run, command, args, response] of cases) {
     mockInvoke.mockResolvedValueOnce(response);
