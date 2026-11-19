@@ -9,6 +9,7 @@ One major change per version; each version gets its own PRD, written from this r
 - Richer UX is preferred over minimal UI (for example drag reorder over up/down buttons, in-app download over a hint).
 - A mature dependency is fine when it buys real UX.
 - American spelling.
+- Minimal but not plain: color over monochrome (for example a green-on-dark app icon, not white on black).
 
 ## V1: App foundation
 
@@ -87,11 +88,11 @@ One major version for builds and delivery, so it doesn't collide with the PRDs a
 - GitHub Actions on every PR and push to `main`: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `tsc`, `pnpm test`, and a check that the ts-rs bindings in `src/types/bindings/` are up to date.
 - Build the `.deb` on every PR to catch packaging breakage.
 - Required status checks on `main` (branch protection), so a PR can't merge with red checks. The user turns this on in the GitHub settings.
-- Release pipeline: pushing a `v*` tag builds the `.deb` on Ubuntu 22.04 and publishes it to a GitHub Release with notes.
+- Release pipeline: pushing a `v*` tag builds the `.deb` on Ubuntu 24.04 and publishes it to a GitHub Release with notes.
 - Workflow: after opening a PR, the organizer waits for the pipeline and confirms it passes; a failing run goes back to the owning devs as fix tasks, like a blocking council finding, until it is green.
 - New `devops` dev agent that owns the CI/CD pipeline (`.github/workflows/**`) and fixes pipeline failures; `build-version`, the dev contract's ownership table and `CLAUDE.md` gain it.
 - Standard GitHub-hosted runners are free for public repositories ([GitHub Actions billing](https://docs.github.com/en/billing/concepts/product-billing/github-actions)).
-- `.deb` package for Pop!_OS: app icon, desktop entry (Office;Finance) shown in the COSMIC launcher, and declared runtime dependencies (WebKitGTK, Secret Service) so install pulls them in.
+- `.deb` package for Pop!_OS: app icon (a green Z in a dark, green-outlined flat-top hexagon), desktop entry (Office;Finance) shown in the COSMIC launcher, and declared runtime dependencies (WebKitGTK, Secret Service) so install pulls them in.
 - Update notice: on launch, at most once a day, check the GitHub Releases published by the release pipeline for a newer version and offer a download link; the user installs the `.deb` by hand. A Settings switch turns the check off; it is the app's only outside network call and sends no user data.
 - Backup before update: the first launch on a new version takes a V4 backup before running migrations.
 - After an update, show that release's notes in the app.
