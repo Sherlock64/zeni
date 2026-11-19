@@ -12,20 +12,18 @@ use crate::types::{
     MarkReviewedRequest, ModelBuild, NewCategory, Nickname, NicknameSettings, OllamaSettings,
     OllamaStatus, RecoverRequest, RecoveryCodes, ReleaseNotes, ReorderCategoriesRequest,
     RestoreBackupRequest, RevealAccountNumbersRequest, RevertImportRequest, ReviewGroup, RuleInput,
-    SampleErrorRequest, SaveCsvLayoutRequest, SaveNicknameRuleRequest, SecurityStatus,
-    SetAutoCategorizeRequest, SetBackupRetentionRequest, SetBaseModelRequest,
-    SetExamplesPerCategoryRequest, SetOllamaPortRequest, SetTransactionCategoryRequest,
-    SetTransactionsCategoryRequest, SetUpdateChecksRequest, SetupRequest, SetupResponse,
-    SpendingQuery, SpendingSummary, StartCategorizeRequest, StartModelDownloadRequest, Startup,
-    StartupStatus, TransactionPage, TransactionQuery, UnlockRequest, UpdateCategoryRequest,
-    UpdateCsvLayoutRequest, UpdateNicknameRequest, UpdateNicknameRuleRequest, UpdateStatus,
+    SaveCsvLayoutRequest, SaveNicknameRuleRequest, SecurityStatus, SetAutoCategorizeRequest,
+    SetBackupRetentionRequest, SetBaseModelRequest, SetExamplesPerCategoryRequest,
+    SetOllamaPortRequest, SetTransactionCategoryRequest, SetTransactionsCategoryRequest,
+    SetUpdateChecksRequest, SetupRequest, SetupResponse, SpendingQuery, SpendingSummary,
+    StartCategorizeRequest, StartModelDownloadRequest, Startup, StartupStatus, TransactionPage,
+    TransactionQuery, UnlockRequest, UpdateCategoryRequest, UpdateCsvLayoutRequest,
+    UpdateNicknameRequest, UpdateNicknameRuleRequest, UpdateStatus,
 };
 use crate::{
     accounts, backup, builds, categories, categorize, csv_layouts, db, imports, jobs, nicknames,
     ollama, overlay, release_notes, review, security, spending, startup, transactions, updates,
 };
-
-const MAX_REASON_CHARS: usize = 200;
 
 /// Shows the dialog `show` opens and waits for the chosen path. `None` when the user cancels;
 /// `unreadable` when the choice isn't a local path.
@@ -64,21 +62,6 @@ async fn load_app_info(
         db_path: db_path.display().to_string(),
         migrations_applied: db::applied_migrations(&pool).await?,
     })
-}
-
-/// Always fails, so the UI can show a typed error from Rust.
-#[tauri::command]
-pub fn sample_error(request: SampleErrorRequest) -> Result<(), AppError> {
-    let reason = request.reason.trim();
-    if reason.is_empty() {
-        return Err(AppError::Validation("reason must not be empty".into()));
-    }
-    if reason.chars().count() > MAX_REASON_CHARS {
-        return Err(AppError::Validation(format!(
-            "reason must be at most {MAX_REASON_CHARS} characters"
-        )));
-    }
-    Err(AppError::Sample(format!("Sample error: {reason}")))
 }
 
 #[tauri::command]
@@ -602,47 +585,9 @@ mod tests {
     use super::*;
     use crate::types::Database;
 
-    fn sample(reason: &str) -> serde_json::Value {
-        let request = SampleErrorRequest {
-            reason: reason.into(),
-        };
-        serde_json::to_value(sample_error(request).unwrap_err()).unwrap()
-    }
-
     fn app_info_for(state: &AppState) -> Result<AppInfo, AppError> {
         let version = env!("CARGO_PKG_VERSION").to_string();
         tauri::async_runtime::block_on(load_app_info(state, "Zeni".into(), version))
-    }
-
-    #[test]
-    fn sample_error_returns_typed_error() {
-        assert_eq!(
-            sample("x"),
-            serde_json::json!({ "kind": "Sample", "message": "Sample error: x" })
-        );
-    }
-
-    #[test]
-    fn sample_error_rejects_empty_reason() {
-        let expected =
-            serde_json::json!({ "kind": "Validation", "message": "reason must not be empty" });
-        assert_eq!(sample(""), expected);
-        assert_eq!(sample("  "), expected);
-    }
-
-    #[test]
-    fn sample_error_limits_reason_to_200_chars() {
-        assert_eq!(
-            sample(&"a".repeat(201)),
-            serde_json::json!({
-                "kind": "Validation",
-                "message": "reason must be at most 200 characters"
-            })
-        );
-        assert_eq!(sample(&"a".repeat(200))["kind"], "Sample");
-        // Counted in characters, not bytes, and after trimming.
-        assert_eq!(sample(&"é".repeat(200))["kind"], "Sample");
-        assert_eq!(sample(&format!(" {} ", "a".repeat(200)))["kind"], "Sample");
     }
 
     #[test]

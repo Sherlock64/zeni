@@ -41,7 +41,6 @@ import {
   revealAccountNumbers,
   revertImport,
   reviewGroups,
-  sampleError,
   saveCsvLayout,
   saveNicknameRule,
   securityStatus,
@@ -87,9 +86,8 @@ test("resolves with the command's response", async () => {
 });
 
 test("passes a Rust AppError through as a typed error", async () => {
-  mockInvoke.mockRejectedValueOnce({ kind: "Sample", message: "boom" });
-  await expect(sampleError({ reason: "test" })).rejects.toEqual({ kind: "Sample", message: "boom" });
-  expect(mockInvoke).toHaveBeenCalledWith("sample_error", { request: { reason: "test" } });
+  mockInvoke.mockRejectedValueOnce({ kind: "Validation", message: "boom" });
+  await expect(appInfo()).rejects.toEqual({ kind: "Validation", message: "boom" });
 });
 
 test("maps any other rejection to an Invoke error", async () => {
@@ -98,8 +96,8 @@ test("maps any other rejection to an Invoke error", async () => {
 });
 
 test("maps an object without a message to an Invoke error", async () => {
-  mockInvoke.mockRejectedValueOnce({ kind: "Sample" });
-  await expect(appInfo()).rejects.toEqual({ kind: "Invoke", message: '{"kind":"Sample"}' });
+  mockInvoke.mockRejectedValueOnce({ kind: "Validation" });
+  await expect(appInfo()).rejects.toEqual({ kind: "Invoke", message: '{"kind":"Validation"}' });
 });
 
 test("uses an Error's message, and a fallback when the rejection can't be encoded", async () => {

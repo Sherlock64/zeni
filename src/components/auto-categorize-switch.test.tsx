@@ -42,7 +42,7 @@ test("turns auto-categorize off once while busy and keeps the saved value", asyn
 });
 
 test("shows the error and the old value when saving fails", async () => {
-  vi.mocked(setAutoCategorize).mockRejectedValue({ kind: "Sample", message: "Broke." });
+  vi.mocked(setAutoCategorize).mockRejectedValue({ kind: "NotFound", message: "Broke." });
   renderSwitch();
 
   fireEvent.click(await screen.findByRole("switch"));

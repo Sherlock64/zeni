@@ -5,7 +5,7 @@ description: Add or change a typed Tauri command in Zeni, end to end from the Ru
 
 # Add a command
 
-The reference implementations are `app_info` / `load_app_info` (a database read behind a thin wrapper), `sample_error` (validated input), and `reveal_account_numbers` / `accounts::reveal` (domain logic that needs the data key). Every step below is `core-dev` work. Paths are relative to the repo root.
+The reference implementations are `app_info` / `load_app_info` (a database read behind a thin wrapper), `set_backup_retention` / `backup::set_retention` (validated input), and `reveal_account_numbers` / `accounts::reveal` (domain logic that needs the data key). Every step below is `core-dev` work. Paths are relative to the repo root.
 
 1. **Types** go in `src-tauri/src/types.rs`, or the `types` module once it is split. Each type needs `#[derive(TS)]`, `#[ts(export)]` and `#[serde(rename_all = "camelCase")]`.
    - Request: `#[derive(Debug, Deserialize, TS)]`, named `<Name>Request`.
@@ -31,7 +31,7 @@ The reference implementations are `app_info` / `load_app_info` (a database read 
    }
    ```
    - Read Tauri-only inputs (`AppHandle`, package info) here and pass them in as plain values, as `app_info` does.
-   - A command with no Tauri inputs and no state, like `sample_error`, is already plain and needs no wrapper.
+   - A command with no Tauri inputs and no state is already plain and needs no wrapper.
 5. **Register** the wrapper in `generate_handler![...]` in `src-tauri/src/lib.rs`. App commands need no capability, so leave `permissions: []` in `src-tauri/capabilities/default.json`.
 6. **Rust tests** go in `#[cfg(test)] mod tests` of `commands.rs`. Call the plain function, not the wrapper. Cover:
    - The success path, with state from `db::connect(&db::temp_dir("<name>"))`. Remove the directory at the end.

@@ -5,6 +5,7 @@
 - Screen readers now hear when an update is available and when release notes load.
 - Settings > About offers Try again when the update status fails to load.
 - On narrow windows the Transactions description tooltip shows category, balance and type.
+- Settings no longer shows the Error handling test card.
 - General hardening and test fixes.
 
 ## 7.0.0

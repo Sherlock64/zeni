@@ -87,6 +87,15 @@ As a user, I want V7.1 shipped as release 7.1.0, so that the fixes reach the ins
 - **S13-T1** (backend; deps: none): the app version is 7.1.0 in both version files, and `CHANGELOG.md` has a `## 7.1.0` section with user-facing bullets (announcements, Try again, tooltip details, plus neutral "general hardening and test fixes").
   - The release gate passes for tag `v7.1.0`.
 
+### S14: No developer test card in Settings
+As a user, I want Settings without the "Error handling" test card, so that I only see settings I can use.
+
+- **S14-T1** (backend; deps: none): the sample error command, its request type and the `Sample` error kind are gone, with their bindings and command wrapper.
+  - No command named `sample_error` is registered; the bindings and the UI command layer have no sample error request or `Sample` kind.
+- **S14-T2** (UI; deps: S14-T1): Settings no longer shows the Error handling card or its Trigger sample error button.
+  - A Settings test finds no "Error handling" heading; tests that used the `Sample` kind as a generic error use another existing kind and still pass.
+  - A Settings snapshot shows the page without the card.
+
 ## Decisions
 
 - #100: keep the native trigger (performance) and drop the `dark:` variants, not use `SelectTrigger`.
@@ -94,6 +103,7 @@ As a user, I want V7.1 shipped as release 7.1.0, so that the fixes reach the ins
 - #123: weekly pause stops and notifies; no single long timer.
 - Hardening fixes are tracked privately and named neutrally in everything committed.
 - Release: tag `v7.1.0` after merge.
+- S14 added after the PR opened, at the user's request; it ships in 7.1.0.
 
 ## New Terms
 

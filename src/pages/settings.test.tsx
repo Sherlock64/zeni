@@ -3,7 +3,6 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import {
   nicknameSettings,
   regenerateRecoveryCodes,
-  sampleError,
   securityStatus,
   setNicknameStaleDays,
 } from "@/lib/commands";
@@ -15,7 +14,6 @@ vi.mock("@/components/backup-card", () => ({ BackupCard: () => null }));
 vi.mock("@/components/ollama-card", () => ({ OllamaCard: () => null }));
 vi.mock("@/components/about-card", async (actual) => ({ ...(await actual<object>()), AboutCard: () => null }));
 vi.mock("@/lib/commands", () => ({
-  sampleError: vi.fn(),
   securityStatus: vi.fn(),
   regenerateRecoveryCodes: vi.fn(),
   nicknameSettings: vi.fn(),
@@ -42,29 +40,11 @@ function renderPage() {
 
 const valueOf = (label: string) => screen.getByText(label, { selector: "dt" }).nextElementSibling?.textContent;
 
-test("shows the kind and message of the sample error from Rust", async () => {
-  vi.mocked(sampleError).mockRejectedValue({ kind: "Sample", message: "Sample error: triggered from Settings" });
+test("shows no Error handling card", async () => {
   renderPage();
 
-  fireEvent.click(screen.getByRole("button", { name: "Trigger sample error" }));
-  const alert = await screen.findByRole("alert");
-  expect(within(alert).getByText("Sample")).toBeTruthy();
-  expect(within(alert).getByText("Sample error: triggered from Settings")).toBeTruthy();
-  expect(within(alert).queryByText(invokeHint)).toBeNull();
-  expect(sampleError).toHaveBeenCalledWith({ reason: "triggered from Settings" });
-});
-
-test("marks the sample error button busy without disabling it", async () => {
-  vi.mocked(sampleError).mockReturnValue(new Promise(() => {}));
-  renderPage();
-
-  const button = screen.getByRole("button", { name: "Trigger sample error" });
-  fireEvent.click(button);
-  await vi.waitFor(() => expect(button.getAttribute("aria-disabled")).toBe("true"));
-  expect(button.hasAttribute("disabled")).toBe(false);
-
-  fireEvent.click(button);
-  expect(sampleError).toHaveBeenCalledTimes(1);
+  expect(await screen.findByRole("heading", { name: "Security" })).toBeTruthy();
+  expect(screen.queryByRole("heading", { name: "Error handling" })).toBeNull();
 });
 
 const codes = ["AAAAA-AAAAA-AAAAA-AAAAA", "BBBBB-BBBBB-BBBBB-BBBBB"];

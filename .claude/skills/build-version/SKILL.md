@@ -90,7 +90,7 @@ Start only after step 3 is green. Spawn `docs-writer` only if user-facing behavi
    - The PR link, and that the app is running.
    - The final council table, and the path to `snapshots/V<n>/council-findings.md` with the most important follow-ups.
    - The key snapshots: show one per changed page.
-   - Every `RUNTIME` acceptance criterion as a step they can check in the window (for example "Open Settings and press Trigger sample error").
+   - Every `RUNTIME` acceptance criterion as a step they can check in the window (for example "Open Settings > About and press Check now").
 5. Always run the retrospective tally (`retrospective` skill, steps 1.1 and 1.2); only the HTML write-up is optional. Append to `snapshots/V<n>/metrics.md`: weighted tokens per phase (plan, code waves, integration, docs and agents, each council round, each fix wave), agent launches, council member launches, full integration runs, and fix and review rounds, each beside the V3.1 baseline in `retros/2026-11-15-v3.1-csv-import.html`.
 6. Stop here. Don't merge. The next version gets its own chat. Once the user merges the PR, ask them once whether to push the release tag. On a yes, `git fetch origin`, `git tag v<major>.<minor>.<patch> origin/main` and `git push origin v<major>.<minor>.<patch>`; `Release` then publishes the `.deb`. On a no, leave it.
 7. Work after the PR is open (user-testing fixes, more council rounds) starts in a fresh session, not this one. Write `snapshots/V<n>/state.md` (branch, PR, contracts and coverage paths, the last council round number, open findings, approved dependencies, what the user asked for) and offer a new session that starts from it with this skill's sections 2-6.

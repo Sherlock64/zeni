@@ -25,14 +25,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSecurityStatus } from "@/hooks/use-security-status";
-import { nicknameSettings, regenerateRecoveryCodes, sampleError, setNicknameStaleDays } from "@/lib/commands";
+import { nicknameSettings, regenerateRecoveryCodes, setNicknameStaleDays } from "@/lib/commands";
 import { STALE_DAYS_MAX, STALE_DAYS_MIN } from "@/lib/nickname-limits";
 import { NICKNAMES_KEY } from "@/lib/query-keys";
 import type { CommandError } from "@/types/command";
 
 export function SettingsPage() {
-  const sample = useMutation({ mutationFn: () => sampleError({ reason: "triggered from Settings" }) });
-
   return (
     <Page title="Settings" description="Security, text size, backups, saved CSV layouts, nicknames, Ollama and details of this installation of Zeni.">
       {/* Form cards stay readable on wide windows instead of stretching to the page width. */}
@@ -50,21 +48,6 @@ export function SettingsPage() {
         <OllamaCard />
 
         <AboutCard />
-
-        <Card>
-          <CardHeader>
-            <CardTitle>
-              <h2>Error handling</h2>
-            </CardTitle>
-            <CardDescription>Ask the backend for a sample error to check how errors are shown.</CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col items-start gap-4">
-            <Button variant="outline" onClick={() => !sample.isPending && sample.mutate()} aria-disabled={sample.isPending}>
-              Trigger sample error
-            </Button>
-            {sample.isError && <CommandErrorAlert title="Sample command failed" error={sample.error} />}
-          </CardContent>
-        </Card>
       </div>
     </Page>
   );

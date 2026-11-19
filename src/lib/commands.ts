@@ -35,7 +35,6 @@ import type { RevealAccountNumbersRequest } from "@/types/bindings/RevealAccount
 import type { RevertImportRequest } from "@/types/bindings/RevertImportRequest";
 import type { ReviewGroup } from "@/types/bindings/ReviewGroup";
 import type { RuleInput } from "@/types/bindings/RuleInput";
-import type { SampleErrorRequest } from "@/types/bindings/SampleErrorRequest";
 import type { SaveCsvLayoutRequest } from "@/types/bindings/SaveCsvLayoutRequest";
 import type { SaveNicknameRuleRequest } from "@/types/bindings/SaveNicknameRuleRequest";
 import type { SecurityStatus } from "@/types/bindings/SecurityStatus";
@@ -99,7 +98,6 @@ async function call<T>(command: string, args?: InvokeArgs): Promise<T> {
 }
 
 export const appInfo = () => call<AppInfo>("app_info");
-export const sampleError = (request: SampleErrorRequest) => call<null>("sample_error", { request });
 export const securityStatus = () => call<SecurityStatus>("security_status");
 export const completeSetup = (request: SetupRequest) => call<SetupResponse>("complete_setup", { request });
 export const unlock = (request: UnlockRequest) => call<null>("unlock", { request });

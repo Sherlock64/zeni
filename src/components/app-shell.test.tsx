@@ -37,7 +37,6 @@ vi.mock("@/lib/commands", () => ({
   updateCsvLayout: vi.fn(),
   deleteCsvLayout: vi.fn(),
   appInfo: vi.fn(),
-  sampleError: vi.fn(),
   securityStatus: vi.fn(),
   completeSetup: vi.fn(),
   unlock: vi.fn(),

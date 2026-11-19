@@ -65,7 +65,6 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::app_info,
-            commands::sample_error,
             commands::security_status,
             commands::complete_setup,
             commands::unlock,

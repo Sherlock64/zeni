@@ -140,7 +140,7 @@ test.each([
   ["the Ollama settings", () => vi.mocked(ollamaSettings), "Couldn't load Ollama settings"],
   ["the job status", () => vi.mocked(jobStatus), "Couldn't check for a running job"],
 ])("shows the error when %s fails to load and keeps the buttons disabled", async (_, mock, title) => {
-  mock().mockRejectedValue({ kind: "Sample", message: "Something broke." });
+  mock().mockRejectedValue({ kind: "NotFound", message: "Something broke." });
   renderActions();
 
   expect(await screen.findByText(title)).toBeTruthy();
