@@ -1,9 +1,12 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useRef } from "react";
 import { CommandErrorAlert } from "@/components/command-error-alert";
+import { PAGE_WIDTH } from "@/components/page";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import { invalidateJobStatus, useJobStatus } from "@/hooks/use-job-status";
 import { cancelJob, clearJobOutcome } from "@/lib/commands";
+import { finishedJobName, runningJobLabel } from "@/lib/job-label";
 import { BUILDS_KEY, CATEGORIES_KEY, REVIEW_GROUPS_KEY, TRANSACTIONS_KEY, UNREVIEWED_COUNT_KEY } from "@/lib/query-keys";
 import type { JobKind } from "@/types/bindings/JobKind";
 import type { JobOutcome } from "@/types/bindings/JobOutcome";
@@ -12,11 +15,12 @@ import type { JobOutcome } from "@/types/bindings/JobOutcome";
 const isShown = (kind: JobKind) => kind !== "download";
 // The backend labels a build job "Build <model>".
 const builtModel = (label: string) => label.replace(/^Build /, "");
+const percent = (done: number, total: number) => Math.floor((done * 100) / total);
 
 export function CategorizeBanner() {
   const queryClient = useQueryClient();
   const job = useJobStatus();
-  const progressId = useId();
+  const labelId = useId();
   const cancel = useMutation({ mutationFn: cancelJob, onSuccess: () => invalidateJobStatus(queryClient) });
   const dismiss = useMutation({ mutationFn: clearJobOutcome, onSuccess: () => invalidateJobStatus(queryClient) });
 
@@ -53,26 +57,25 @@ export function CategorizeBanner() {
 
   const visible = running || last || job.isError || cancel.isError || dismiss.isError;
   const lines = last ? outcomeLines(last) : [];
-  const announcement = running ? progressAnnouncement(running.label, running.done, running.total) : lines.join(" ");
+  const announcement = running ? progressAnnouncement(runningJobLabel(running), running.done, running.total) : lines.join(" ");
 
   return (
-    <div className={`mx-auto flex w-full max-w-screen-2xl flex-col gap-3 px-8 ${visible ? "pt-6" : ""}`}>
+    <div className={`${PAGE_WIDTH} flex flex-col gap-3 ${visible ? "pt-6" : ""}`}>
       {/* Always mounted and coarse, so screen readers hear the start, every quarter and the end, not every poll. */}
       <div role="status" className="sr-only">
         {announcement}
       </div>
       {running && (
         <div className="flex flex-col gap-2 rounded-lg border p-4">
-          <label htmlFor={progressId} className="text-sm font-medium">
-            {running.kind === "build" ? `${running.label}…` : `Categorizing ${running.done} of ${running.total}`}
-          </label>
+          <p id={labelId} className="text-sm font-medium">
+            {running.kind === "build" ? runningJobLabel(running) : `Categorizing ${running.done} of ${running.total}`}
+          </p>
           <div className="flex items-center gap-3">
             {/* A total of 0 is unknown, so the bar stays indeterminate and pulses to show it is working. */}
-            <progress
-              id={progressId}
-              className={`h-2 flex-1 overflow-hidden rounded-full bg-muted [&::-moz-progress-bar]:bg-primary [&::-webkit-progress-bar]:bg-muted [&::-webkit-progress-value]:bg-primary ${running.total ? "" : "animate-pulse [&:indeterminate]:bg-primary/40 [&:indeterminate::-webkit-progress-bar]:bg-primary/40"}`}
-              max={running.total || undefined}
-              value={running.total ? running.done : undefined}
+            <Progress
+              aria-labelledby={labelId}
+              className={`flex-1 ${running.total ? "" : "animate-pulse bg-primary/40"}`}
+              value={running.total ? percent(running.done, running.total) : null}
             />
             <Button
               variant="outline"
@@ -121,15 +124,16 @@ export function CategorizeBanner() {
 
 function progressAnnouncement(label: string, done: number, total: number) {
   const quarter = total ? Math.floor((done * 4) / total) * 25 : 0;
-  return quarter ? `${label}: ${quarter}% done.` : `${label} started.`;
+  return quarter ? `${label} ${quarter}% done.` : label;
 }
 
 function outcomeLines(last: JobOutcome) {
   const lines: string[] = [];
-  if (last.cancelled) lines.push(`${last.label} was cancelled.`);
+  const name = finishedJobName(last);
+  if (last.cancelled) lines.push(`${name} was cancelled.`);
   if (last.error) {
     const done = last.summary ? last.summary.categorized + last.summary.couldntCategorize : null;
-    lines.push(done === null ? `${last.label} stopped.` : `${last.label} stopped after ${done} ${done === 1 ? "row" : "rows"}.`);
+    lines.push(done === null ? `${name} stopped.` : `${name} stopped after ${done} ${done === 1 ? "row" : "rows"}.`);
   }
   if (last.summary) {
     const { categorized, couldntCategorize, notReached } = last.summary;

@@ -39,6 +39,7 @@ expect() { # expect <exit code> <grep pattern or ""> <description>
 reset() { git checkout -q -- . && git clean -qfd; }
 
 run fast; expect 0 "CHECK policy: pass" "clean tree passes"
+grep -qF "CHECK cargo clippy --locked --all-targets -- -D warnings: pass" <<<"$out" || { echo "FAIL: clippy label"; exit 1; }
 
 echo 'CREATE TABLE b (id INTEGER);' >src-tauri/migrations/0002_b.sql
 run fast; expect 0 "CHECK policy: pass" "new untracked migration is fine"
@@ -59,6 +60,10 @@ reset
 echo 'rand = "0.9"' >>src-tauri/Cargo.toml
 run fast; expect 1 "POLICY FAIL: dependency change src-tauri/Cargo.toml" "added cargo dep"
 ZENI_DEPS_APPROVED=1 run fast; expect 0 "" "cargo dep override"
+run task; expect 0 "POLICY NOTE: dependency change src-tauri/Cargo.toml (gated in integration)" "task mode notes a dep change"
+grep -qF "POLICY FAIL" <<<"$out" && { echo "FAIL: task mode failed a dep change"; exit 1; }
+run integration; expect 1 "POLICY FAIL: dependency change src-tauri/Cargo.toml" "integration fails a dep change"
+ZENI_DEPS_APPROVED=1 run integration; expect 0 "" "integration dep override"
 reset
 
 printf '\n[target.'"'"'cfg(unix)'"'"'.dependencies]\nlibc = "0.2"\n' >>src-tauri/Cargo.toml
@@ -113,7 +118,7 @@ run fast; expect 0 "CHECK policy: pass" "generated ui/ is exempt"
 reset
 
 run task; expect 0 "ran fast checks only" "task with no filters"
-STUB_FAIL=1 run task --rust foo; expect 1 "CHECK cargo test foo: fail" "task reports failing filter"
+STUB_FAIL=1 run task --rust foo; expect 1 "CHECK cargo test --locked foo: fail" "task reports failing filter"
 
 ev=snapshots/V9.9/evidence.yaml
 echo 'fn y() {}' >>src-tauri/src/main.rs
@@ -130,7 +135,7 @@ echo 'x' >untracked.txt
 run fresh $ev; expect 1 "STALE" "untracked file makes it stale"
 rm untracked.txt
 run fresh $ev; expect 0 "FRESH" "fresh again once the untracked file is gone"
-STUB_FAIL=1 run integration --evidence $ev; expect 1 "CHECK cargo test: fail" "integration runs on after a failure"
+STUB_FAIL=1 run integration --evidence $ev; expect 1 "CHECK cargo test --locked: fail" "integration runs on after a failure"
 grep -qF "CHECK pnpm test: fail" <<<"$out" || { echo "FAIL: later steps skipped"; exit 1; }
 run fresh $ev; expect 1 "FAILED" "failed outcomes are not fresh"
 

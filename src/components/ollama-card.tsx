@@ -18,10 +18,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useJobStatus, invalidateJobStatus } from "@/hooks/use-job-status";
 import { cancelJob, ollamaSettings, ollamaStatus, setBaseModel, setOllamaPort, startModelDownload } from "@/lib/commands";
+import { runningJobLabel } from "@/lib/job-label";
 import { BUILDS_KEY, JOB_STATUS_KEY, OLLAMA_SETTINGS_KEY, OLLAMA_STATUS_KEY } from "@/lib/query-keys";
 import type { RecommendedModel } from "@/types/bindings/RecommendedModel";
 
@@ -295,7 +297,7 @@ export function OllamaCard() {
               {/* A download shows its own progress below. */}
               {status.data.reachable && running && !downloading && (
                 <p id={busyId} className="text-sm text-muted-foreground">
-                  {running.label} is running.
+                  {runningJobLabel(running)}
                 </p>
               )}
               <ul className="flex flex-col divide-y rounded-lg border">
@@ -333,17 +335,16 @@ export function OllamaCard() {
 
         {downloading && (
           <div className="flex flex-col gap-2">
-            <Label id={`${busyId}-progress-label`} htmlFor={`${busyId}-progress`}>
+            <Label id={`${busyId}-progress-label`}>
               Downloading {modelOf(downloading.label)}
               {downloading.total > 0 && ` (${formatSize(downloading.done)} of ${formatSize(downloading.total)})`}
             </Label>
             <div className="flex items-center gap-3">
               {/* A total of 0 is unknown, so the bar stays indeterminate. */}
-              <progress
-                id={`${busyId}-progress`}
-                className="h-2 flex-1 overflow-hidden rounded-full bg-muted [&::-moz-progress-bar]:bg-primary [&::-webkit-progress-bar]:bg-muted [&::-webkit-progress-value]:bg-primary"
-                max={downloading.total || undefined}
-                value={downloading.total ? downloading.done : undefined}
+              <Progress
+                aria-labelledby={`${busyId}-progress-label`}
+                className="flex-1"
+                value={downloading.total ? Math.floor((downloading.done * 100) / downloading.total) : null}
               />
               <Button variant="outline" size="sm" aria-disabled={cancel.isPending} onClick={() => !cancel.isPending && cancel.mutate()}>
                 {cancel.isPending ? "Cancelling…" : "Cancel"}

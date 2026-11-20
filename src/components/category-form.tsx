@@ -19,7 +19,7 @@ const DESCRIPTION_MAX = 200;
 export const kindLabels: Record<CategoryKind, string> = { spending: "Spending", income: "Income", transfer: "Transfer" };
 
 // Which field a Validation message belongs to, by the wording of src-tauri/src/categories.rs.
-export function categoryErrorField(error: CommandError | null) {
+function categoryErrorField(error: CommandError | null) {
   if (error?.kind !== "Validation") return null;
   if (/^(Enter a category name|A category named)/.test(error.message) || error.message === `Use at most ${NAME_MAX} characters.`)
     return "name";

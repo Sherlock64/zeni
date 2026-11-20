@@ -387,6 +387,9 @@ test("when the categories fail to load, a row's control stays put and focused, a
   control.focus();
   fireEvent.click(control);
   await waitFor(() => expect(listCategories).toHaveBeenCalledTimes(2));
+  // Let the second load fail and its error show before checking that no list opened.
+  await expect(vi.mocked(listCategories).mock.results[1].value).rejects.toBe(invokeError);
+  expect(within(await screen.findByRole("alert")).getByText("Couldn't load categories")).toBeTruthy();
   expect(screen.queryByRole("listbox")).toBeNull();
   expect(control.isConnected).toBe(true);
   expect(document.activeElement).toBe(control);
@@ -446,6 +449,24 @@ test("Select all like this selects rows with the same nickname or description in
   for (const region of [group("Groceries (2)"), group("Dining out (2)")])
     expect(within(region).getByRole("checkbox", { name: "Select FRESH MART #12" }).getAttribute("aria-checked")).toBe("true");
   expect(screen.getByRole("checkbox", { name: "Select GREENLEAF MARKET #42" }).getAttribute("aria-checked")).toBe("false");
+});
+
+test("Select all like this is hidden at rest, reachable by keyboard and shown when focused", async () => {
+  vi.mocked(reviewGroups).mockResolvedValue([groceries, dining]);
+  renderPage();
+  const button = await screen.findByRole("button", { name: "Select all like this (Pizza night)" });
+  // Visibility comes from CSS that jsdom doesn't apply, so check the reveal classes.
+  expect(button.className.split(" ")).toEqual(
+    expect.arrayContaining(["opacity-0", "group-hover/row:opacity-100", "group-focus-within/row:opacity-100", "focus-visible:opacity-100"]),
+  );
+  expect(button.closest("tr")?.classList.contains("group/row")).toBe(true);
+  expect(button.tabIndex).toBe(0);
+  expect(button.getAttribute("aria-hidden")).toBeNull();
+  button.focus();
+  expect(document.activeElement).toBe(button);
+  fireEvent.click(button);
+  expect(screen.getByText("1 selected")).toBeTruthy();
+  expect(screen.getByRole("checkbox", { name: "Select Pizza night" }).getAttribute("aria-checked")).toBe("true");
 });
 
 test("Clear unselects everything and moves focus to the first group", async () => {

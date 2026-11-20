@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { CommandErrorAlert } from "@/components/command-error-alert";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -8,6 +8,7 @@ import { acknowledgeReleaseNotes, releaseNotes } from "@/lib/commands";
 import { RELEASE_NOTES_KEY } from "@/lib/query-keys";
 import type { ReleaseNote } from "@/types/bindings/ReleaseNote";
 import type { ReleaseNotes } from "@/types/bindings/ReleaseNotes";
+import type { CommandError } from "@/types/command";
 
 const TITLE = "What's new in Zeni";
 const contentClass = "max-h-[85svh] overflow-y-auto sm:max-w-lg";
@@ -81,13 +82,26 @@ export function PendingReleaseNotes() {
 // Release notes in Settings > About: every section, and closing acknowledges nothing.
 export function ReleaseNotesButton() {
   const notes = useQuery({ queryKey: RELEASE_NOTES_KEY, queryFn: releaseNotes });
+  const content = useRef<HTMLDivElement>(null);
+  // A refetch with no data resets the query to pending, so keep the error and Try again up meanwhile.
+  const [retriedError, setRetriedError] = useState<CommandError | null>(null);
+  const error = notes.error ?? retriedError;
+
+  async function retry() {
+    if (notes.isFetching || !notes.error) return;
+    setRetriedError(notes.error);
+    const result = await notes.refetch();
+    setRetriedError(null);
+    // Try again goes away once the notes load, so keep focus in the dialog.
+    if (result.isSuccess) content.current?.focus();
+  }
 
   return (
     <Dialog>
       <DialogTrigger asChild>
         <Button variant="outline">Release notes</Button>
       </DialogTrigger>
-      <DialogContent className={contentClass}>
+      <DialogContent ref={content} className={contentClass}>
         <DialogHeader>
           <DialogTitle>{TITLE}</DialogTitle>
           <DialogDescription>Every version of Zeni, newest first.</DialogDescription>
@@ -96,9 +110,19 @@ export function ReleaseNotesButton() {
         <p role="status" className="sr-only">
           {notes.isPending ? "Loading release notes…" : ""}
         </p>
-        {notes.isError ? (
-          <CommandErrorAlert title="Couldn't load the release notes" error={notes.error} />
-        ) : notes.isPending ? (
+        {error ? (
+          <div className="flex flex-col items-start gap-3">
+            <CommandErrorAlert
+              key={notes.errorUpdatedAt}
+              title="Couldn't load the release notes"
+              error={error}
+              nextStep="Try again. If it keeps failing, restart Zeni."
+            />
+            <Button variant="outline" onClick={retry} aria-disabled={notes.isFetching}>
+              {notes.isFetching ? "Trying again…" : "Try again"}
+            </Button>
+          </div>
+        ) : !notes.data ? (
           <Skeleton aria-hidden="true" className="h-32 w-full" />
         ) : notes.data.all.length === 0 ? (
           <p className="text-muted-foreground">No release notes yet.</p>

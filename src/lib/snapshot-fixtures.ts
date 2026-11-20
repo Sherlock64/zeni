@@ -363,7 +363,7 @@ const recommended = [
   { name: "qwen2.5:3b", sizeBytes: 1929912432, note: "Smallest download: 46 of 52 right, about 0.4 s a row.", installed: false },
   { name: "gemma3:4b", sizeBytes: 3350272403, note: "Slower alternative: 44 of 52 right, about 1.8 s a row.", installed: false },
 ];
-const ollamaSettings = { port: 11434, baseModel: "phi4-mini", autoCategorize: true, examplesPerCategory: 5 };
+const ollamaSettings = { port: 11434, baseModel: "phi4-mini", autoCategorize: true, examplesPerCategory: 5, allowOverWindow: false };
 const idleJob = { running: null, last: null };
 const categorizing = { running: { kind: "categorizeNow", label: "Categorize now", done: 18, total: 42 }, last: null };
 
@@ -380,6 +380,7 @@ Object.assign(fixtures, {
   set_base_model: ollamaSettings,
   set_auto_categorize: ollamaSettings,
   set_examples_per_category: ollamaSettings,
+  set_allow_over_window: ollamaSettings,
   ollama_status: {
     reachable: true,
     version: "0.12.6",
@@ -401,6 +402,7 @@ Object.assign(fixtures, {
     { id: 2, name: "zeni-2", baseModel: "phi4-mini", createdAt: "2026-11-10 19:22:04", exampleCount: 41, active: true, outOfDate: true },
     { id: 1, name: "zeni-1", baseModel: "phi4-mini", createdAt: "2026-11-03 08:15:47", exampleCount: 27, active: false, outOfDate: true },
   ],
+  build_preview: { windowTokens: 4096, fit: 110, total: 110 },
   start_build: { running: { kind: "build", label: "Build zeni-3", done: 0, total: 0 }, last: null },
   activate_build: null,
   delete_build: null,
@@ -421,6 +423,14 @@ export const variants: Record<string, Record<string, Record<string, unknown>>> =
   categories: { empty: { list_categories: [] } },
   review: { empty: { review_groups: [], unreviewed_count: 0 } },
   builds: { empty: { list_builds: [] } },
+  preview: {
+    trimmed: { build_preview: { windowTokens: 4096, fit: 29, total: 110 } },
+    override: {
+      build_preview: { windowTokens: 4096, fit: 29, total: 110 },
+      ollama_settings: { ...ollamaSettings, allowOverWindow: true },
+      set_allow_over_window: { ...ollamaSettings, allowOverWindow: true },
+    },
+  },
   job: {
     categorizing: { job_status: categorizing },
     recategorizing: { job_status: { running: { kind: "recategorizeAll", label: "Recategorize all", done: 120, total: 310 }, last: null } },

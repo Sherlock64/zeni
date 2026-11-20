@@ -5,6 +5,7 @@ import { CommandErrorAlert } from "@/components/command-error-alert";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { setTransactionCategory } from "@/lib/commands";
 import { CATEGORIES_KEY, REVIEW_GROUPS_KEY, TRANSACTIONS_KEY, UNREVIEWED_COUNT_KEY } from "@/lib/query-keys";
 import type { CategorizeDialogProps } from "@/types/ui";
@@ -56,7 +57,7 @@ export function CategorizeDialog({ transaction, open, onOpenChange, onCloseAutoF
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor={`${id}-note`}>Note</Label>
-            <textarea
+            <Textarea
               id={`${id}-note`}
               name="note"
               rows={3}
@@ -67,7 +68,6 @@ export function CategorizeDialog({ transaction, open, onOpenChange, onCloseAutoF
                 save.reset();
                 setNote(event.target.value);
               }}
-              className="w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-base outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 md:text-sm dark:bg-input/30 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40"
             />
             {noteError ? (
               <p id={`${id}-note-error`} role="alert" className="text-sm text-destructive">
@@ -83,6 +83,7 @@ export function CategorizeDialog({ transaction, open, onOpenChange, onCloseAutoF
             <CommandErrorAlert
               title="Couldn't save the category"
               error={save.error}
+              nextStep={save.error.kind === "NotFound" ? "Close this dialog and try again." : undefined}
             />
           )}
           <DialogFooter>

@@ -1,25 +1,20 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDownIcon, ListChecksIcon } from "lucide-react";
+import { ListChecksIcon } from "lucide-react";
 import { startTransition, useEffect, useState } from "react";
 import { CategorySelect } from "@/components/category-select";
 import { CommandErrorAlert } from "@/components/command-error-alert";
 import { Page } from "@/components/page";
+import { ReviewGroupSection } from "@/components/review-group-section";
+import { rowLabel } from "@/components/review-row";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { listCategories, markReviewed, reviewGroups, setTransactionCategory, setTransactionsCategory } from "@/lib/commands";
-import { formatDate } from "@/lib/dates";
-import { formatCents } from "@/lib/money";
 import { CATEGORIES_KEY, REVIEW_GROUPS_KEY, TRANSACTIONS_KEY, UNREVIEWED_COUNT_KEY } from "@/lib/query-keys";
 import type { Category } from "@/types/bindings/Category";
 import type { ReviewGroup } from "@/types/bindings/ReviewGroup";
-import type { Transaction } from "@/types/bindings/Transaction";
 import type { CommandError } from "@/types/command";
-import type { ReviewBulkVariables, ReviewCategoryCellProps, ReviewChangeVariables, ReviewLooksGoodVariables } from "@/types/ui";
-import { cn } from "cn";
+import type { ReviewBulkVariables, ReviewChangeVariables, ReviewLooksGoodVariables } from "@/types/ui";
 
 // Rendering every row (each with its own CategorySelect) made large reviews slow, so groups show this many at a time.
 const PAGE_SIZE = 25;
@@ -28,47 +23,8 @@ const BATCH = 3;
 const BULK_SELECT_ID = "review-bulk-category";
 const HEADING = "main h1";
 
-const label = (row: Transaction) => row.nickname ?? row.description;
 const groupToggle = (categoryId: number | undefined) =>
   categoryId === undefined ? HEADING : `[data-review-group="${categoryId}"]`;
-
-// Looks like the select's trigger; hundreds of Radix Selects mounting at once took seconds, so the real one mounts on use.
-const TRIGGER =
-  "flex h-8 w-full items-center justify-between gap-1.5 rounded-lg border border-input bg-input/30 py-2 pr-2 pl-2.5 text-sm whitespace-nowrap transition-colors outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 hover:bg-input/50";
-
-function RowCategory({ row, onChange }: ReviewCategoryCellProps) {
-  const queryClient = useQueryClient();
-  const [active, setActive] = useState(false);
-  const name = `Category for ${label(row)}`;
-  // Swaps only once the options are cached, so the button keeps focus meanwhile; a failed load shows above the groups.
-  const activate = () =>
-    void queryClient.ensureQueryData({ queryKey: CATEGORIES_KEY, queryFn: listCategories }).then(
-      () => setActive(true),
-      () => {},
-    );
-  // Mounts open, so the list takes focus from the button it replaces; closing returns focus to its trigger.
-  if (active) return <CategorySelect defaultOpen value={row.categoryId} aria-label={name} onChange={onChange} />;
-  return (
-    <button
-      type="button"
-      role="combobox"
-      aria-label={name}
-      aria-expanded={false}
-      aria-haspopup="listbox"
-      aria-autocomplete="none"
-      className={TRIGGER}
-      onClick={activate}
-      onKeyDown={(event) => {
-        if (event.key !== "ArrowDown") return;
-        event.preventDefault();
-        activate();
-      }}
-    >
-      <span className="line-clamp-1">{row.category ?? "Pick a category"}</span>
-      <ChevronDownIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
-    </button>
-  );
-}
 
 export function ReviewPage() {
   const queryClient = useQueryClient();
@@ -285,134 +241,39 @@ export function ReviewPage() {
         const rows = Math.min(group.rows.length, shown[group.categoryId] ?? PAGE_SIZE);
         return <Skeleton key={group.categoryId} aria-hidden="true" className="w-full rounded-lg" style={{ height: `${9.5 + rows * 3.0625}rem` }} />;
       }
-      const title = `${group.category} (${group.rows.length})`;
       const count = shown[group.categoryId] ?? PAGE_SIZE;
-      const ids = group.rows.map((row) => row.id);
-      const picked = ids.filter((id) => selected.has(id)).length;
-      // The checkbox draws mixed like checked, so the label says how many.
-      const selectAll = picked > 0 && picked < ids.length ? `Select all (${picked} of ${ids.length} selected)` : "Select all";
-      const hidden = group.rows.length > count;
-      const changeError = change.isError && change.variables.groupId === group.categoryId ? change.error : null;
-      const reviewError = looksGood.isError && looksGood.variables.groupId === group.categoryId ? looksGood.error : null;
       return (
-        <Collapsible key={group.categoryId} defaultOpen asChild>
-          <section aria-label={title} className="rounded-lg border">
-            <div className="flex items-center gap-4 px-4 py-3">
-              <h2>
-                <CollapsibleTrigger asChild>
-                  <Button variant="ghost" size="sm" className="group -ml-2 font-semibold" data-review-group={group.categoryId}>
-                    <ChevronDownIcon aria-hidden="true" className="transition-transform group-data-[state=closed]:-rotate-90" />
-                    {title}
-                  </Button>
-                </CollapsibleTrigger>
-              </h2>
-              <label className="ml-auto flex items-center gap-2 text-sm">
-                <Checkbox
-                  aria-label={`${selectAll} in ${group.category}`}
-                  className="border-muted-foreground"
-                  checked={picked === ids.length ? true : picked > 0 ? "indeterminate" : false}
-                  onCheckedChange={() => select(ids, picked !== ids.length)}
-                />
-                {selectAll}
-              </label>
-            </div>
-            <CollapsibleContent className="flex flex-col gap-3 px-4 pb-4">
-              {changeError && (
-                <CommandErrorAlert title="Couldn't change the category" error={changeError} onDismiss={() => dismiss(change.reset, group.categoryId)} />
-              )}
-              {reviewError && (
-                <CommandErrorAlert title="Couldn't mark them reviewed" error={reviewError} onDismiss={() => dismiss(looksGood.reset, group.categoryId)} />
-              )}
-              {/* Fixed columns, so every group's columns line up. */}
-              <Table className="table-fixed">
-                <TableHeader>
-                  <TableRow>
-                    <TableHead scope="col" className="w-10">
-                      <span className="sr-only">Selected</span>
-                    </TableHead>
-                    <TableHead scope="col" className="w-28">
-                      Date
-                    </TableHead>
-                    <TableHead scope="col">Description</TableHead>
-                    <TableHead scope="col" className="w-28 text-right">
-                      Amount
-                    </TableHead>
-                    <TableHead scope="col" className="w-48">
-                      Category
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {group.rows.slice(0, count).map((row) => (
-                    <TableRow key={row.id} data-state={selected.has(row.id) ? "selected" : undefined}>
-                      <TableCell>
-                        <Checkbox
-                          aria-label={`Select ${label(row)}`}
-                          className="border-muted-foreground"
-                          data-review-row={row.id}
-                          checked={selected.has(row.id)}
-                          onCheckedChange={(checked) => select([row.id], checked === true)}
-                        />
-                      </TableCell>
-                      <TableCell className="tabular-nums">{formatDate(row.postedDate)}</TableCell>
-                      <TableCell className="whitespace-normal">
-                        <div className="flex items-baseline gap-2">
-                          <span className="font-medium">{label(row)}</span>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="shrink-0 text-muted-foreground"
-                            aria-label={`Select all like this (${label(row)})`}
-                            onClick={() =>
-                              select(
-                                allRows.filter((other) => label(other) === label(row)).map((other) => other.id),
-                                true,
-                              )
-                            }
-                          >
-                            Select all like this
-                          </Button>
-                        </div>
-                      </TableCell>
-                      {/* The minus sign marks money out; the colour only reinforces it. */}
-                      <TableCell className={cn("text-right tabular-nums", row.amountCents < 0 && "text-destructive")}>
-                        {formatCents(row.amountCents)}
-                      </TableCell>
-                      <TableCell>
-                        <RowCategory
-                          row={row}
-                          onChange={(categoryId) => {
-                            if (busy) return;
-                            setMessage({ text: "", visible: false });
-                            change.mutate({ groupId: group.categoryId, row, categoryId });
-                          }}
-                        />
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-              <div className="flex items-center justify-end gap-3">
-                {hidden && (
-                  <Button variant="outline" className="mr-auto" onClick={() => showMore(group, count)}>
-                    Show {Math.min(PAGE_SIZE, group.rows.length - count)} more
-                  </Button>
-                )}
-                <Button
-                  variant="outline"
-                  aria-disabled={busy}
-                  onClick={() => {
-                    if (busy) return;
-                    setMessage({ text: "", visible: false });
-                    looksGood.mutate({ groupId: group.categoryId, transactionIds: ids });
-                  }}
-                >
-                  {looksGood.isPending && looksGood.variables.groupId === group.categoryId ? "Saving…" : hidden ? `Looks good (all ${ids.length})` : "Looks good"}
-                </Button>
-              </div>
-            </CollapsibleContent>
-          </section>
-        </Collapsible>
+        <ReviewGroupSection
+          key={group.categoryId}
+          group={group}
+          selected={selected}
+          count={count}
+          more={Math.min(PAGE_SIZE, Math.max(0, group.rows.length - count))}
+          changeError={change.isError && change.variables.groupId === group.categoryId ? change.error : null}
+          reviewError={looksGood.isError && looksGood.variables.groupId === group.categoryId ? looksGood.error : null}
+          busy={busy}
+          saving={looksGood.isPending && looksGood.variables.groupId === group.categoryId}
+          onSelect={select}
+          onSelectLike={(row) =>
+            select(
+              allRows.filter((other) => rowLabel(other) === rowLabel(row)).map((other) => other.id),
+              true,
+            )
+          }
+          onChangeRow={(row, categoryId) => {
+            if (busy) return;
+            setMessage({ text: "", visible: false });
+            change.mutate({ groupId: group.categoryId, row, categoryId });
+          }}
+          onDismissChange={() => dismiss(change.reset, group.categoryId)}
+          onDismissReview={() => dismiss(looksGood.reset, group.categoryId)}
+          onShowMore={() => showMore(group, count)}
+          onLooksGood={() => {
+            if (busy) return;
+            setMessage({ text: "", visible: false });
+            looksGood.mutate({ groupId: group.categoryId, transactionIds: group.rows.map((row) => row.id) });
+          }}
+        />
       );
     });
     return (

@@ -960,6 +960,8 @@ pub struct OllamaSettings {
     pub auto_categorize: bool,
     /// `app_meta` `build_examples`, 1..=20, absent means 5.
     pub examples_per_category: u32,
+    /// `app_meta` `build_over_window`, "1" or "0", absent means off: builds use every example.
+    pub allow_over_window: bool,
 }
 
 #[derive(Debug, Deserialize, TS)]
@@ -991,6 +993,26 @@ pub struct SetAutoCategorizeRequest {
 pub struct SetExamplesPerCategoryRequest {
     /// 1..=20.
     pub count: u32,
+}
+
+#[derive(Debug, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct SetAllowOverWindowRequest {
+    pub enabled: bool,
+}
+
+/// How many of the next build's examples fit the base model's context window.
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct BuildPreview {
+    /// The base model's `num_ctx` in Ollama, else 4096.
+    pub window_tokens: u32,
+    /// Examples that fit, whatever the override says.
+    pub fit: u32,
+    /// Every candidate: up to examples per category.
+    pub total: u32,
 }
 
 #[derive(Debug, Serialize, TS)]
@@ -1349,6 +1371,29 @@ pub struct ReleaseNotes {
     pub all: Vec<ReleaseNote>,
 }
 
+/// The local Ollama at `http://127.0.0.1:<port>`.
+pub(crate) struct Ollama {
+    pub(crate) port: u16,
+}
+
+/// What the next model build would send.
+pub(crate) struct BuildPlan {
+    pub(crate) base: String,
+    pub(crate) system: String,
+    /// `(user, assistant)` message contents of every candidate, in category order.
+    pub(crate) candidates: Vec<(String, String)>,
+    /// Indexes into `candidates` that fit the window.
+    pub(crate) fit: Vec<usize>,
+    pub(crate) window: u32,
+}
+
+/// The real categorizer: the active build, or the base model.
+pub struct OllamaCategorizer {
+    pub ollama: Ollama,
+    pub model: String,
+    pub build_id: Option<i64>,
+}
+
 impl From<sqlx::Error> for AppError {
     fn from(error: sqlx::Error) -> Self {
         Self::Database(error.to_string())
@@ -1361,6 +1406,24 @@ impl From<std::io::Error> for AppError {
     }
 }
 
+/// Turns a JSON encode or decode failure on stored data into a database error.
+impl From<serde_json::Error> for AppError {
+    fn from(error: serde_json::Error) -> Self {
+        use serde_json::error::Category;
+        let category = match error.classify() {
+            Category::Io => "io",
+            Category::Syntax => "syntax",
+            Category::Data => "data",
+            Category::Eof => "eof",
+        };
+        Self::Database(format!(
+            "Couldn't read or write stored data ({category} at {}:{})",
+            error.line(),
+            error.column()
+        ))
+    }
+}
+
 impl From<sqlx::migrate::MigrateError> for AppError {
     fn from(error: sqlx::migrate::MigrateError) -> Self {
         Self::Database(error.to_string())
@@ -1370,6 +1433,16 @@ impl From<sqlx::migrate::MigrateError> for AppError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn json_error_becomes_a_database_error_without_its_input() {
+        let error = serde_json::from_str::<i64>("\"secret-token\"").unwrap_err();
+        let AppError::Database(message) = AppError::from(error) else {
+            panic!("not a database error");
+        };
+        assert_eq!(message, "Couldn't read or write stored data (data at 1:14)");
+        assert!(!message.contains("secret-token"));
+    }
 
     #[test]
     fn app_error_serializes_as_kind_and_message() {

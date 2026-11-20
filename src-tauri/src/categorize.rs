@@ -5,11 +5,11 @@ use std::future::Future;
 use serde_json::{Value, json};
 use sqlx::SqlitePool;
 
-use crate::ollama::{self, Ollama};
+use crate::ollama;
 use crate::types::{
     AppError, AppState, CategorizeScope, CategoryKind, CommitImportRequest, ImportSummary, JobCtx,
-    JobKind, JobOutcome, JobStatus, PromptCategory, PromptRow, RunSummary, RunTarget,
-    StartCategorizeRequest,
+    JobKind, JobOutcome, JobStatus, Ollama, OllamaCategorizer, PromptCategory, PromptRow,
+    RunSummary, RunTarget, StartCategorizeRequest,
 };
 use crate::{imports, jobs, security};
 
@@ -25,13 +25,6 @@ pub trait Categorizer: Send + Sync {
 
     /// The active build's id, or `None` when the base model is used.
     fn build_id(&self) -> Option<i64>;
-}
-
-/// The real categorizer: the active build, or the base model.
-pub struct OllamaCategorizer {
-    pub ollama: Ollama,
-    pub model: String,
-    pub build_id: Option<i64>,
 }
 
 fn kind_name(kind: CategoryKind) -> &'static str {
@@ -380,7 +373,7 @@ mod tests {
         sent: Mutex<Vec<i64>>,
         build_id: Option<i64>,
         hook: Option<(SqlitePool, i64, &'static str)>,
-        /// The row whose request never returns, and where to say it started.
+        /// The row whose request stalls far past the cancel deadline, and where to say it started.
         hang_on: Option<(i64, std::sync::mpsc::Sender<()>)>,
     }
 
@@ -419,7 +412,10 @@ mod tests {
                 && *id == row.id
             {
                 started.send(()).unwrap();
-                std::future::pending::<()>().await;
+                // Bounded, so a cancel that misses the request fails the elapsed check instead of hanging.
+                tauri::async_runtime::spawn_blocking(|| std::thread::sleep(Duration::from_secs(5)))
+                    .await
+                    .unwrap();
             }
             (self.answer)(row)
         }

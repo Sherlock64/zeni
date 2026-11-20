@@ -6,10 +6,10 @@ use serde_json::{Value, json};
 use sqlx::{Row, SqlitePool};
 
 use crate::categorize::{system_prompt, user_prompt};
-use crate::ollama::{self, Ollama};
+use crate::ollama;
 use crate::types::{
-    AppError, AppState, BuildRequest, JobKind, JobOutcome, JobStatus, ModelBuild, OllamaSettings,
-    PromptCategory, PromptRow,
+    AppError, AppState, BuildPlan, BuildPreview, BuildRequest, JobKind, JobOutcome, JobStatus,
+    ModelBuild, Ollama, OllamaSettings, PromptCategory, PromptRow,
 };
 use crate::{jobs, security};
 
@@ -92,11 +92,50 @@ async fn examples(
     Ok(picked)
 }
 
-/// The new build's id, label, example count and its `/api/create` body.
-async fn prepare(
-    pool: &SqlitePool,
-    settings: &OllamaSettings,
-) -> Result<(i64, String, u32, Value), AppError> {
+/// Estimated tokens in a message: about three characters a token, plus 4 for the role.
+fn message_cost(content: &str) -> u64 {
+    content.chars().count().div_ceil(3) as u64 + 4
+}
+
+/// The candidates that fit window `window`, as indexes in candidate order. `candidates` are
+/// `(category, cost)` in category order; they are taken by rank across categories, the first
+/// round always whole, stopping at the first that would pass the budget.
+fn fit(candidates: &[(&str, u64)], window: u32, system: &str) -> Vec<usize> {
+    if candidates.is_empty() {
+        return Vec::new();
+    }
+    let costs: u64 = candidates.iter().map(|(_, cost)| cost).sum();
+    let mean = costs.div_ceil(candidates.len() as u64);
+    // Five examples of headroom for the row being categorized and the reply.
+    let budget = i64::from(window) - message_cost(system) as i64 - 5 * mean as i64;
+    let mut groups: Vec<Vec<usize>> = Vec::new();
+    for (index, (category, _)) in candidates.iter().enumerate() {
+        match groups.last_mut() {
+            Some(group) if candidates[group[0]].0 == *category => group.push(index),
+            _ => groups.push(vec![index]),
+        }
+    }
+    let mut chosen = Vec::new();
+    let mut total = 0i64;
+    'rounds: for rank in 0.. {
+        let round: Vec<usize> = groups.iter().filter_map(|g| g.get(rank).copied()).collect();
+        if round.is_empty() {
+            break;
+        }
+        for index in round {
+            let cost = candidates[index].1 as i64;
+            if rank > 0 && total + cost > budget {
+                break 'rounds;
+            }
+            total += cost;
+            chosen.push(index);
+        }
+    }
+    chosen.sort_unstable();
+    chosen
+}
+
+async fn build_plan(pool: &SqlitePool, settings: &OllamaSettings) -> Result<BuildPlan, AppError> {
     let base = settings
         .base_model
         .clone()
@@ -112,29 +151,75 @@ async fn prepare(
     )
     .fetch_all(pool)
     .await?;
+    let system = system_prompt(&categories);
+    let window = Ollama::from_settings(pool)
+        .await?
+        .context_window(&base)
+        .await?;
+    let (candidates, costs): (Vec<_>, Vec<_>) = examples
+        .iter()
+        .map(|(row, category)| {
+            let user = user_prompt(row);
+            let assistant = json!({ "category": category }).to_string();
+            let cost = message_cost(&user) + message_cost(&assistant);
+            ((user, assistant), (category.as_str(), cost))
+        })
+        .unzip();
+    let fitting = fit(&costs, window, &system);
+    Ok(BuildPlan {
+        base,
+        system,
+        candidates,
+        fit: fitting,
+        window,
+    })
+}
+
+/// The window and how many of the next build's examples fit it.
+pub async fn preview(state: &AppState) -> Result<BuildPreview, AppError> {
+    let pool = security::pool(state)?;
+    let plan = build_plan(&pool, &ollama::settings(state).await?).await?;
+    Ok(BuildPreview {
+        window_tokens: plan.window,
+        fit: plan.fit.len() as u32,
+        total: plan.candidates.len() as u32,
+    })
+}
+
+/// The new build's id, label, example count and its `/api/create` body.
+async fn prepare(
+    pool: &SqlitePool,
+    settings: &OllamaSettings,
+) -> Result<(i64, String, u32, Value), AppError> {
+    let plan = build_plan(pool, settings).await?;
+    let used: Vec<&(String, String)> = if settings.allow_over_window {
+        plan.candidates.iter().collect()
+    } else {
+        plan.fit
+            .iter()
+            .map(|&index| &plan.candidates[index])
+            .collect()
+    };
     let id: i64 = sqlx::query_scalar("SELECT COALESCE(MAX(id), 0) + 1 FROM model_builds")
         .fetch_one(pool)
         .await?;
-    let messages: Vec<Value> = examples
+    let messages: Vec<Value> = used
         .iter()
-        .flat_map(|(row, category)| {
+        .flat_map(|(user, assistant)| {
             [
-                json!({ "role": "user", "content": user_prompt(row) }),
-                json!({
-                    "role": "assistant",
-                    "content": json!({ "category": category }).to_string(),
-                }),
+                json!({ "role": "user", "content": user }),
+                json!({ "role": "assistant", "content": assistant }),
             ]
         })
         .collect();
     let body = json!({
         "model": format!("zeni-{id}"),
-        "from": base,
-        "system": system_prompt(&categories),
+        "from": plan.base,
+        "system": plan.system,
         "messages": messages,
         "stream": true,
     });
-    Ok((id, format!("Build zeni-{id}"), examples.len() as u32, body))
+    Ok((id, format!("Build zeni-{id}"), used.len() as u32, body))
 }
 
 /// Stores the build Ollama just created.
@@ -237,22 +322,37 @@ mod tests {
     type Requests = Arc<Mutex<Vec<(String, Value)>>>;
 
     /// A tiny HTTP stub on 127.0.0.1 standing in for Ollama: `create` answers `create_status`,
-    /// `delete` answers 404. Records `(method path, body)`.
+    /// `show` answers with `num_ctx`, `delete` answers 404. Records `(method path, body)`.
     fn stub(create_status: u16) -> (u16, Requests) {
+        stub_window(create_status, 4096, None)
+    }
+
+    /// Holds `create` replies until the test sends on the gate's channel.
+    type Gate = Option<Arc<Mutex<std::sync::mpsc::Receiver<()>>>>;
+
+    fn stub_window(create_status: u16, num_ctx: u32, gate: Gate) -> (u16, Requests) {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
         let requests: Requests = Default::default();
         let seen = requests.clone();
         std::thread::spawn(move || {
             for stream in listener.incoming() {
-                let seen = seen.clone();
-                std::thread::spawn(move || serve(stream.unwrap(), &seen, create_status));
+                let (seen, gate) = (seen.clone(), gate.clone());
+                std::thread::spawn(move || {
+                    serve(stream.unwrap(), &seen, create_status, num_ctx, gate)
+                });
             }
         });
         (port, requests)
     }
 
-    fn serve(mut stream: TcpStream, seen: &Mutex<Vec<(String, Value)>>, create_status: u16) {
+    fn serve(
+        mut stream: TcpStream,
+        seen: &Mutex<Vec<(String, Value)>>,
+        create_status: u16,
+        num_ctx: u32,
+        gate: Gate,
+    ) {
         let mut reader = BufReader::new(stream.try_clone().unwrap());
         let mut request_line = String::new();
         reader.read_line(&mut request_line).unwrap();
@@ -276,7 +376,14 @@ mod tests {
             .take(2)
             .collect::<Vec<_>>()
             .join(" ");
+        if target == "POST /api/create"
+            && let Some(gate) = &gate
+        {
+            gate.lock().unwrap().recv().unwrap();
+        }
+        let show = json!({ "parameters": format!("num_ctx {num_ctx}") }).to_string();
         let (status, reply) = match (target.as_str(), create_status) {
+            ("POST /api/show", _) => (200, show.as_str()),
             ("POST /api/create", 200) => (200, r#"{"status":"success"}"#),
             ("POST /api/create", status) => (status, r#"{"error":"boom"}"#),
             _ => (404, r#"{"error":"model not found"}"#),
@@ -503,7 +610,8 @@ mod tests {
     #[test]
     fn build_sends_create_and_stores_what_it_sent_after_success() {
         let f = fixture("build");
-        let (port, requests) = stub(200);
+        let (release, held) = std::sync::mpsc::channel();
+        let (port, requests) = stub_window(200, 4096, Some(Arc::new(Mutex::new(held))));
         f.port(port);
         f.exec("INSERT INTO app_meta (key, value) VALUES ('ollama_base_model', 'phi4-mini')");
         f.exec("UPDATE categories SET description = '' WHERE name <> 'Groceries'");
@@ -513,13 +621,20 @@ mod tests {
 
         let started = run(start(&f.state)).unwrap();
         assert_eq!(started.running.unwrap().label, "Build zeni-1");
-        // One job at a time.
+        // One job at a time: the create reply is held until the second start is refused.
         assert!(matches!(run(start(&f.state)), Err(AppError::Busy(_))));
+        release.send(()).unwrap();
         let last = f.wait_until_idle().last.unwrap();
         assert_eq!(last.error, None);
 
-        let sent = requests.lock().unwrap()[0].clone();
-        assert_eq!(sent.0, "POST /api/create");
+        let requests = requests.lock().unwrap().clone();
+        assert_eq!(requests[0].0, "POST /api/show");
+        let creates: Vec<_> = requests
+            .into_iter()
+            .filter(|(target, _)| target == "POST /api/create")
+            .collect();
+        assert_eq!(creates.len(), 1);
+        let sent = creates[0].clone();
         let body = sent.1;
         assert_eq!(body["model"], "zeni-1");
         assert_eq!(body["from"], "phi4-mini");
@@ -550,6 +665,153 @@ mod tests {
         let stored: String =
             run(sqlx::query_scalar("SELECT sent FROM model_builds").fetch_one(&f.pool())).unwrap();
         assert_eq!(serde_json::from_str::<Value>(&stored).unwrap(), body);
+    }
+
+    /// 22 categories of `per` examples costing `cost` each, in category order.
+    fn candidates(names: &[String], per: usize, cost: u64) -> Vec<(&str, u64)> {
+        names
+            .iter()
+            .flat_map(|name| std::iter::repeat_n((name.as_str(), cost), per))
+            .collect()
+    }
+
+    fn names() -> Vec<String> {
+        (0..22).map(|i| format!("c{i}")).collect()
+    }
+
+    #[test]
+    fn fit_matches_the_prd_example() {
+        // 1,800 characters is 600 tokens plus 4; B = 4096 - 604 - 500 = 2,992.
+        let system = "x".repeat(1800);
+        let names = names();
+        let chosen = fit(&candidates(&names, 20, 100), 4096, &system);
+        assert_eq!(chosen.len(), 29);
+        // Round 1 is every category's first; round 2 stops after the 7th category's second.
+        let ranks: Vec<(usize, usize)> = chosen.iter().map(|i| (i / 20, i % 20)).collect();
+        assert!((0..22).all(|c| ranks.contains(&(c, 0))));
+        assert_eq!(ranks.iter().filter(|(_, rank)| *rank == 1).count(), 7);
+        assert!((0..7).all(|c| ranks.contains(&(c, 1))));
+        assert!(chosen.windows(2).all(|pair| pair[0] < pair[1]));
+    }
+
+    #[test]
+    fn fit_always_takes_the_first_round_whole() {
+        let system = "x".repeat(1800);
+        let names = names();
+        let chosen = fit(&candidates(&names, 20, 200), 4096, &system);
+        assert_eq!(chosen, (0..22).map(|c| c * 20).collect::<Vec<_>>());
+        assert!(fit(&[], 4096, &system).is_empty());
+        // Everything fits a large window.
+        assert_eq!(
+            fit(&candidates(&names, 20, 100), 100_000, &system).len(),
+            440
+        );
+    }
+
+    #[test]
+    fn message_cost_rounds_characters_up() {
+        assert_eq!(message_cost(""), 4);
+        assert_eq!(message_cost("abc"), 5);
+        assert_eq!(message_cost("abcd"), 6);
+        // Characters, not bytes.
+        assert_eq!(message_cost("ééé"), 5);
+    }
+
+    #[test]
+    fn fit_rounds_the_mean_example_cost_up() {
+        // Mean 31/3 rounds up to 11: B = 87 - 4 - 55 = 28, so a's second example (total 31) doesn't fit
+        // (rounding down would give B = 33 and take it).
+        let chosen = fit(&[("a", 10), ("a", 10), ("b", 11)], 87, "");
+        assert_eq!(chosen, [0, 2]);
+    }
+
+    #[test]
+    fn fit_stops_at_the_first_overflow_instead_of_skipping_it() {
+        // A = ceil(53/4) = 14, B = 100 - 4 - 70 = 26: a's 50 overflows, so b's later 1 isn't taken.
+        let chosen = fit(&[("a", 1), ("a", 50), ("b", 1), ("b", 1)], 100, "");
+        assert_eq!(chosen, [0, 2]);
+    }
+
+    #[test]
+    fn fit_takes_an_example_that_lands_exactly_on_the_budget() {
+        // A = 10, B = 84 - 4 - 50 = 30: round 1 is 20, a's second makes exactly 30.
+        let chosen = fit(&[("a", 10), ("a", 10), ("b", 10)], 84, "");
+        assert_eq!(chosen, [0, 1, 2]);
+    }
+
+    #[test]
+    fn preview_reports_errors_from_ollama_and_missing_examples() {
+        let f = fixture("preview-errors");
+        assert_eq!(
+            error_json(run(preview(&f.state)).unwrap_err()),
+            json!({ "kind": "Ollama", "message": "Pick a model in Settings first." })
+        );
+        f.exec("INSERT INTO app_meta (key, value) VALUES ('ollama_base_model', 'phi4-mini')");
+        assert_eq!(
+            error_json(run(preview(&f.state)).unwrap_err()),
+            json!({
+                "kind": "Validation",
+                "message": "Review some rows first: a build needs at least one example.",
+            })
+        );
+        f.reviewed(1, "2026-10-01", "Fresh Mart", "Groceries");
+        let port = TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        f.port(port);
+        assert!(matches!(run(preview(&f.state)), Err(AppError::Ollama(_))));
+    }
+
+    /// Two categories of two reviewed rows, under a window too small for more than round 1.
+    fn trimmed(name: &str) -> Fixture {
+        let f = fixture(name);
+        let (port, _) = stub_window(200, 300, None);
+        f.port(port);
+        f.exec("INSERT INTO app_meta (key, value) VALUES ('ollama_base_model', 'phi4-mini')");
+        f.reviewed(1, "2026-10-01", "Fresh Mart", "Groceries");
+        f.reviewed(2, "2026-10-02", "Corner Shop", "Groceries");
+        f.reviewed(3, "2026-10-01", "Paycheck", "Paycheck");
+        f.reviewed(4, "2026-10-02", "Bonus", "Paycheck");
+        f
+    }
+
+    #[test]
+    fn a_build_uses_the_examples_that_fit_and_stores_that_count() {
+        let f = trimmed("trimmed");
+        let preview = run(preview(&f.state)).unwrap();
+        assert_eq!(
+            (preview.window_tokens, preview.fit, preview.total),
+            (300, 2, 4)
+        );
+        run(start(&f.state)).unwrap();
+        assert_eq!(f.wait_until_idle().last.unwrap().error, None);
+        let build = &f.builds()[0];
+        assert_eq!(build.example_count, 2);
+        let sent: String =
+            run(sqlx::query_scalar("SELECT sent FROM model_builds").fetch_one(&f.pool())).unwrap();
+        let sent: Value = serde_json::from_str(&sent).unwrap();
+        let users: Vec<&str> = sent["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|m| m["role"] == "user")
+            .map(|m| m["content"].as_str().unwrap())
+            .collect();
+        assert_eq!(users.len(), 2);
+        assert!(users[0].contains("Corner Shop") && users[1].contains("Bonus"));
+    }
+
+    #[test]
+    fn the_override_uses_every_example_and_keeps_the_preview_fit() {
+        let f = trimmed("override");
+        f.exec("INSERT INTO app_meta (key, value) VALUES ('build_over_window', '1')");
+        let preview = run(preview(&f.state)).unwrap();
+        assert_eq!((preview.fit, preview.total), (2, 4));
+        run(start(&f.state)).unwrap();
+        assert_eq!(f.wait_until_idle().last.unwrap().error, None);
+        assert_eq!(f.builds()[0].example_count, 4);
     }
 
     #[test]
@@ -654,6 +916,7 @@ mod tests {
         };
         assert!(matches!(run(list(&state)), Err(AppError::Database(_))));
         assert!(matches!(run(start(&state)), Err(AppError::Database(_))));
+        assert!(matches!(run(preview(&state)), Err(AppError::Database(_))));
         let request = || BuildRequest { id: 1 };
         assert!(matches!(
             run(activate(&state, request())),

@@ -79,6 +79,8 @@ vi.mock("@/lib/commands", () => ({
   unreviewedCount: vi.fn(),
   markReviewed: vi.fn(),
   listBuilds: vi.fn(),
+  buildPreview: vi.fn(),
+  setAllowOverWindow: vi.fn(),
   startBuild: vi.fn(),
   activateBuild: vi.fn(),
   deleteBuild: vi.fn(),
@@ -105,7 +107,7 @@ beforeEach(() => {
   // Pages, the banner and the Ollama card read these once their tasks fill them in.
   vi.mocked(listCategories).mockResolvedValue([]);
   vi.mocked(jobStatus).mockResolvedValue({ running: null, last: null });
-  vi.mocked(ollamaSettings).mockResolvedValue({ port: 11434, baseModel: null, autoCategorize: true, examplesPerCategory: 5 });
+  vi.mocked(ollamaSettings).mockResolvedValue({ port: 11434, baseModel: null, autoCategorize: true, examplesPerCategory: 5, allowOverWindow: false });
   vi.mocked(ollamaStatus).mockResolvedValue({ reachable: false, version: null, installed: [], recommended: [] });
   vi.mocked(reviewGroups).mockResolvedValue([]);
   vi.mocked(listBuilds).mockResolvedValue([]);
@@ -415,7 +417,7 @@ test("shows the update banner in the app only, never on setup or unlock", async 
   vi.mocked(securityStatus).mockResolvedValue({ state: "unlocked", keyringSaved: true, recoveryCodesLeft: 8 });
   await act(() => client.refetchQueries({ queryKey: ["security_status"] }));
   expect(await screen.findByText("Zeni 7.1.0 is available", { selector: "p:not([role])" })).toBeTruthy();
-  expect(screen.getByRole("button", { name: "Download" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Download Zeni 7.1.0 (opens in your browser)" })).toBeTruthy();
 });
 
 test("opens What's new after unlock when notes are pending, and acknowledges once on close", async () => {

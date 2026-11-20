@@ -6,7 +6,7 @@ import type { OllamaSettings } from "@/types/bindings/OllamaSettings";
 
 vi.mock("@/lib/commands", () => ({ ollamaSettings: vi.fn(), setAutoCategorize: vi.fn() }));
 
-const settings: OllamaSettings = { port: 11434, baseModel: "phi4-mini", autoCategorize: true, examplesPerCategory: 5 };
+const settings: OllamaSettings = { port: 11434, baseModel: "phi4-mini", autoCategorize: true, examplesPerCategory: 5, allowOverWindow: false };
 beforeEach(() => {
   vi.resetAllMocks();
   vi.mocked(ollamaSettings).mockResolvedValue(settings);

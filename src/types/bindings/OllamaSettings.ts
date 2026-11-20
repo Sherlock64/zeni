@@ -16,4 +16,8 @@ autoCategorize: boolean,
 /**
  * `app_meta` `build_examples`, 1..=20, absent means 5.
  */
-examplesPerCategory: number, };
+examplesPerCategory: number, 
+/**
+ * `app_meta` `build_over_window`, "1" or "0", absent means off: builds use every example.
+ */
+allowOverWindow: boolean, };

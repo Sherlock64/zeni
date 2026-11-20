@@ -1,5 +1,15 @@
 # Changelog
 
+## 7.2.0
+
+- Ollama job messages are clearer, with a link to Settings and Try again on Transactions.
+- Model builds now hold only as many examples as fit Ollama's context window, so categorizing no longer stalls on a large build; a new checkbox in Settings lets builds go past the window for larger Ollama setups.
+- Release notes offer Try again when they fail to load.
+- Progress bars and the note field now follow the app theme.
+- Screen readers hear when a link opens your browser, and the update button now reads "Download Zeni <version>".
+- "Select all like this" on Review shows on hover or focus.
+- General hardening and test fixes.
+
 ## 7.1.0
 
 - Screen readers now hear when an update is available and when release notes load.

@@ -54,4 +54,4 @@ Added in `0006_categories.sql`. Guide: [categories.md](categories.md). Design: [
 - `effective_categories` (view): per raw transaction, `category_id` (user, else the enabled winning nickname's default, else model), `set_by` (`user`, `nickname`, `model` or NULL), `reviewed` (always 1 for user and nickname), `model_build_id`, `note` and `nickname`. Every reader uses it.
 - Triggers `categories_out_of_date_insert`, `_update` and `_delete` set `out_of_date = 1` on every build after any category change.
 - `nicknames::rebuild` clears the model columns of rows whose enabled winning nickname has a default.
-- `app_meta` keys: `ollama_port` (absent means 11434), `ollama_base_model` (absent means none), `auto_categorize` (absent means on, `0` off) and `build_examples` (examples per category, 1-20; absent means 5).
+- `app_meta` keys: `ollama_port` (absent means 11434), `ollama_base_model` (absent means none), `auto_categorize` (absent means on, `0` off) and `build_examples` (examples per category, 1-20; absent means 5) and `build_over_window` (`1` builds use every example past Ollama's window, `0` trims to it; absent means off).

@@ -80,7 +80,7 @@ Each group shows 25 rows. Click **Show 25 more** to see the next 25.
 - **Looks good**: marks the rest of the group reviewed.
 - Change many rows at once: tick the boxes beside rows, then use the bar that shows "<n> selected". Pick a category in **Change selected to…**. The rows keep their notes. **Clear** unticks everything.
 - **Select all** in a group header ticks every row of the group, including rows not shown yet.
-- **Select all like this** on a row ticks every row, in all groups, with the same nickname or description.
+- **Select all like this** shows when you hover or focus a row. It ticks every row, in all groups, with the same nickname or description.
 
 To always categorize a merchant the same way, give its nickname a default category (see below).
 
@@ -97,6 +97,9 @@ Deleting a category without a replacement clears the defaults that used it.
 A build teaches the model from your rows. In the **Ollama** card, under **Model builds**:
 
 - **Build**: makes an Ollama model named `zeni-<number>` from the base model, your category list and examples. Examples come from rows set by you, set by a nickname, or set by the model and reviewed. A build takes up to N per category, newest first, using distinct nicknames or descriptions before repeats. Set N in **Examples per category** (1 to 20, default 5). A build needs at least one example.
+- **Context window**: a build holds only as many examples as fit Ollama's context window, with room for 5 more examples. The window is the base model's `num_ctx` in Ollama, else 4096 tokens. Examples are trimmed evenly: the first of each category, then the second of each, and so on. Under **Model builds**, a line says "All <total> examples fit Ollama's <window>-token window." or "The next build uses <fit> of <total> examples to fit Ollama's <window>-token window." The line appears once a base model is picked. If Ollama can't be reached, it says "Couldn't check Ollama's context window" with **Try again**. With no reviewed rows, it says "Review some rows first: a build needs at least one example." with no **Try again**.
+- **Use every example, even past Ollama's window**: a checkbox. When on, a build holds every example and the line says so. Categorizing may stall unless Ollama's context is larger. Raising it (for example `OLLAMA_CONTEXT_LENGTH` or a model `num_ctx`) needs more VRAM.
+- **Old builds**: a build made before this limit may be too large for the window. Rebuild it.
 - **Built model contents**: a built model holds the example rows it was trained on. Deleting a build in Zeni also removes its model from Ollama.
 - **Make active**: categorizing uses the active build. With none, it uses the base model.
 - **Delete**: asks to confirm, then removes the build from Ollama and the list. Deleting the active build falls back to the base model.

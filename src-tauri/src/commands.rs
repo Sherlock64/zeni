@@ -5,20 +5,20 @@ use tauri_plugin_dialog::{DialogExt, FilePath};
 
 use crate::keyring::SecretService;
 use crate::types::{
-    Account, AccountNumbers, AppError, AppInfo, AppState, BackupFile, BackupSettings, BuildRequest,
-    Category, CommitImportRequest, ContinueStartupRequest, CsvLayout, CsvMapping, CsvPreviewRow,
-    DeleteCategoryRequest, DeleteCsvLayoutRequest, DeleteNicknameRequest,
+    Account, AccountNumbers, AppError, AppInfo, AppState, BackupFile, BackupSettings, BuildPreview,
+    BuildRequest, Category, CommitImportRequest, ContinueStartupRequest, CsvLayout, CsvMapping,
+    CsvPreviewRow, DeleteCategoryRequest, DeleteCsvLayoutRequest, DeleteNicknameRequest,
     DeleteNicknameRuleRequest, ImportRecord, ImportStep, ImportSummary, JobStatus,
     MarkReviewedRequest, ModelBuild, NewCategory, Nickname, NicknameSettings, OllamaSettings,
     OllamaStatus, RecoverRequest, RecoveryCodes, ReleaseNotes, ReorderCategoriesRequest,
     RestoreBackupRequest, RevealAccountNumbersRequest, RevertImportRequest, ReviewGroup, RuleInput,
-    SaveCsvLayoutRequest, SaveNicknameRuleRequest, SecurityStatus, SetAutoCategorizeRequest,
-    SetBackupRetentionRequest, SetBaseModelRequest, SetExamplesPerCategoryRequest,
-    SetOllamaPortRequest, SetTransactionCategoryRequest, SetTransactionsCategoryRequest,
-    SetUpdateChecksRequest, SetupRequest, SetupResponse, SpendingQuery, SpendingSummary,
-    StartCategorizeRequest, StartModelDownloadRequest, Startup, StartupStatus, TransactionPage,
-    TransactionQuery, UnlockRequest, UpdateCategoryRequest, UpdateCsvLayoutRequest,
-    UpdateNicknameRequest, UpdateNicknameRuleRequest, UpdateStatus,
+    SaveCsvLayoutRequest, SaveNicknameRuleRequest, SecurityStatus, SetAllowOverWindowRequest,
+    SetAutoCategorizeRequest, SetBackupRetentionRequest, SetBaseModelRequest,
+    SetExamplesPerCategoryRequest, SetOllamaPortRequest, SetTransactionCategoryRequest,
+    SetTransactionsCategoryRequest, SetUpdateChecksRequest, SetupRequest, SetupResponse,
+    SpendingQuery, SpendingSummary, StartCategorizeRequest, StartModelDownloadRequest, Startup,
+    StartupStatus, TransactionPage, TransactionQuery, UnlockRequest, UpdateCategoryRequest,
+    UpdateCsvLayoutRequest, UpdateNicknameRequest, UpdateNicknameRuleRequest, UpdateStatus,
 };
 use crate::{
     accounts, backup, builds, categories, categorize, csv_layouts, db, imports, jobs, nicknames,
@@ -434,6 +434,14 @@ pub async fn set_examples_per_category(
 }
 
 #[tauri::command]
+pub async fn set_allow_over_window(
+    state: State<'_, AppState>,
+    request: SetAllowOverWindowRequest,
+) -> Result<OllamaSettings, AppError> {
+    ollama::set_allow_over_window(&state, request).await
+}
+
+#[tauri::command]
 pub async fn ollama_status(state: State<'_, AppState>) -> Result<OllamaStatus, AppError> {
     ollama::status(&state).await
 }
@@ -475,6 +483,11 @@ pub async fn mark_reviewed(
 #[tauri::command]
 pub async fn list_builds(state: State<'_, AppState>) -> Result<Vec<ModelBuild>, AppError> {
     builds::list(&state).await
+}
+
+#[tauri::command]
+pub async fn build_preview(state: State<'_, AppState>) -> Result<BuildPreview, AppError> {
+    builds::preview(&state).await
 }
 
 #[tauri::command]

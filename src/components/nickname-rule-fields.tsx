@@ -2,6 +2,7 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useEffect, useId, useState } from "react";
 import { CommandErrorAlert } from "@/components/command-error-alert";
 import { TextField } from "@/components/text-field";
+import { FieldLegend } from "@/components/ui/field";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { countRuleMatches } from "@/lib/commands";
@@ -68,7 +69,7 @@ export function NicknameRuleFields({ value, onChange, error }: NicknameRuleField
   return (
     <div className="flex flex-col gap-4">
       <fieldset className="flex flex-col gap-2">
-        <legend className="mb-2 text-sm leading-none font-medium">Mode</legend>
+        <FieldLegend variant="label">Mode</FieldLegend>
         <RadioGroup
           value={value.mode}
           onValueChange={(mode) => set({ mode: mode as MatchMode })}
@@ -85,7 +86,7 @@ export function NicknameRuleFields({ value, onChange, error }: NicknameRuleField
         </RadioGroup>
       </fieldset>
       <fieldset className="flex flex-col gap-2">
-        <legend className="mb-2 text-sm leading-none font-medium">Field</legend>
+        <FieldLegend variant="label">Field</FieldLegend>
         <RadioGroup
           value={value.field}
           onValueChange={(field) => set({ field: field as MatchField })}

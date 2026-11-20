@@ -24,6 +24,13 @@ mod tests {
     }
 
     #[test]
+    fn package_json_version_matches_cargo() {
+        let package: serde_json::Value =
+            serde_json::from_str(include_str!("../../package.json")).unwrap();
+        assert_eq!(package["version"], env!("CARGO_PKG_VERSION"));
+    }
+
+    #[test]
     fn parses_only_three_decimal_parts() {
         assert_eq!(parse("7.0.0"), Some((7, 0, 0)));
         assert_eq!(parse("7.10.0"), Some((7, 10, 0)));

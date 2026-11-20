@@ -28,34 +28,11 @@ async fn prepare_as(
     let failed = |error: AppError| StartupProblem::Failed(db::open_failed(&path, error));
     db::create_private_dir(data_dir).map_err(failed)?;
     let pool = db::open_unmigrated(&path).await.map_err(failed)?;
-    let result = check_and_migrate(&pool, &path, allow_without_backup, app).await;
-    match result {
-        Ok(()) => Ok(Database { pool, path }),
-        Err(problem) => {
-            pool.close().await;
-            Err(match problem {
-                Problem::Blocked(status) => StartupProblem::Blocked(status),
-                Problem::Error(error) => failed(error),
-            })
-        }
+    if let Err(problem) = check_and_migrate(&pool, &path, allow_without_backup, app).await {
+        pool.close().await;
+        return Err(problem);
     }
-}
-
-enum Problem {
-    Blocked(StartupStatus),
-    Error(AppError),
-}
-
-impl From<AppError> for Problem {
-    fn from(error: AppError) -> Self {
-        Self::Error(error)
-    }
-}
-
-impl From<sqlx::Error> for Problem {
-    fn from(error: sqlx::Error) -> Self {
-        Self::Error(error.into())
-    }
+    Ok(Database { pool, path })
 }
 
 async fn check_and_migrate(
@@ -63,49 +40,75 @@ async fn check_and_migrate(
     path: &Path,
     allow_without_backup: bool,
     app: &str,
-) -> Result<(), Problem> {
+) -> Result<(), StartupProblem> {
+    let failed = |error: AppError| StartupProblem::Failed(db::open_failed(path, error));
     let app_version = version::parse(app);
     // No migrations table: a new (or never migrated) file, so there is nothing to back up.
     let fresh: bool = sqlx::query_scalar(
         "SELECT NOT EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = '_sqlx_migrations')",
     )
     .fetch_one(pool)
-    .await?;
+    .await
+    .map_err(|error| failed(error.into()))?;
     let mut since = None;
     if !fresh {
-        let last = db::meta(pool, "last_run_version").await?;
+        let last = db::meta(pool, "last_run_version")
+            .await
+            .map_err(failed)?
+            .filter(|last| version::parse(last).is_some());
         let last_parsed = last.as_deref().and_then(version::parse);
-        let applied: Vec<i64> = sqlx::query_scalar("SELECT version FROM _sqlx_migrations")
-            .fetch_all(pool)
-            .await?;
-        let known = sqlx::migrate!("./migrations").migrations;
-        let unknown = applied
-            .iter()
-            .any(|v| !known.iter().any(|migration| migration.version == *v));
-        if unknown || last_parsed > app_version {
-            return Err(Problem::Blocked(StartupStatus::NewerData {
-                version: last.filter(|_| last_parsed.is_some()),
+        if blocked_by_newer_data(pool, last_parsed, app_version)
+            .await
+            .map_err(failed)?
+        {
+            return Err(StartupProblem::Blocked(StartupStatus::NewerData {
+                version: last,
             }));
         }
         // An unreadable last run version counts as older: backing up is the safe side.
         if last_parsed.is_none() || last_parsed < app_version {
-            if !allow_without_backup && let Err(error) = backup::pre_update(pool, path).await {
-                return Err(Problem::Blocked(StartupStatus::BackupFailed {
-                    reason: error.to_string(),
-                }));
+            if !allow_without_backup {
+                back_up_before_migrating(pool, path).await?;
             }
-            since = Some(
-                last.filter(|_| last_parsed.is_some())
-                    .unwrap_or("0.0.0".into()),
-            );
+            since = Some(last.unwrap_or("0.0.0".into()));
         }
     }
-    db::migrate(pool).await?;
+    db::migrate(pool).await.map_err(failed)?;
     // Notes first: a crash before the version write just repeats the upgrade next launch.
     if let Some(since) = since {
-        db::set_meta(pool, "release_notes_since", &since).await?;
+        db::set_meta(pool, "release_notes_since", &since)
+            .await
+            .map_err(failed)?;
     }
-    db::set_meta(pool, "last_run_version", app).await?;
+    db::set_meta(pool, "last_run_version", app)
+        .await
+        .map_err(failed)?;
+    Ok(())
+}
+
+/// True when the data was last run by a newer app or has migrations this app doesn't know.
+async fn blocked_by_newer_data(
+    pool: &SqlitePool,
+    last: Option<(u64, u64, u64)>,
+    app: Option<(u64, u64, u64)>,
+) -> Result<bool, AppError> {
+    let applied: Vec<i64> = sqlx::query_scalar("SELECT version FROM _sqlx_migrations")
+        .fetch_all(pool)
+        .await?;
+    let known = sqlx::migrate!("./migrations").migrations;
+    let unknown = applied
+        .iter()
+        .any(|v| !known.iter().any(|migration| migration.version == *v));
+    Ok(unknown || last > app)
+}
+
+/// Takes the `pre-update` backup; a failure blocks startup with its reason.
+async fn back_up_before_migrating(pool: &SqlitePool, path: &Path) -> Result<(), StartupProblem> {
+    backup::pre_update(pool, path).await.map_err(|error| {
+        StartupProblem::Blocked(StartupStatus::BackupFailed {
+            reason: error.to_string(),
+        })
+    })?;
     Ok(())
 }
 

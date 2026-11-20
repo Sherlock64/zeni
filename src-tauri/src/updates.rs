@@ -122,8 +122,8 @@ pub async fn set_enabled(
 /// The launch check: once a day when checks are on; failures are stored, not returned.
 pub async fn launch_check(state: &AppState) {
     // A database error here leaves the check for the next launch; nothing to show.
-    if let Ok(today) = today(state).await {
-        launch_with(state, &today, github).await
+    if let Ok(date) = today(state).await {
+        launch_with(state, &date, github).await
     }
 }
 
@@ -201,8 +201,7 @@ async fn check_with(
         date: today.into(),
         result,
     };
-    let json =
-        serde_json::to_string(&check).map_err(|error| AppError::Database(error.to_string()))?;
+    let json = serde_json::to_string(&check)?;
     set_meta(&pool, LAST_KEY, &json).await?;
     load(&pool, &path).await
 }

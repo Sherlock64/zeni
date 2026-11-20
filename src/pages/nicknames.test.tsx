@@ -526,7 +526,14 @@ test("deletes one of several rules after confirming, then focuses the nickname's
   expect(screen.getByText("IRONWORKS GYM", { selector: "code" }).closest("tr")!.textContent).not.toContain("Never matched");
   expect(screen.queryByRole("button", { name: "Actions for rule IRONWORKS GYM" })).toBeNull();
   fireEvent.keyDown(screen.getByRole("button", { name: "Actions for Gym" }), { key: "Enter" });
-  expect((await screen.findAllByRole("menuitem")).map((item) => item.textContent)).toContain("Edit rule");
+  const after = await screen.findAllByRole("menuitem");
+  expect(after.map((item) => [item.textContent, item.getAttribute("aria-disabled") === "true"])).toEqual([
+    ["Rename", false],
+    ["Add rule", false],
+    ["Edit rule", false],
+    ["Delete ruleA nickname needs at least one rule. Delete the nickname instead.", true],
+    ["Delete nickname", false],
+  ]);
 });
 
 test("a failed rule delete shows the error in the dialog; Cancel deletes nothing and returns focus", async () => {

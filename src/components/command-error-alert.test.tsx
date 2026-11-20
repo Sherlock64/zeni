@@ -21,3 +21,20 @@ test("shows a backtick-quoted command as code", () => {
   expect(screen.getByText("ollama serve").tagName).toBe("CODE");
   expect(screen.queryByText(/`/)).toBeNull();
 });
+
+test("a NotFound error says to reload the page", () => {
+  render(<CommandErrorAlert title="Couldn't load" error={{ kind: "NotFound", message: "That import no longer exists." }} />);
+  expect(screen.getByText("It may have been removed. Reload the page and try again.")).toBeTruthy();
+});
+
+test("the caller's next step replaces the default", () => {
+  render(
+    <CommandErrorAlert
+      title="Couldn't save"
+      error={{ kind: "NotFound", message: "That category no longer exists." }}
+      nextStep="Close this dialog and try again."
+    />,
+  );
+  expect(screen.getByText("Close this dialog and try again.")).toBeTruthy();
+  expect(screen.queryByText(/Reload the page/)).toBeNull();
+});

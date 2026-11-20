@@ -48,12 +48,14 @@ import {
   setBackupRetention,
   setBaseModel,
   setExamplesPerCategory,
+  setAllowOverWindow,
   setNicknameStaleDays,
   setOllamaPort,
   setTransactionCategory,
   setTransactionsCategory,
   spendingSummary,
   startBuild,
+  buildPreview,
   startCategorize,
   startModelDownload,
   undoRestore,
@@ -318,7 +320,13 @@ test("category, Ollama, job, review, build and spending wrappers invoke their co
     nicknameCount: 1,
   } as const;
   const newCategory = { name: "Groceries", description: "Supermarkets", kind: "spending" } as const;
-  const settings = { port: 11434, baseModel: "phi4-mini", autoCategorize: true, examplesPerCategory: 5 };
+  const settings = {
+    port: 11434,
+    baseModel: "phi4-mini",
+    autoCategorize: true,
+    examplesPerCategory: 5,
+    allowOverWindow: false,
+  };
   const job = {
     running: { kind: "categorizeNow", label: "Categorize now", done: 1, total: 3 },
     last: null,
@@ -367,6 +375,7 @@ test("category, Ollama, job, review, build and spending wrappers invoke their co
       { request: { count: 3 } },
       settings,
     ],
+    [() => setAllowOverWindow({ enabled: true }), "set_allow_over_window", { request: { enabled: true } }, settings],
     [ollamaStatus, "ollama_status", undefined, { reachable: false, version: null, installed: [], recommended: [] }],
     [() => startModelDownload({ name: "phi4-mini" }), "start_model_download", { request: { name: "phi4-mini" } }, job],
     [jobStatus, "job_status", undefined, job],
@@ -382,6 +391,7 @@ test("category, Ollama, job, review, build and spending wrappers invoke their co
     [unreviewedCount, "unreviewed_count", undefined, 3],
     [() => markReviewed({ transactionIds: [7] }), "mark_reviewed", { request: { transactionIds: [7] } }, null],
     [listBuilds, "list_builds", undefined, []],
+    [buildPreview, "build_preview", undefined, { windowTokens: 4096, fit: 29, total: 110 }],
     [startBuild, "start_build", undefined, job],
     [() => activateBuild({ id: 2 }), "activate_build", { request: { id: 2 } }, null],
     [() => deleteBuild({ id: 2 }), "delete_build", { request: { id: 2 } }, null],

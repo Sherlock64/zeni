@@ -14,16 +14,39 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useJobStatus } from "@/hooks/use-job-status";
-import { activateBuild, deleteBuild, listBuilds, ollamaSettings, ollamaStatus, setExamplesPerCategory, startBuild } from "@/lib/commands";
+import {
+  activateBuild,
+  buildPreview,
+  deleteBuild,
+  listBuilds,
+  ollamaSettings,
+  ollamaStatus,
+  setAllowOverWindow,
+  setExamplesPerCategory,
+  startBuild,
+} from "@/lib/commands";
+import { runningJobLabel } from "@/lib/job-label";
 import { formatDate } from "@/lib/dates";
 import { BUILDS_KEY, JOB_STATUS_KEY, OLLAMA_SETTINGS_KEY, OLLAMA_STATUS_KEY } from "@/lib/query-keys";
+import type { BuildPreview } from "@/types/bindings/BuildPreview";
 import type { ModelBuild } from "@/types/bindings/ModelBuild";
+import type { OllamaSettings } from "@/types/bindings/OllamaSettings";
+import type { CommandError } from "@/types/command";
 
-// The backend labels a build job "Build zeni-<n>".
-const buildingLabel = (label: string) => `${label.replace(/^Build /, "Building ")}…`;
+const PREVIEW_KEY = ["build_preview"] as const;
+
+function previewText({ windowTokens, fit, total }: BuildPreview, allowOverWindow: boolean) {
+  const windowText = `Ollama's ${windowTokens.toLocaleString("en-US")}-token window`;
+  if (fit >= total) return `All ${total} examples fit ${windowText}.`;
+  if (allowOverWindow)
+    return `The next build uses all ${total} examples, past ${windowText}. Categorizing may stall unless Ollama's context is larger.`;
+  return `The next build uses ${fit} of ${total} examples to fit ${windowText}.`;
+}
 
 export function ModelBuildsSection() {
   const queryClient = useQueryClient();
@@ -31,6 +54,9 @@ export function ModelBuildsSection() {
   const settings = useQuery({ queryKey: OLLAMA_SETTINGS_KEY, queryFn: ollamaSettings });
   const status = useQuery({ queryKey: OLLAMA_STATUS_KEY, queryFn: ollamaStatus });
   const job = useJobStatus();
+  const baseModel = settings.data?.baseModel;
+  // The base model is in the key so picking another one rechecks its window.
+  const preview = useQuery({ queryKey: [...PREVIEW_KEY, baseModel], queryFn: buildPreview, enabled: Boolean(baseModel) });
   const id = useId();
   const heading = useRef<HTMLHeadingElement>(null);
   const opener = useRef<HTMLButtonElement | null>(null);
@@ -40,6 +66,8 @@ export function ModelBuildsSection() {
   const [examplesRangeError, setExamplesRangeError] = useState(false);
   // Show a build's outcome only when this section saw it run, so an old one doesn't linger.
   const [sawBuild, setSawBuild] = useState(false);
+  // A refetch from an error with no data goes back to pending, so keep the error up while trying again.
+  const [retriedError, setRetriedError] = useState<CommandError | null>(null);
 
   // A build or a delete changes the models Ollama has installed.
   const refreshBuilds = () => {
@@ -66,9 +94,18 @@ export function ModelBuildsSection() {
       setDeleteOpen(false);
     },
   });
+  // Both settings change what the next build uses, so recheck the preview.
+  const savedSettings = (saved: OllamaSettings) => {
+    queryClient.setQueryData(OLLAMA_SETTINGS_KEY, saved);
+    queryClient.invalidateQueries({ queryKey: PREVIEW_KEY });
+  };
   const saveExamples = useMutation({
     mutationFn: setExamplesPerCategory,
-    onSuccess: (saved) => queryClient.setQueryData(OLLAMA_SETTINGS_KEY, saved),
+    onSuccess: savedSettings,
+  });
+  const overWindow = useMutation({
+    mutationFn: setAllowOverWindow,
+    onSuccess: savedSettings,
   });
 
   const running = job.data?.running ?? null;
@@ -84,6 +121,7 @@ export function ModelBuildsSection() {
       wasBuilding.current = false;
       queryClient.invalidateQueries({ queryKey: BUILDS_KEY });
       queryClient.invalidateQueries({ queryKey: OLLAMA_STATUS_KEY });
+      queryClient.invalidateQueries({ queryKey: PREVIEW_KEY });
     }
   }, [building, queryClient]);
 
@@ -93,7 +131,7 @@ export function ModelBuildsSection() {
       : settings.data && !settings.data.baseModel
         ? "Pick a base model to build."
         : running && !building
-          ? `${running.label} is running.`
+          ? runningJobLabel(running)
           : null;
   const buildBlocked = Boolean(reason) || Boolean(building) || start.isPending || !status.data || !settings.data;
   const active = builds.data?.find((build) => build.active);
@@ -129,6 +167,18 @@ export function ModelBuildsSection() {
     setExamplesRangeError(!valid);
     if (valid) saveExamples.mutate({ count: value });
   }
+
+  async function retryPreview() {
+    if (preview.isFetching || !preview.error) return;
+    setRetriedError(preview.error);
+    const result = await preview.refetch();
+    setRetriedError(null);
+    // Try again unmounts on success and on the no-examples error, so don't leave focus on nothing.
+    if (result.isSuccess || result.error?.kind === "Validation") heading.current?.focus();
+  }
+
+  const previewError = preview.error ?? retriedError;
+  const allowOverWindow = overWindow.isPending ? overWindow.variables.enabled : Boolean(settings.data?.allowOverWindow);
 
   return (
     <section aria-labelledby={`${id}-heading`} className="flex flex-col gap-4">
@@ -173,6 +223,56 @@ export function ModelBuildsSection() {
         </form>
       )}
 
+      {baseModel &&
+        (previewError ? (
+          <div className="flex flex-col items-start gap-3">
+            {/* A new key remounts the alert, so a repeat failure is announced again. */}
+            <CommandErrorAlert
+              key={preview.errorUpdatedAt}
+              title="Couldn't check Ollama's context window"
+              error={previewError}
+              // "Review some rows first" already says what to do.
+              nextStep={previewError.kind === "Validation" ? "" : undefined}
+            />
+            {/* Trying again can't help until rows are reviewed. */}
+            {previewError.kind !== "Validation" && (
+              <Button variant="outline" aria-disabled={preview.isFetching} onClick={retryPreview}>
+                {preview.isFetching ? "Trying again…" : "Try again"}
+              </Button>
+            )}
+          </div>
+        ) : !preview.data ? (
+          <Skeleton role="status" aria-label="Checking Ollama's context window…" className="h-5 w-96 max-w-full" />
+        ) : (
+          <p aria-live="polite" className="text-sm">
+            {previewText(preview.data, allowOverWindow)}
+          </p>
+        ))}
+      {settings.isSuccess && (
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id={`${id}-over-window`}
+              aria-describedby={`${id}-over-window-hint`}
+              aria-disabled={overWindow.isPending}
+              className="aria-disabled:opacity-50"
+              checked={allowOverWindow}
+              onCheckedChange={(checked) => {
+                if (overWindow.isPending) return;
+                overWindow.mutate({ enabled: checked === true });
+              }}
+            />
+            <Label htmlFor={`${id}-over-window`}>Use every example, even past Ollama's window</Label>
+          </div>
+          <p id={`${id}-over-window-hint`} className="pl-6 text-sm text-muted-foreground">
+            For Ollama set up with a larger context and enough VRAM.
+          </p>
+          {overWindow.isError && (
+            <CommandErrorAlert title="Couldn't save the window setting" error={overWindow.error} />
+          )}
+        </div>
+      )}
+
       {rebuild && active && (
         <p className="text-sm">
           {active.name} is out of date: your categories changed since it was built. Rebuild so it learns the new list.
@@ -180,7 +280,7 @@ export function ModelBuildsSection() {
       )}
       <div className="flex flex-wrap items-center gap-3">
         <Button aria-disabled={buildBlocked} aria-describedby={reason ? `${id}-reason` : undefined} onClick={build}>
-          {building ? buildingLabel(building.label) : start.isPending ? "Starting…" : rebuild ? "Rebuild" : "Build"}
+          {building ? runningJobLabel(building) : start.isPending ? "Starting…" : rebuild ? "Rebuild" : "Build"}
         </Button>
         {reason && (
           <p id={`${id}-reason`} className="text-sm text-muted-foreground">

@@ -18,7 +18,7 @@ The package recommends `gnome-keyring`, which keeps Zeni unlocked between starts
 
 ## Update
 
-1. When a newer version is out, Zeni shows a banner "Zeni <version> is available". Click **Download** to open its release page. You can also open **Settings > About** and click **Check now**.
+1. When a newer version is out, Zeni shows a banner "Zeni <version> is available". Click **Download Zeni <version>** to open its release page. You can also open **Settings > About** and click **Check now**.
 2. Download the new `.deb` and install it over the old one with the same `sudo apt install ./<file>.deb` command.
 3. Open Zeni. Zeni never installs updates by itself.
 

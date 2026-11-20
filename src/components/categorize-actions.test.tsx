@@ -1,4 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { createMemoryHistory, createRootRoute, createRoute, createRouter, RouterProvider } from "@tanstack/react-router";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { CategorizeActions } from "@/components/categorize-actions";
 import { jobStatus, ollamaSettings, ollamaStatus, startCategorize } from "@/lib/commands";
@@ -13,7 +14,10 @@ vi.mock("@/lib/commands", () => ({
   startCategorize: vi.fn(),
 }));
 
-const settings: OllamaSettings = { port: 11434, baseModel: "phi4-mini", autoCategorize: true, examplesPerCategory: 5 };
+// The router scrolls on navigation; jsdom has no scrolling.
+window.scrollTo = () => {};
+
+const settings: OllamaSettings = { port: 11434, baseModel: "phi4-mini", autoCategorize: true, examplesPerCategory: 5, allowOverWindow: false };
 const reachable: OllamaStatus = { reachable: true, version: "0.12.6", installed: [{ name: "phi4-mini", sizeBytes: 1 }], recommended: [] };
 const idle: JobStatus = { running: null, last: null };
 const started: JobStatus = { running: { kind: "categorizeNow", label: "Categorize now", done: 0, total: 42 }, last: null };
@@ -26,10 +30,13 @@ beforeEach(() => {
 });
 
 function renderActions() {
+  const rootRoute = createRootRoute({ component: CategorizeActions });
+  const routeTree = rootRoute.addChildren([createRoute({ getParentRoute: () => rootRoute, path: "/settings" })]);
+  const router = createRouter({ routeTree, history: createMemoryHistory({ initialEntries: ["/"] }) });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={client}>
-      <CategorizeActions />
+      <RouterProvider router={router} />
     </QueryClientProvider>,
   );
 }
@@ -55,9 +62,9 @@ test("Categorize now starts an uncategorized run once while busy", async () => {
   expect(screen.queryByRole("alertdialog")).toBeNull();
 
   resolve(started);
-  // The started job is running, so both buttons stay disabled with its name.
-  expect(await screen.findByText("Categorize now is running.")).toBeTruthy();
-  expect(description(button("Recategorize all"))).toBe("Categorize now is running.");
+  // The started job is running, so both buttons stay disabled and say so.
+  expect(await screen.findByText("Categorizing…")).toBeTruthy();
+  expect(description(button("Recategorize all"))).toBe("Categorizing…");
 });
 
 test("Recategorize all asks first, and Cancel starts nothing and returns focus", async () => {
@@ -91,13 +98,18 @@ test.each([
   [
     "another job runs",
     () => vi.mocked(jobStatus).mockResolvedValue({ running: { kind: "download", label: "Download qwen2.5:3b", done: 1, total: 2 }, last: null }),
-    "Download qwen2.5:3b is running.",
+    "Downloading qwen2.5:3b…",
+  ],
+  [
+    "a build runs",
+    () => vi.mocked(jobStatus).mockResolvedValue({ running: { kind: "build", label: "Build zeni-3", done: 0, total: 0 }, last: null }),
+    "Building zeni-3…",
   ],
 ])("the buttons are disabled with the reason when %s", async (_, arrange, reason) => {
   arrange();
   renderActions();
 
-  expect(await screen.findByText(reason)).toBeTruthy();
+  await waitFor(() => expect(description(button("Categorize now"))).toBe(reason));
   for (const name of ["Categorize now", "Recategorize all"]) {
     expect(disabled(name)).toBe("true");
     expect(description(button(name))).toBe(reason);
@@ -112,7 +124,62 @@ test("offers Settings when Ollama is unreachable", async () => {
   renderActions();
 
   const link = await screen.findByRole("link", { name: "Set it up in Settings." });
-  expect(link.getAttribute("href")).toBe("#/settings");
+  expect(link.getAttribute("href")).toBe("/settings");
+});
+
+test("links Settings when no model is picked", async () => {
+  vi.mocked(ollamaSettings).mockResolvedValue({ ...settings, baseModel: null });
+  renderActions();
+
+  const link = await screen.findByRole("link", { name: "Settings" });
+  expect(link.getAttribute("href")).toBe("/settings");
+});
+
+test("renders nothing until Ollama's status first answers", async () => {
+  let resolve!: (value: OllamaStatus) => void;
+  vi.mocked(ollamaStatus).mockReturnValue(new Promise((r) => (resolve = r)));
+  renderActions();
+
+  await waitFor(() => expect(ollamaSettings).toHaveBeenCalled());
+  expect(screen.queryByRole("button")).toBeNull();
+  resolve(reachable);
+  await ready();
+});
+
+test("Try again refetches Ollama's status once while busy, then focuses Categorize now", async () => {
+  vi.mocked(ollamaStatus).mockRejectedValueOnce({ kind: "Ollama", message: "Ollama isn't running." });
+  renderActions();
+  const retry = await screen.findByRole("button", { name: "Try again" });
+  expect(screen.getByText("Couldn't check Ollama")).toBeTruthy();
+
+  let resolve!: (value: OllamaStatus) => void;
+  vi.mocked(ollamaStatus).mockReturnValue(new Promise((r) => (resolve = r)));
+  retry.focus();
+  fireEvent.click(retry);
+  await waitFor(() => expect(retry.getAttribute("aria-disabled")).toBe("true"));
+  expect(retry.textContent).toBe("Trying again…");
+  fireEvent.click(retry);
+  expect(ollamaStatus).toHaveBeenCalledTimes(2);
+
+  resolve(reachable);
+  await waitFor(() => expect(screen.queryByRole("button", { name: "Try again" })).toBeNull());
+  expect(screen.queryByText("Couldn't check Ollama")).toBeNull();
+  await waitFor(() => expect(document.activeElement).toBe(button("Categorize now")));
+});
+
+test("keeps Try again focused when the retry fails again", async () => {
+  vi.mocked(ollamaStatus).mockRejectedValue({ kind: "Ollama", message: "Ollama isn't running." });
+  renderActions();
+  const retry = await screen.findByRole("button", { name: "Try again" });
+
+  retry.focus();
+  fireEvent.click(retry);
+  await waitFor(() => expect(ollamaStatus).toHaveBeenCalledTimes(2));
+  await waitFor(() => expect(retry.getAttribute("aria-disabled")).toBe("false"));
+  expect(screen.getByRole("button", { name: "Try again" })).toBe(retry);
+  expect(retry.textContent).toBe("Try again");
+  expect(document.activeElement).toBe(retry);
+  expect(screen.getByText("Couldn't check Ollama")).toBeTruthy();
 });
 
 test("shows the error when starting fails", async () => {

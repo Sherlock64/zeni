@@ -112,3 +112,41 @@ test("the Release notes button says it is loading until the notes show", async (
   expect(within(dialog).getByRole("status").textContent).toBe("");
   expect(within(dialog).queryByText("Loading release notes…")).toBeNull();
 });
+
+test("Try again after a failed load shows the notes, ignoring presses while it fetches", async () => {
+  let resolve!: (value: ReleaseNotes) => void;
+  vi.mocked(releaseNotes)
+    .mockRejectedValueOnce({ kind: "Database", message: "database is locked" })
+    .mockReturnValueOnce(new Promise((r) => (resolve = r)));
+  renderWith(<ReleaseNotesButton />);
+  fireEvent.click(screen.getByRole("button", { name: "Release notes" }));
+  const dialog = await screen.findByRole("dialog");
+  const retry = await within(dialog).findByRole("button", { name: "Try again" });
+  retry.focus();
+  fireEvent.click(retry);
+  await waitFor(() => expect(retry.getAttribute("aria-disabled")).toBe("true"));
+  expect(retry.textContent).toBe("Trying again…");
+  fireEvent.click(retry);
+  expect(releaseNotes).toHaveBeenCalledTimes(2);
+  resolve(notes);
+  expect(await within(dialog).findAllByRole("heading", { level: 3 })).toHaveLength(2);
+  expect(within(dialog).queryByRole("alert")).toBeNull();
+  await waitFor(() => expect(document.activeElement).toBe(dialog));
+});
+
+test("a Try again that fails again shows the new error and keeps the button focused", async () => {
+  vi.mocked(releaseNotes)
+    .mockRejectedValueOnce({ kind: "Database", message: "database is locked" })
+    .mockRejectedValueOnce({ kind: "Invoke", message: "not running in Tauri" });
+  renderWith(<ReleaseNotesButton />);
+  fireEvent.click(screen.getByRole("button", { name: "Release notes" }));
+  const dialog = await screen.findByRole("dialog");
+  const retry = await within(dialog).findByRole("button", { name: "Try again" });
+  retry.focus();
+  fireEvent.click(retry);
+  expect(await within(dialog).findByText("not running in Tauri")).toBeTruthy();
+  expect(within(dialog).queryByText("database is locked")).toBeNull();
+  expect(within(dialog).getByText("Try again. If it keeps failing, restart Zeni.")).toBeTruthy();
+  await waitFor(() => expect(retry.getAttribute("aria-disabled")).toBe("false"));
+  expect(document.activeElement).toBe(retry);
+});
