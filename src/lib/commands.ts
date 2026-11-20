@@ -4,6 +4,7 @@ import type { AccountNumbers } from "@/types/bindings/AccountNumbers";
 import type { AppInfo } from "@/types/bindings/AppInfo";
 import type { BackupFile } from "@/types/bindings/BackupFile";
 import type { BackupSettings } from "@/types/bindings/BackupSettings";
+import type { BuildPreview } from "@/types/bindings/BuildPreview";
 import type { BuildRequest } from "@/types/bindings/BuildRequest";
 import type { Category } from "@/types/bindings/Category";
 import type { CommitImportRequest } from "@/types/bindings/CommitImportRequest";
@@ -42,6 +43,7 @@ import type { SetAutoCategorizeRequest } from "@/types/bindings/SetAutoCategoriz
 import type { SetBackupRetentionRequest } from "@/types/bindings/SetBackupRetentionRequest";
 import type { SetBaseModelRequest } from "@/types/bindings/SetBaseModelRequest";
 import type { SetExamplesPerCategoryRequest } from "@/types/bindings/SetExamplesPerCategoryRequest";
+import type { SetAllowOverWindowRequest } from "@/types/bindings/SetAllowOverWindowRequest";
 import type { SetOllamaPortRequest } from "@/types/bindings/SetOllamaPortRequest";
 import type { SetTransactionCategoryRequest } from "@/types/bindings/SetTransactionCategoryRequest";
 import type { SetTransactionsCategoryRequest } from "@/types/bindings/SetTransactionsCategoryRequest";
@@ -163,6 +165,8 @@ export const setAutoCategorize = (request: SetAutoCategorizeRequest) =>
   call<OllamaSettings>("set_auto_categorize", { request });
 export const setExamplesPerCategory = (request: SetExamplesPerCategoryRequest) =>
   call<OllamaSettings>("set_examples_per_category", { request });
+export const setAllowOverWindow = (request: SetAllowOverWindowRequest) =>
+  call<OllamaSettings>("set_allow_over_window", { request });
 export const ollamaStatus = () => call<OllamaStatus>("ollama_status");
 export const startModelDownload = (request: StartModelDownloadRequest) =>
   call<JobStatus>("start_model_download", { request });
@@ -174,6 +178,7 @@ export const reviewGroups = () => call<ReviewGroup[]>("review_groups");
 export const unreviewedCount = () => call<number>("unreviewed_count");
 export const markReviewed = (request: MarkReviewedRequest) => call<null>("mark_reviewed", { request });
 export const listBuilds = () => call<ModelBuild[]>("list_builds");
+export const buildPreview = () => call<BuildPreview>("build_preview");
 export const startBuild = () => call<JobStatus>("start_build");
 export const activateBuild = (request: BuildRequest) => call<null>("activate_build", { request });
 export const deleteBuild = (request: BuildRequest) => call<null>("delete_build", { request });

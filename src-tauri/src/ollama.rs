@@ -9,8 +9,9 @@ use sqlx::SqlitePool;
 use crate::db::{meta, set_meta};
 use crate::types::{
     AppError, AppState, InstalledModel, JobCtx, JobKind, JobOutcome, JobStatus, Ollama,
-    OllamaSettings, OllamaStatus, RecommendedModel, SetAutoCategorizeRequest, SetBaseModelRequest,
-    SetExamplesPerCategoryRequest, SetOllamaPortRequest, StartModelDownloadRequest,
+    OllamaSettings, OllamaStatus, RecommendedModel, SetAllowOverWindowRequest,
+    SetAutoCategorizeRequest, SetBaseModelRequest, SetExamplesPerCategoryRequest,
+    SetOllamaPortRequest, StartModelDownloadRequest,
 };
 use crate::{jobs, security};
 
@@ -18,8 +19,10 @@ const PORT_KEY: &str = "ollama_port";
 const BASE_MODEL_KEY: &str = "ollama_base_model";
 const AUTO_KEY: &str = "auto_categorize";
 const EXAMPLES_KEY: &str = "build_examples";
+const OVER_WINDOW_KEY: &str = "build_over_window";
 const DEFAULT_PORT: u16 = 11434;
 const DEFAULT_EXAMPLES: u32 = 5;
+const DEFAULT_WINDOW: u32 = 4096;
 const MAX_EXAMPLES: u32 = 20;
 /// Longest NDJSON line and largest unstreamed body read from Ollama.
 const MAX_LINE: usize = 1 << 20;
@@ -65,6 +68,7 @@ async fn load_settings(pool: &SqlitePool) -> Result<OllamaSettings, AppError> {
             .and_then(|value| value.parse().ok())
             .filter(|count| (1..=MAX_EXAMPLES).contains(count))
             .unwrap_or(DEFAULT_EXAMPLES),
+        allow_over_window: meta(pool, OVER_WINDOW_KEY).await?.as_deref() == Some("1"),
     })
 }
 
@@ -120,6 +124,20 @@ pub async fn set_auto_categorize(
 ) -> Result<OllamaSettings, AppError> {
     let pool = security::pool(state)?;
     set_meta(&pool, AUTO_KEY, if request.enabled { "1" } else { "0" }).await?;
+    load_settings(&pool).await
+}
+
+pub async fn set_allow_over_window(
+    state: &AppState,
+    request: SetAllowOverWindowRequest,
+) -> Result<OllamaSettings, AppError> {
+    let pool = security::pool(state)?;
+    set_meta(
+        &pool,
+        OVER_WINDOW_KEY,
+        if request.enabled { "1" } else { "0" },
+    )
+    .await?;
     load_settings(&pool).await
 }
 
@@ -287,6 +305,29 @@ impl Ollama {
                 })
             })
             .collect())
+    }
+
+    /// The model's `num_ctx` parameter from `/api/show`, else Ollama's default 4096.
+    pub(crate) async fn context_window(&self, model: &str) -> Result<u32, AppError> {
+        let response = self
+            .client(Some(Duration::from_secs(10)))?
+            .post(self.url("/api/show"))
+            .json(&json!({ "model": model }))
+            .send()
+            .await
+            .map_err(|error| self.error(error))?;
+        let body = self.json(self.check(response).await?).await?;
+        Ok(body["parameters"]
+            .as_str()
+            .unwrap_or_default()
+            .lines()
+            .find_map(
+                |line| match line.split_whitespace().collect::<Vec<_>>()[..] {
+                    ["num_ctx", value] => value.parse().ok().filter(|n| *n > 0),
+                    _ => None,
+                },
+            )
+            .unwrap_or(DEFAULT_WINDOW))
     }
 
     /// `/api/chat` with `format = schema`; returns the message content.
@@ -651,10 +692,20 @@ mod tests {
                 defaults.port,
                 defaults.base_model,
                 defaults.auto_categorize,
-                defaults.examples_per_category
+                defaults.examples_per_category,
+                defaults.allow_over_window
             ),
-            (11434, None, true, 5)
+            (11434, None, true, 5, false)
         );
+        for enabled in [true, false] {
+            let saved = run(set_allow_over_window(
+                &f.state,
+                SetAllowOverWindowRequest { enabled },
+            ))
+            .unwrap();
+            assert_eq!(saved.allow_over_window, enabled);
+            assert_eq!(run(settings(&f.state)).unwrap().allow_over_window, enabled);
+        }
 
         for port in [0, 65536] {
             let error = run(set_port(&f.state, SetOllamaPortRequest { port })).unwrap_err();
@@ -1019,6 +1070,43 @@ mod tests {
     }
 
     #[test]
+    fn context_window_reads_num_ctx_else_4096() {
+        for (parameters, window) in [
+            (
+                json!("stop \"<|end|>\"\nnum_ctx                        8192"),
+                8192,
+            ),
+            (json!("stop \"<|end|>\""), 4096),
+            (Value::Null, 4096),
+            (json!("num_ctx 0"), 4096),
+        ] {
+            let body = json!({ "parameters": parameters });
+            let server = stub(move |_| reply(200, std::slice::from_ref(&body)));
+            let ollama = Ollama { port: server.port };
+            assert_eq!(run(ollama.context_window("phi4-mini")).unwrap(), window);
+            assert_eq!(
+                server.requests.lock().unwrap()[0],
+                (
+                    "POST /api/show".to_string(),
+                    json!({ "model": "phi4-mini" })
+                )
+            );
+        }
+        let missing = stub(|_| reply(404, &[json!({ "error": "model not found" })]));
+        assert_eq!(
+            error_json(run(Ollama { port: missing.port }.context_window("x")).unwrap_err()),
+            json!({ "kind": "Ollama", "message": "Ollama said: model not found" })
+        );
+        assert!(matches!(
+            run(Ollama {
+                port: closed_port()
+            }
+            .context_window("x")),
+            Err(AppError::Ollama(_))
+        ));
+    }
+
+    #[test]
     fn chat_sends_schema_temperature_zero_unstreamed_and_returns_the_content() {
         let server = stub(|_| {
             reply(
@@ -1112,6 +1200,10 @@ mod tests {
         database(run(set_examples_per_category(
             &state,
             SetExamplesPerCategoryRequest { count: 5 },
+        )));
+        database(run(set_allow_over_window(
+            &state,
+            SetAllowOverWindowRequest { enabled: true },
         )));
         assert!(matches!(run(status(&state)), Err(AppError::Database(_))));
         assert!(matches!(

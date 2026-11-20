@@ -1,16 +1,19 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { ModelBuildsSection } from "@/components/model-builds-section";
 import {
   activateBuild,
+  buildPreview,
   deleteBuild,
   jobStatus,
   listBuilds,
   ollamaSettings,
   ollamaStatus,
+  setAllowOverWindow,
   setExamplesPerCategory,
   startBuild,
 } from "@/lib/commands";
+import { OLLAMA_SETTINGS_KEY } from "@/lib/query-keys";
 import type { JobStatus } from "@/types/bindings/JobStatus";
 import type { ModelBuild } from "@/types/bindings/ModelBuild";
 import type { OllamaSettings } from "@/types/bindings/OllamaSettings";
@@ -24,10 +27,12 @@ vi.mock("@/lib/commands", () => ({
   ollamaSettings: vi.fn(),
   ollamaStatus: vi.fn(),
   setExamplesPerCategory: vi.fn(),
+  setAllowOverWindow: vi.fn(),
+  buildPreview: vi.fn(),
   jobStatus: vi.fn(),
 }));
 
-const settings: OllamaSettings = { port: 11434, baseModel: "phi4-mini", autoCategorize: true, examplesPerCategory: 5 };
+const settings: OllamaSettings = { port: 11434, baseModel: "phi4-mini", autoCategorize: true, examplesPerCategory: 5, allowOverWindow: false };
 const reachable: OllamaStatus = { reachable: true, version: "0.12.6", installed: [{ name: "phi4-mini:latest", sizeBytes: 1 }], recommended: [] };
 const builds: ModelBuild[] = [
   { id: 2, name: "zeni-2", baseModel: "phi4-mini", createdAt: "2026-11-10 19:22:04", exampleCount: 41, active: true, outOfDate: false },
@@ -39,6 +44,8 @@ const built = (error: string | null): JobStatus => ({
   running: null,
   last: { kind: "build", label: "Build zeni-3", cancelled: false, error, summary: null },
 });
+const allFit = { windowTokens: 4096, fit: 110, total: 110 };
+const trimmed = { windowTokens: 16384, fit: 29, total: 110 };
 const invokeError = { kind: "Invoke", message: "not running in Tauri" } as const;
 
 beforeEach(() => {
@@ -47,6 +54,7 @@ beforeEach(() => {
   vi.mocked(ollamaSettings).mockResolvedValue(settings);
   vi.mocked(ollamaStatus).mockResolvedValue(reachable);
   vi.mocked(jobStatus).mockResolvedValue(idle);
+  vi.mocked(buildPreview).mockResolvedValue(allFit);
 });
 
 function renderSection() {
@@ -126,6 +134,7 @@ test("starts a build once while busy, shows it running, then refreshes the list 
   expect(await screen.findByRole("button", { name: "Build" }, { timeout: 2000 })).toBeTruthy();
   await waitFor(() => expect(listBuilds).toHaveBeenCalledTimes(2));
   expect(ollamaStatus).toHaveBeenCalledTimes(2);
+  await waitFor(() => expect(buildPreview).toHaveBeenCalledTimes(2));
 });
 
 test("shows a build start error, such as no examples, in an alert", async () => {
@@ -251,6 +260,7 @@ test("saves examples once while busy, then says Saved", async () => {
   expect(vi.mocked(setExamplesPerCategory).mock.calls[0]?.[0]).toEqual({ count: 8 });
   resolve({ ...settings, examplesPerCategory: 8 });
   expect(await screen.findByText("Saved.")).toBeTruthy();
+  await waitFor(() => expect(buildPreview).toHaveBeenCalledTimes(2));
 });
 
 test("shows a backend examples Validation error under the field", async () => {
@@ -304,4 +314,154 @@ test.each([
   expect(button.getAttribute("aria-describedby")).toBe(text.id);
   fireEvent.click(button);
   expect(startBuild).not.toHaveBeenCalled();
+});
+
+test("shows a loading state while checking the window", async () => {
+  vi.mocked(buildPreview).mockReturnValue(pending());
+  renderSection();
+  expect(await screen.findByRole("status", { name: "Checking Ollama's context window…" })).toBeTruthy();
+});
+
+test("says when every example fits the window", async () => {
+  renderSection();
+  expect(await screen.findByText("All 110 examples fit Ollama's 4,096-token window.")).toBeTruthy();
+});
+
+test("says how many examples fit when the window trims them", async () => {
+  vi.mocked(buildPreview).mockResolvedValue(trimmed);
+  renderSection();
+  expect(await screen.findByText("The next build uses 29 of 110 examples to fit Ollama's 16,384-token window.")).toBeTruthy();
+});
+
+test("warns when the override uses every example past the window", async () => {
+  vi.mocked(ollamaSettings).mockResolvedValue({ ...settings, allowOverWindow: true });
+  vi.mocked(buildPreview).mockResolvedValue(trimmed);
+  renderSection();
+  expect(
+    await screen.findByText(
+      "The next build uses all 110 examples, past Ollama's 16,384-token window. Categorizing may stall unless Ollama's context is larger.",
+    ),
+  ).toBeTruthy();
+  expect((screen.getByRole("checkbox", { name: "Use every example, even past Ollama's window" }) as HTMLElement).getAttribute("aria-checked")).toBe("true");
+});
+
+test("says all fit with the override on when nothing is past the window", async () => {
+  vi.mocked(ollamaSettings).mockResolvedValue({ ...settings, allowOverWindow: true });
+  renderSection();
+  expect(await screen.findByText("All 110 examples fit Ollama's 4,096-token window.")).toBeTruthy();
+});
+
+test("doesn't check the window when no base model is picked", async () => {
+  vi.mocked(ollamaSettings).mockResolvedValue({ ...settings, baseModel: null });
+  renderSection();
+  await screen.findByLabelText("Examples per category");
+  expect(buildPreview).not.toHaveBeenCalled();
+  expect(screen.queryByText(/token window/)).toBeNull();
+});
+
+test("saves the override once while busy, then refreshes settings and the preview", async () => {
+  let resolve: (value: OllamaSettings) => void = () => {};
+  vi.mocked(setAllowOverWindow).mockReturnValue(new Promise((r) => (resolve = r)));
+  vi.mocked(buildPreview).mockResolvedValue(trimmed);
+  renderSection();
+  const box = await screen.findByRole("checkbox", { name: "Use every example, even past Ollama's window" });
+  expect(box.getAttribute("aria-checked")).toBe("false");
+  expect(box.getAttribute("aria-describedby") && document.getElementById(box.getAttribute("aria-describedby")!)?.textContent).toBe(
+    "For Ollama set up with a larger context and enough VRAM.",
+  );
+  await screen.findByText(/uses 29 of 110/);
+  fireEvent.click(box);
+  await waitFor(() => expect(box.getAttribute("aria-disabled")).toBe("true"));
+  fireEvent.click(box);
+  expect(setAllowOverWindow).toHaveBeenCalledTimes(1);
+  expect(vi.mocked(setAllowOverWindow).mock.calls[0]?.[0]).toEqual({ enabled: true });
+  resolve({ ...settings, allowOverWindow: true });
+  expect(await screen.findByText(/uses all 110 examples, past/)).toBeTruthy();
+  await waitFor(() => expect(buildPreview).toHaveBeenCalledTimes(2));
+  expect(box.getAttribute("aria-checked")).toBe("true");
+  expect(box.getAttribute("aria-disabled")).toBe("false");
+});
+
+test("shows an override save error and keeps the box unchecked", async () => {
+  vi.mocked(setAllowOverWindow).mockRejectedValue(invokeError);
+  renderSection();
+  const box = await screen.findByRole("checkbox", { name: "Use every example, even past Ollama's window" });
+  fireEvent.click(box);
+  const alert = await screen.findByRole("alert");
+  expect(within(alert).getByText("Couldn't save the window setting")).toBeTruthy();
+  expect(box.getAttribute("aria-checked")).toBe("false");
+});
+
+test("shows a preview error, tries again while busy, shows a repeat failure, then the preview", async () => {
+  const unreachable = { kind: "Ollama", message: "Ollama isn't running on port 11434. Start it with `ollama serve`." } as const;
+  vi.mocked(buildPreview).mockRejectedValue(unreachable);
+  renderSection();
+  const alert = await screen.findByRole("alert");
+  expect(within(alert).getByText("Couldn't check Ollama's context window")).toBeTruthy();
+  expect(within(alert).getByText(/Ollama isn't running on port 11434/)).toBeTruthy();
+
+  let reject: (error: unknown) => void = () => {};
+  vi.mocked(buildPreview).mockReturnValueOnce(new Promise((_, r) => (reject = r)));
+  fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+  const busy = await screen.findByRole("button", { name: "Trying again…" });
+  expect(busy.getAttribute("aria-disabled")).toBe("true");
+  fireEvent.click(busy);
+  expect(buildPreview).toHaveBeenCalledTimes(2);
+  reject(unreachable);
+  const again = await screen.findByRole("button", { name: "Try again" });
+  expect(screen.getByText("Couldn't check Ollama's context window")).toBeTruthy();
+
+  vi.mocked(buildPreview).mockResolvedValue(allFit);
+  fireEvent.click(again);
+  expect(await screen.findByText("All 110 examples fit Ollama's 4,096-token window.")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+  expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Model builds" }));
+});
+
+test("shows a no-examples preview error without the generic next step", async () => {
+  vi.mocked(buildPreview).mockRejectedValue({ kind: "Validation", message: "Review some rows first: a build needs at least one example." });
+  renderSection();
+  const alert = await screen.findByRole("alert");
+  expect(within(alert).getByText("Review some rows first: a build needs at least one example.")).toBeTruthy();
+  expect(within(alert).queryByText("Check your entries, then try again.")).toBeNull();
+  expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+});
+
+test("moves focus to the heading when a retry fails into the no-examples error", async () => {
+  vi.mocked(buildPreview).mockRejectedValue({ kind: "Ollama", message: "Ollama isn't running on port 11434." });
+  renderSection();
+  const retry = await screen.findByRole("button", { name: "Try again" });
+  vi.mocked(buildPreview).mockRejectedValue({ kind: "Validation", message: "Review some rows first: a build needs at least one example." });
+  retry.focus();
+  fireEvent.click(retry);
+  expect(await screen.findByText("Review some rows first: a build needs at least one example.")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Model builds" })));
+});
+
+test("turns the override off and shows the trimmed preview again", async () => {
+  vi.mocked(ollamaSettings).mockResolvedValue({ ...settings, allowOverWindow: true });
+  vi.mocked(setAllowOverWindow).mockResolvedValue({ ...settings, allowOverWindow: false });
+  vi.mocked(buildPreview).mockResolvedValue(trimmed);
+  renderSection();
+  await screen.findByText(/uses all 110 examples, past/);
+  fireEvent.click(screen.getByRole("checkbox", { name: "Use every example, even past Ollama's window" }));
+  expect(await screen.findByText("The next build uses 29 of 110 examples to fit Ollama's 16,384-token window.")).toBeTruthy();
+  expect(vi.mocked(setAllowOverWindow).mock.calls[0]?.[0]).toEqual({ enabled: false });
+});
+
+test("rechecks the window when another base model is picked", async () => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={client}>
+      <ModelBuildsSection />
+    </QueryClientProvider>,
+  );
+  await screen.findByText("All 110 examples fit Ollama's 4,096-token window.");
+  expect(buildPreview).toHaveBeenCalledTimes(1);
+  vi.mocked(buildPreview).mockResolvedValue(trimmed);
+  // What the Ollama card's base model save leaves in the cache.
+  act(() => client.setQueryData(OLLAMA_SETTINGS_KEY, { ...settings, baseModel: "qwen2.5:3b" }));
+  expect(await screen.findByText(/uses 29 of 110 examples to fit Ollama's 16,384-token window/)).toBeTruthy();
+  expect(buildPreview).toHaveBeenCalledTimes(2);
 });

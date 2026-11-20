@@ -17,7 +17,7 @@ vi.mock("@/lib/commands", () => ({
 // The router scrolls on navigation; jsdom has no scrolling.
 window.scrollTo = () => {};
 
-const settings: OllamaSettings = { port: 11434, baseModel: "phi4-mini", autoCategorize: true, examplesPerCategory: 5 };
+const settings: OllamaSettings = { port: 11434, baseModel: "phi4-mini", autoCategorize: true, examplesPerCategory: 5, allowOverWindow: false };
 const reachable: OllamaStatus = { reachable: true, version: "0.12.6", installed: [{ name: "phi4-mini", sizeBytes: 1 }], recommended: [] };
 const idle: JobStatus = { running: null, last: null };
 const started: JobStatus = { running: { kind: "categorizeNow", label: "Categorize now", done: 0, total: 42 }, last: null };

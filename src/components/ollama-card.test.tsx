@@ -29,7 +29,7 @@ Element.prototype.hasPointerCapture = () => false;
 Element.prototype.releasePointerCapture = () => {};
 Element.prototype.scrollIntoView = () => {};
 
-const settings: OllamaSettings = { port: 11434, baseModel: "phi4-mini", autoCategorize: true, examplesPerCategory: 5 };
+const settings: OllamaSettings = { port: 11434, baseModel: "phi4-mini", autoCategorize: true, examplesPerCategory: 5, allowOverWindow: false };
 const recommended = [
   { name: "phi4-mini", sizeBytes: 2491876774, note: "Best pick.", installed: true },
   { name: "qwen2.5:3b", sizeBytes: 1929912432, note: "Smallest download.", installed: false },

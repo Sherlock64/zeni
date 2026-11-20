@@ -98,6 +98,24 @@ As a user, I want a failed Release notes load to offer Try again.
 ### S22: Cancel regression fails instead of hanging (#91, low)
 - **S22-T1** (backend; deps: S21-T1): the in-flight cancel test's fake waits a bounded time, so a regression fails the elapsed-time assertion rather than hanging.
 
+### Model builds
+
+### S27: Builds fit Ollama's context window
+As a user, I want a model build to hold only as many examples as Ollama's context window fits, with an override, so that categorizing doesn't stall on an oversized build.
+- **S27-T1** (backend; deps: none): the next build's examples are trimmed to the window by the rule below; a preview command reports the window, how many fit and how many the setting picks; a setting allows builds past the window.
+  - Window W: the base model's `num_ctx` parameter in Ollama, else 4096.
+  - Estimate est(text) = ceil(characters / 3). A message costs est(content) + 4; an example costs its user message plus its assistant message. A = ceil(mean example cost over all candidates). Budget B = W - (est(system prompt) + 4) - 5 x A.
+  - Candidates are today's picks (examples per category, same order). Take them round by round: the 1st of each category in category order, then the 2nd of each, and so on; stop at the first one that would take the total over B. The first round is always taken whole, even past B.
+  - Example: W = 4096, system prompt 1,800 chars (604), every example 100: A = 100, B = 2,992. 22 categories at 20 each: round 1 takes 22 (2,200), round 2 adds 7 (2,900); the 30th would make 3,000, so the build has 29.
+  - Edge: 22 categories whose examples cost 200 each: round 1 alone is 4,400 > B, so the build has exactly those 22.
+  - With "allow past the window" on, the build uses every candidate; the preview's fit count is unchanged.
+  - The setting is stored, absent means off; the preview fails with the Ollama error when no base model is picked or Ollama can't be reached.
+- **S27-T2** (UI; deps: S27-T1): the model builds section in Settings shows the preview and the override checkbox.
+  - When all fit: "All <total> examples fit Ollama's <W>-token window." Otherwise: "The next build uses <fit> of <total> examples to fit Ollama's <W>-token window." With the override on and total > fit: "The next build uses all <total> examples, past Ollama's <W>-token window. Categorizing may stall unless Ollama's context is larger."
+  - Checkbox "Use every example, even past Ollama's window", hint "For Ollama set up with a larger context and enough VRAM."; toggling saves and updates the preview.
+  - Preview error: "Couldn't check Ollama's context window" with Try again.
+  - Tests for each message, the checkbox saving, and the error retry; snapshots of the fit, trimmed and override states.
+
 ### Tooling and workflow
 
 ### S23: CI cache keyed on the compiler (#120, low)
@@ -111,7 +129,7 @@ As a user, I want a failed Release notes load to offer Try again.
 
 ### S26: Release 7.2.0
 As a user, I want V7.2 shipped as release 7.2.0, so that the fixes reach the installed app.
-- **S26-T1** (backend; deps: none): the app version is 7.2.0 in both version files, and `CHANGELOG.md` has a `## 7.2.0` section with user-facing bullets (clearer Ollama messages and retries, themed progress bars and note field, screen-reader link hints, plus neutral "general hardening and test fixes").
+- **S26-T1** (backend; deps: none): the app version is 7.2.0 in both version files, and `CHANGELOG.md` has a `## 7.2.0` section with user-facing bullets (clearer Ollama messages and retries, builds that fit Ollama's context window (with an override), themed progress bars and note field, screen-reader link hints, plus neutral "general hardening and test fixes").
   - The release gate passes for tag `v7.2.0`.
 
 ## Decisions
@@ -122,6 +140,7 @@ As a user, I want V7.2 shipped as release 7.2.0, so that the fixes reach the ins
 - #104 and #117: one JSON-error conversion, mapped to the database kind.
 - #94: task mode notes dependency changes; integration still gates them.
 - Hardening fixes are tracked privately and named neutrally in everything committed.
+- S27 (added after the PR opened, at the user's request): window from `num_ctx` else 4096; trim evenly across categories; 5 examples of headroom; override checkbox.
 - Release: tag `v7.2.0` after merge.
 
 ## New Terms

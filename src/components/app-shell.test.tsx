@@ -79,6 +79,8 @@ vi.mock("@/lib/commands", () => ({
   unreviewedCount: vi.fn(),
   markReviewed: vi.fn(),
   listBuilds: vi.fn(),
+  buildPreview: vi.fn(),
+  setAllowOverWindow: vi.fn(),
   startBuild: vi.fn(),
   activateBuild: vi.fn(),
   deleteBuild: vi.fn(),
@@ -105,7 +107,7 @@ beforeEach(() => {
   // Pages, the banner and the Ollama card read these once their tasks fill them in.
   vi.mocked(listCategories).mockResolvedValue([]);
   vi.mocked(jobStatus).mockResolvedValue({ running: null, last: null });
-  vi.mocked(ollamaSettings).mockResolvedValue({ port: 11434, baseModel: null, autoCategorize: true, examplesPerCategory: 5 });
+  vi.mocked(ollamaSettings).mockResolvedValue({ port: 11434, baseModel: null, autoCategorize: true, examplesPerCategory: 5, allowOverWindow: false });
   vi.mocked(ollamaStatus).mockResolvedValue({ reachable: false, version: null, installed: [], recommended: [] });
   vi.mocked(reviewGroups).mockResolvedValue([]);
   vi.mocked(listBuilds).mockResolvedValue([]);
