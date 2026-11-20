@@ -270,10 +270,11 @@ test("asks before downloading, then shows progress, cancels once while busy and 
   fireEvent.click(within(dialog).getByRole("button", { name: "Download" }));
   await waitFor(() => expect(vi.mocked(startModelDownload).mock.calls[0]?.[0]).toEqual({ name: "qwen2.5:3b" }));
 
-  const bar = await screen.findByLabelText("Downloading qwen2.5:3b (0.5 GB of 1.9 GB)");
-  expect(bar.getAttribute("value")).toBe("500000000");
+  const bar = await screen.findByRole("progressbar", { name: "Downloading qwen2.5:3b (0.5 GB of 1.9 GB)" });
+  // 0.5 of 1.93 GB is 25%.
+  expect(bar.getAttribute("aria-valuenow")).toBe("25");
   // The progress line already names the download.
-  expect(screen.queryByText("Download qwen2.5:3b is running.")).toBeNull();
+  expect(screen.queryByText("Downloading qwen2.5:3b…")).toBeNull();
   expect(screen.getByRole("button", { name: "Download qwen2.5:3b" }).getAttribute("aria-describedby")).toBe(
     screen.getByText(/^Downloading qwen2.5:3b/).id,
   );
@@ -349,7 +350,7 @@ test("shows a cancel error in an alert", async () => {
 test("disables Download while another job runs and names it", async () => {
   vi.mocked(jobStatus).mockResolvedValue({ running: { kind: "categorizeNow", label: "Categorize now", done: 3, total: 40 }, last: null });
   renderCard();
-  expect(await screen.findByText("Categorize now is running.")).toBeTruthy();
+  expect(await screen.findByText("Categorizing…")).toBeTruthy();
   const button = screen.getByRole("button", { name: "Download qwen2.5:3b" });
   expect(button.getAttribute("aria-disabled")).toBe("true");
   expect(button.getAttribute("aria-describedby")).toBeTruthy();

@@ -88,14 +88,6 @@ test("shows an empty list", async () => {
   expect(await screen.findByText("No backups in this folder yet")).toBeTruthy();
 });
 
-test("shows a list error with a retry", async () => {
-  vi.mocked(listBackups).mockRejectedValueOnce({ kind: "Backup", message: "Folder missing." }).mockResolvedValueOnce([daily]);
-  renderCard();
-  expect(await screen.findByText("Folder missing.")).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: "Try again" }));
-  expect(await screen.findByText("Daily")).toBeTruthy();
-});
-
 test("retries the list, keeping the error and button up and ignoring repeat presses, then focuses the heading", async () => {
   let finish: (value: BackupFile[]) => void = () => {};
   vi.mocked(listBackups)

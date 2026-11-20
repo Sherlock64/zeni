@@ -45,6 +45,7 @@ export function StartupProblemPage() {
           }}
         >
           Install or restore guide
+          {" "}<span className="sr-only">(opens in your browser)</span>
           <ExternalLinkIcon aria-hidden="true" />
         </a>
       </Button>

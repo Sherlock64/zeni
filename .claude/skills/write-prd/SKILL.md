@@ -13,7 +13,7 @@ argument-hint: V<n>
 
 ## 2. Grill
 
-1. Walk the version's decision tree depth-first: scope, then each story, then each task's behaviour, errors and edges. Each answer can open follow-up branches; walk them before moving on.
+1. Make the first round settle the cross-cutting conventions `CLAUDE.md` does not already fix, such as spelling (British or American) and the naming of new terms. For each lasting one (for example "American spelling"), propose the `CLAUDE.md` line and, on a yes, add it on the version branch (step 5). Then walk the version's decision tree depth-first: scope, then each story, then each task's behaviour, errors and edges. Each answer can open follow-up branches; walk them before moving on.
 2. Ask in rounds of at most four independent questions. Give each your recommended answer and why.
    Base each product recommendation on the Product preferences in `plans/ROADMAP.md`; code minimalism governs code and dependency structure, not product scope. When an answer shows a new preference, add it to that section.
 3. Answer from the roadmap, the code and `CLAUDE.md` whatever you can; ask only what they leave open. Stop only when no branch is open.

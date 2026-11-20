@@ -35,11 +35,11 @@ test("announces the banner in a status region mounted before the status resolves
   renderBanner();
   const region = screen.getByRole("status");
   expect(region.textContent).toBe("");
-  expect(screen.queryByRole("button", { name: "Download" })).toBeNull();
+  expect(screen.queryByRole("button", { name: /^Download/ })).toBeNull();
 
   resolve(newer);
   await waitFor(() => expect(region.textContent).toBe("Zeni 7.1.0 is available"));
-  expect(screen.getByRole("button", { name: "Download" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Download Zeni 7.1.0 (opens in your browser)" })).toBeTruthy();
 });
 
 test("shows nothing without a banner", async () => {
@@ -61,7 +61,7 @@ test("shows nothing when the status fails", async () => {
 test("Download opens the release page", async () => {
   renderBanner();
   expect(await screen.findByText("Zeni 7.1.0 is available", { selector: "p:not([role])" })).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: "Download" }));
+  fireEvent.click(screen.getByRole("button", { name: "Download Zeni 7.1.0 (opens in your browser)" }));
   expect(openUrl).toHaveBeenCalledWith(url);
 });
 

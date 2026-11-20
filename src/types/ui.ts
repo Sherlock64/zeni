@@ -11,6 +11,7 @@ import type { ImportSummary } from "@/types/bindings/ImportSummary";
 import type { Nickname } from "@/types/bindings/Nickname";
 import type { NicknameRule } from "@/types/bindings/NicknameRule";
 import type { RestoreSource } from "@/types/bindings/RestoreSource";
+import type { ReviewGroup } from "@/types/bindings/ReviewGroup";
 import type { RuleInput } from "@/types/bindings/RuleInput";
 import type { Transaction } from "@/types/bindings/Transaction";
 import type { TransactionQuery } from "@/types/bindings/TransactionQuery";
@@ -189,6 +190,35 @@ export type CategorySelectProps = {
 );
 
 export type ReviewCategoryCellProps = { row: Transaction; onChange: (categoryId: number | null) => void };
+
+export type ReviewRowProps = {
+  row: Transaction;
+  selected: boolean;
+  onSelect: (on: boolean) => void;
+  // Selects every row with this row's nickname or description, in every group.
+  onSelectLike: () => void;
+  onChange: (categoryId: number | null) => void;
+};
+
+export type ReviewGroupSectionProps = {
+  group: ReviewGroup;
+  selected: ReadonlySet<number>;
+  // Rows shown, and how many the next Show more adds (0 hides the button).
+  count: number;
+  more: number;
+  changeError: CommandError | null;
+  reviewError: CommandError | null;
+  // Any review mutation is running; saving is this group's Looks good.
+  busy: boolean;
+  saving: boolean;
+  onSelect: (ids: number[], on: boolean) => void;
+  onSelectLike: (row: Transaction) => void;
+  onChangeRow: (row: Transaction, categoryId: number | null) => void;
+  onDismissChange: () => void;
+  onDismissReview: () => void;
+  onShowMore: () => void;
+  onLooksGood: () => void;
+};
 
 // Review page mutation variables; groupId says which group shows the error.
 export type ReviewChangeVariables = { groupId: number; row: Transaction; categoryId: number | null };

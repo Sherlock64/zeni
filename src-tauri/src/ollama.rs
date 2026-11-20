@@ -8,8 +8,8 @@ use sqlx::SqlitePool;
 
 use crate::db::{meta, set_meta};
 use crate::types::{
-    AppError, AppState, InstalledModel, JobCtx, JobKind, JobOutcome, JobStatus, OllamaSettings,
-    OllamaStatus, RecommendedModel, SetAutoCategorizeRequest, SetBaseModelRequest,
+    AppError, AppState, InstalledModel, JobCtx, JobKind, JobOutcome, JobStatus, Ollama,
+    OllamaSettings, OllamaStatus, RecommendedModel, SetAutoCategorizeRequest, SetBaseModelRequest,
     SetExamplesPerCategoryRequest, SetOllamaPortRequest, StartModelDownloadRequest,
 };
 use crate::{jobs, security};
@@ -189,11 +189,6 @@ pub async fn start_download(
             }
         },
     )
-}
-
-/// The local Ollama at `http://127.0.0.1:<port>`.
-pub(crate) struct Ollama {
-    port: u16,
 }
 
 impl Ollama {

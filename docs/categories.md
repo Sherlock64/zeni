@@ -80,7 +80,7 @@ Each group shows 25 rows. Click **Show 25 more** to see the next 25.
 - **Looks good**: marks the rest of the group reviewed.
 - Change many rows at once: tick the boxes beside rows, then use the bar that shows "<n> selected". Pick a category in **Change selected to…**. The rows keep their notes. **Clear** unticks everything.
 - **Select all** in a group header ticks every row of the group, including rows not shown yet.
-- **Select all like this** on a row ticks every row, in all groups, with the same nickname or description.
+- **Select all like this** shows when you hover or focus a row. It ticks every row, in all groups, with the same nickname or description.
 
 To always categorize a merchant the same way, give its nickname a default category (see below).
 

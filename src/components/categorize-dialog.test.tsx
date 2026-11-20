@@ -110,6 +110,8 @@ test("other save errors show in an alert in the dialog, which stays open", async
   const alert = await within(dialog).findByRole("alert");
   expect(within(alert).getByText("Couldn't save the category")).toBeTruthy();
   expect(within(alert).getByText("That category no longer exists.")).toBeTruthy();
+  expect(within(alert).getByText("Close this dialog and try again.")).toBeTruthy();
+  expect(within(alert).queryByText(/Reload the page/)).toBeNull();
   expect(onOpenChange).not.toHaveBeenCalled();
 });
 
@@ -123,6 +125,7 @@ test("a save that fails again shows the new error", async () => {
   fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
   expect(await within(dialog).findByText("Unlock Zeni first.")).toBeTruthy();
   expect(within(dialog).queryByText("That transaction no longer exists.")).toBeNull();
+  expect(within(dialog).queryByText("Close this dialog and try again.")).toBeNull();
 });
 
 test("while saving, Save and Cancel are busy, repeat presses are ignored and the dialog won't close", async () => {

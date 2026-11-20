@@ -51,13 +51,17 @@ policy() {
     echo "POLICY FAIL: applied migration changed $f"; ok=1
   done < <(git diff -z --no-renames --name-only --diff-filter=DMT "$base" -- src-tauri/migrations/)
 
-  # 2. Dependency lines added or removed vs base.
+  # 2. Dependency lines added or removed vs base; task mode only notes them (integration gates them).
   if [[ ${ZENI_DEPS_APPROVED:-} != 1 ]]; then
     for f in src-tauri/Cargo.toml package.json; do
       kind=npm; [[ $f == *.toml ]] && kind=cargo
       if [[ -n $(comm -3 <(git show "$base:$f" 2>/dev/null | dep_lines $kind | sort) \
                          <(cat -- "$f" 2>/dev/null | dep_lines $kind | sort)) ]]; then
-        echo "POLICY FAIL: dependency change $f"; ok=1
+        if [[ $mode == task ]]; then
+          echo "POLICY NOTE: dependency change $f (gated in integration)"
+        else
+          echo "POLICY FAIL: dependency change $f"; ok=1
+        fi
       fi
     done
   fi
@@ -92,7 +96,7 @@ fast() {
   step policy policy
   step "pnpm exec tsc" pnpm exec tsc
   step "cargo fmt --check" bash -c 'cd src-tauri && cargo fmt --check'
-  step "cargo clippy --all-targets -- -D warnings" bash -c 'cd src-tauri && cargo clippy --locked --all-targets -- -D warnings'
+  step "cargo clippy --locked --all-targets -- -D warnings" bash -c 'cd src-tauri && cargo clippy --locked --all-targets -- -D warnings'
 }
 
 usage() { sed -n '/^# Usage:/,/^# Overrides:/p' "$0" >&2; exit 2; }
@@ -137,7 +141,7 @@ case $mode in
       esac
     done
     fast
-    for r in "${rust[@]}"; do step "cargo test $r" bash -c 'cd src-tauri && cargo test --locked "$1"' _ "$r"; done
+    for r in "${rust[@]}"; do step "cargo test --locked $r" bash -c 'cd src-tauri && cargo test --locked "$1"' _ "$r"; done
     ((${#ts[@]})) && step "pnpm test ${ts[*]}" pnpm test "${ts[@]}"
     ((${#rust[@]} + ${#ts[@]})) || echo "no --rust or --ts filters given: ran fast checks only"
     ;;
@@ -149,7 +153,7 @@ case $mode in
     fi
     fast
     before=$(tree_sha src/types/bindings)
-    step "cargo test" bash -c 'cd src-tauri && cargo test --locked'
+    step "cargo test --locked" bash -c 'cd src-tauri && cargo test --locked'
     step "pnpm test" pnpm test
     step "bindings freshness" test "$(tree_sha src/types/bindings)" = "$before"
     [[ -n $evidence ]] && write_evidence "$evidence"

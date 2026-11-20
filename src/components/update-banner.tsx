@@ -35,7 +35,8 @@ export function UpdateBanner() {
             </p>
             <div className="flex shrink-0 gap-2">
               <Button size="sm" onClick={() => openUrl(banner.url)}>
-                Download
+                Download Zeni {banner.version}
+                {" "}<span className="sr-only">(opens in your browser)</span>
               </Button>
               <Button variant="outline" size="sm" aria-disabled={dismiss.isPending} onClick={() => !dismiss.isPending && dismiss.mutate()}>
                 Dismiss

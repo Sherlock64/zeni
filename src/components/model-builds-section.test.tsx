@@ -293,7 +293,7 @@ test.each([
   [
     "another job runs",
     () => vi.mocked(jobStatus).mockResolvedValue({ running: { kind: "categorizeNow", label: "Categorize now", done: 3, total: 40 }, last: null }),
-    "Categorize now is running.",
+    "Categorizing…",
   ],
 ])("disables Build with the reason when %s", async (_name, arrange, reason) => {
   arrange();

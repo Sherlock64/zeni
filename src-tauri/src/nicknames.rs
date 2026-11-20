@@ -5,12 +5,12 @@ use std::collections::HashMap;
 use regex::{Regex, RegexBuilder};
 use sqlx::{Row, SqliteConnection, SqlitePool};
 
-use crate::security;
 use crate::types::{
     AppError, AppState, DeleteNicknameRequest, DeleteNicknameRuleRequest, MatchField, MatchMode,
     Nickname, NicknameRule, NicknameSettings, RuleInput, SaveNicknameRuleRequest,
     UpdateNicknameRequest, UpdateNicknameRuleRequest,
 };
+use crate::{db, security};
 
 const MAX_NAME_CHARS: usize = 100;
 const MAX_PATTERN_CHARS: usize = 500;
@@ -200,10 +200,7 @@ pub(crate) async fn match_import(
 }
 
 async fn stale_days(pool: &SqlitePool) -> Result<u32, AppError> {
-    let value: Option<String> = sqlx::query_scalar("SELECT value FROM app_meta WHERE key = ?")
-        .bind(STALE_DAYS_KEY)
-        .fetch_optional(pool)
-        .await?;
+    let value = db::meta(pool, STALE_DAYS_KEY).await?;
     // A missing or corrupt value falls back to the default on purpose, so the list still loads.
     Ok(value
         .and_then(|value| value.parse().ok())
@@ -509,7 +506,6 @@ mod tests {
     use std::path::PathBuf;
 
     use super::*;
-    use crate::db;
 
     struct Fixture {
         state: AppState,

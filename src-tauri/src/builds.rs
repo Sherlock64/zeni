@@ -6,10 +6,10 @@ use serde_json::{Value, json};
 use sqlx::{Row, SqlitePool};
 
 use crate::categorize::{system_prompt, user_prompt};
-use crate::ollama::{self, Ollama};
+use crate::ollama;
 use crate::types::{
-    AppError, AppState, BuildRequest, JobKind, JobOutcome, JobStatus, ModelBuild, OllamaSettings,
-    PromptCategory, PromptRow,
+    AppError, AppState, BuildRequest, JobKind, JobOutcome, JobStatus, ModelBuild, Ollama,
+    OllamaSettings, PromptCategory, PromptRow,
 };
 use crate::{jobs, security};
 

@@ -18,12 +18,11 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/
 import { Skeleton } from "@/components/ui/skeleton";
 import { useJobStatus } from "@/hooks/use-job-status";
 import { activateBuild, deleteBuild, listBuilds, ollamaSettings, ollamaStatus, setExamplesPerCategory, startBuild } from "@/lib/commands";
+import { runningJobLabel } from "@/lib/job-label";
 import { formatDate } from "@/lib/dates";
 import { BUILDS_KEY, JOB_STATUS_KEY, OLLAMA_SETTINGS_KEY, OLLAMA_STATUS_KEY } from "@/lib/query-keys";
 import type { ModelBuild } from "@/types/bindings/ModelBuild";
 
-// The backend labels a build job "Build zeni-<n>".
-const buildingLabel = (label: string) => `${label.replace(/^Build /, "Building ")}…`;
 
 export function ModelBuildsSection() {
   const queryClient = useQueryClient();
@@ -93,7 +92,7 @@ export function ModelBuildsSection() {
       : settings.data && !settings.data.baseModel
         ? "Pick a base model to build."
         : running && !building
-          ? `${running.label} is running.`
+          ? runningJobLabel(running)
           : null;
   const buildBlocked = Boolean(reason) || Boolean(building) || start.isPending || !status.data || !settings.data;
   const active = builds.data?.find((build) => build.active);
@@ -180,7 +179,7 @@ export function ModelBuildsSection() {
       )}
       <div className="flex flex-wrap items-center gap-3">
         <Button aria-disabled={buildBlocked} aria-describedby={reason ? `${id}-reason` : undefined} onClick={build}>
-          {building ? buildingLabel(building.label) : start.isPending ? "Starting…" : rebuild ? "Rebuild" : "Build"}
+          {building ? runningJobLabel(building) : start.isPending ? "Starting…" : rebuild ? "Rebuild" : "Build"}
         </Button>
         {reason && (
           <p id={`${id}-reason`} className="text-sm text-muted-foreground">

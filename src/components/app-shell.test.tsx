@@ -415,7 +415,7 @@ test("shows the update banner in the app only, never on setup or unlock", async 
   vi.mocked(securityStatus).mockResolvedValue({ state: "unlocked", keyringSaved: true, recoveryCodesLeft: 8 });
   await act(() => client.refetchQueries({ queryKey: ["security_status"] }));
   expect(await screen.findByText("Zeni 7.1.0 is available", { selector: "p:not([role])" })).toBeTruthy();
-  expect(screen.getByRole("button", { name: "Download" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Download Zeni 7.1.0 (opens in your browser)" })).toBeTruthy();
 });
 
 test("opens What's new after unlock when notes are pending, and acknowledges once on close", async () => {

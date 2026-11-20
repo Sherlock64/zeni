@@ -56,14 +56,15 @@ test("shows progress outside the live region, announces it coarsely, then the su
 
   const label = await screen.findByText("Categorizing 0 of 42");
   expect(screen.getByRole("status").contains(label)).toBe(false);
-  expect(status()).toBe("Categorize now started.");
+  expect(status()).toBe("Categorizing…");
 
   await poll(client, running(18));
-  expect((await screen.findByRole("progressbar", { name: "Categorizing 18 of 42" })).getAttribute("value")).toBe("18");
-  expect(status()).toBe("Categorize now: 25% done.");
+  // 18 of 42 is 42%.
+  expect((await screen.findByRole("progressbar", { name: "Categorizing 18 of 42" })).getAttribute("aria-valuenow")).toBe("42");
+  expect(status()).toBe("Categorizing… 25% done.");
   await poll(client, running(20));
   expect(await screen.findByText("Categorizing 20 of 42")).toBeTruthy();
-  expect(status()).toBe("Categorize now: 25% done.");
+  expect(status()).toBe("Categorizing… 25% done.");
 
   await poll(client, finished());
   const summary = "Categorized 38. Couldn't categorize 3. Not reached 1.";
@@ -91,10 +92,11 @@ test("shows a running build with an animated bar and Cancel, then that it was bu
   const client = renderBanner();
   const invalidate = vi.spyOn(client, "invalidateQueries");
 
-  const bar = await screen.findByRole("progressbar", { name: "Build zeni-3…" });
+  const bar = await screen.findByRole("progressbar", { name: "Building zeni-3…" });
   expect(bar.className).toContain("animate-pulse");
+  expect(bar.hasAttribute("aria-valuenow")).toBe(false);
   expect(button("Cancel")).toBeTruthy();
-  expect(status()).toBe("Build zeni-3 started.");
+  expect(status()).toBe("Building zeni-3…");
 
   await poll(client, { running: null, last: { ...build, cancelled: false, error: null, summary: null } });
   expect(await screen.findByText("Built zeni-3.", visibleText)).toBeTruthy();
@@ -112,8 +114,8 @@ test("a counted run's bar doesn't pulse", async () => {
 });
 
 test.each([
-  [{ cancelled: true, error: null }, "Build zeni-3 was cancelled."],
-  [{ cancelled: false, error: "Ollama said: model not found" }, "Build zeni-3 stopped."],
+  [{ cancelled: true, error: null }, "The build of zeni-3 was cancelled."],
+  [{ cancelled: false, error: "Ollama said: model not found" }, "The build of zeni-3 stopped."],
 ])("shows a build that didn't finish", async (outcome, text) => {
   vi.mocked(jobStatus).mockResolvedValue({ running: null, last: { kind: "build", label: "Build zeni-3", summary: null, ...outcome } });
   renderBanner();
@@ -139,7 +141,7 @@ test("Cancel cancels the run once while busy, then moves focus to the heading", 
 
   vi.mocked(jobStatus).mockResolvedValue(finished({ cancelled: true }));
   resolve(null);
-  expect(await screen.findByText("Categorize now was cancelled.", visibleText)).toBeTruthy();
+  expect(await screen.findByText("Categorizing was cancelled.", visibleText)).toBeTruthy();
   await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Transactions" })));
 });
 
@@ -157,8 +159,8 @@ test("shows a stopped run's error as an Ollama alert outside the status, with th
   expect(alert.textContent).toContain("Ollama");
   expect(screen.getByText("ollama serve").tagName).toBe("CODE");
   expect(alert.textContent).toContain("Check that Ollama is running, then try again.");
-  expect(screen.getByText("Categorize now stopped after 12 rows.", visibleText)).toBeTruthy();
-  expect(status()).toBe("Categorize now stopped after 12 rows. Categorized 11. Couldn't categorize 1. Not reached 30.");
+  expect(screen.getByText("Categorizing stopped after 12 rows.", visibleText)).toBeTruthy();
+  expect(status()).toBe("Categorizing stopped after 12 rows. Categorized 11. Couldn't categorize 1. Not reached 30.");
 });
 
 test("Dismiss clears the summary once while busy, then moves focus to the heading", async () => {

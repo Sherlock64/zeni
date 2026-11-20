@@ -95,13 +95,13 @@ test("names the newer version and links to the install or restore guide", async 
   expect(await screen.findByRole("heading", { level: 1, name: "Data from a newer Zeni" })).toBeTruthy();
   expect(screen.getByText("This data was last opened by Zeni 7.1.0. Install Zeni 7.1.0 or newer, or restore by hand the before-update backup Zeni made before that update.")).toBeTruthy();
   expect(screen.queryByRole("button")).toBeNull();
-  fireEvent.click(screen.getByRole("link", { name: "Install or restore guide" }));
+  fireEvent.click(screen.getByRole("link", { name: "Install or restore guide (opens in your browser)" }));
   expect(openUrl).toHaveBeenCalledWith("https://github.com/Sherlock64/zeni/blob/main/docs/install.md");
 });
 
 test("asks for a newer Zeni when the version is unknown", async () => {
   renderPage({ state: "newerData", version: null });
   expect(await screen.findByText("This data was last opened by a newer Zeni. Install a newer Zeni, or restore by hand the before-update backup Zeni made before that update.")).toBeTruthy();
-  fireEvent.click(screen.getByRole("link", { name: "Install or restore guide" }));
+  fireEvent.click(screen.getByRole("link", { name: "Install or restore guide (opens in your browser)" }));
   expect(openUrl).toHaveBeenCalledWith("https://github.com/Sherlock64/zeni/blob/main/docs/install.md");
 });
