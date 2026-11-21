@@ -117,6 +117,35 @@ echo '// eslint-disable-next-line' >src/components/ui/button.tsx
 run fast; expect 0 "CHECK policy: pass" "generated ui/ is exempt"
 reset
 
+echo 'fn r() -> f64 { 1.0 }' >>src-tauri/src/main.rs
+run fast; expect 1 "POLICY FAIL: float type (money is integer cents) src-tauri/src/main.rs:" "float in Rust"
+reset
+echo 'fn r() -> f64 { 1.0 } // float-ok: a ratio' >>src-tauri/src/main.rs
+run fast; expect 0 "CHECK policy: pass" "marked float is allowed"
+reset
+
+mkdir -p src/lib src/pages src/components/ui
+echo 'import { invoke } from "@tauri-apps/api/core";' >src/lib/commands.ts
+run fast; expect 0 "CHECK policy: pass" "invoke inside commands.ts is fine"
+echo 'import { invoke } from "@tauri-apps/api/core";' >src/pages/x.tsx
+run fast; expect 1 "POLICY FAIL: backend call outside src/lib/commands.ts src/pages/x.tsx:1" "invoke in a page"
+reset
+
+mkdir -p src/pages src/components/ui
+echo '<p className="text-red-500" />' >src/pages/x.tsx
+run fast; expect 1 "POLICY FAIL: raw colour (use theme tokens) src/pages/x.tsx:1" "palette colour"
+echo '<p className="text-destructive" style={{ color: "#ff0000" }} />' >src/pages/x.tsx
+run fast; expect 1 "POLICY FAIL: raw colour (use theme tokens) src/pages/x.tsx:1" "hex colour"
+echo '<p className="text-muted-foreground gap-2" />' >src/pages/x.tsx
+echo '<p className="text-red-500" />' >src/components/ui/y.tsx
+run fast; expect 0 "CHECK policy: pass" "theme tokens and generated ui/ are fine"
+reset
+
+mkdir -p src
+echo 'console.log(1);' >src/x.ts
+run fast; expect 1 "POLICY FAIL: console.log src/x.ts:1" "console.log"
+reset
+
 run task; expect 0 "ran fast checks only" "task with no filters"
 STUB_FAIL=1 run task --rust foo; expect 1 "CHECK cargo test --locked foo: fail" "task reports failing filter"
 

@@ -1,5 +1,7 @@
 # Changelog
 
+## Unreleased
+
 ## 7.2.0
 
 - Ollama job messages are clearer, with a link to Settings and Try again on Transactions.

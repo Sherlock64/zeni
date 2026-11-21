@@ -1,155 +1,166 @@
 # Personal Finance App — Roadmap
 
-One major change per version; each version gets its own PRD, written from this roadmap.
+Each item below is an epic: named, not numbered. Shape and slice turns one into an epic issue (its body is the spec) and tickets, and an epic may ship across several releases. Release versions follow the `door:` labels of the PRs merged since the last tag (`.claude/factory/spine.md`), not the epics. Order within a section is the intended order.
 
 ## Product preferences
 
-`write-prd` bases its product recommendations on these; add one when an interview shows a new preference.
+Shape and slice bases its product recommendations on these; add one when an interview shows a new preference.
 
 - Richer UX is preferred over minimal UI (for example drag reorder over up/down buttons, in-app download over a hint).
 - A mature dependency is fine when it buys real UX.
 - American spelling.
 - Minimal but not plain: color over monochrome (for example a green-on-dark app icon, not white on black).
+- The design explains itself: no onboarding flows or tours.
+- Backups are the export: no separate export formats.
+- Bank data is the truth: nothing the user enters creates or changes a transaction.
+- The core app works fully offline before any optional external connection is added.
+- Planning tools are calculators that show their assumptions, never personalized financial, investing or tax advice.
 
-## V1: App foundation
+## Shipped
 
-- Tauri 2 project: Rust backend, TypeScript + React frontend.
-- Repo layout and CLAUDE.md coding rules (types kept separate from logic, no new dependencies without asking, money as integer cents).
-- SQLite via sqlx with versioned migrations.
-- shadcn, TanStack Router and TanStack Query set up.
-- App shell: dark theme, navigation, settings page, empty states.
-- Typed command layer between the Rust backend and the UI, with typed errors.
-- Test setup for Rust and the frontend.
-- Dev and release builds running on Pop!_OS.
+Released before the factory spine, one PRD per version.
 
-## V2: Security
+| Version | Title | PRD |
+|---|---|---|
+| V1 | App foundation | `PRD-V1.md` |
+| V2 | Security | `PRD-V2.md` |
+| V3 | Import and transaction list | `PRD-V3.md` |
+| V3.1 | CSV import | `PRD-V3.1.md` |
+| V4 | Backup and restore | `PRD-V4.md` |
+| V5 | Nicknames | `PRD-V5.md` |
+| V5.1 | Bug cleanup | `PRD-V5.1.md` |
+| V6 | Categorization | `PRD-V6.md` |
+| V6.1 | Medium bug cleanup | `PRD-V6.1.md` |
+| V7 | CI/CD, installer and updates | `PRD-V7.md` |
+| V7.1 | Medium bug cleanup | `PRD-V7.1.md` |
+| V7.2 | Low bug cleanup | `PRD-V7.2.md` |
 
-- Accounts table: name, owner, bank name, account number, routing number.
-- Field-level AES-256-GCM encryption for account and routing numbers.
-- Key stored via the Secret Service API (GNOME Keyring today, oo7 later), unlocked at login.
-- Master-password fallback (Argon2-derived key) when the keyring is locked or missing.
-- First-run setup: create the key and add the checking account.
-- Locked-keyring detection and unlock prompt.
-- Documented scope: only account details are encrypted; everything else is plain text by choice.
+## Engineering foundations
 
-## V3: Import and transaction list
+Pure refactor before the feature work, so the roadmap's features land on seams built for them. No user-facing behavior changes.
 
-- Parsers for OFX and QFX (OFX 1.x SGML and 2.x XML).
-- Imports table and raw transactions table; raw rows are never edited.
-- Posted transactions only; US dollars only.
-- Duplicate matching: account + FITID, falling back to date + amount + description.
-- Import summary: rows added and duplicates skipped.
-- Revert a whole import in one step.
-- Balance check: each import's ledger balance against the prior import's.
-- Transaction list: sort, filter by date range, search.
-- Sample OFX/QFX files with fake data, modelled on public OFX examples, as test fixtures.
+### Foundations refactor
 
-**Release cut:** after V3 the app is fully functional (set up, secure, imports and lists transactions) and is pushed to GitHub.
+Order inside the epic: types split, money, test kit, ledger, functional core, query keys, property tests.
 
-## V3.1: CSV import
+- Split `types.rs` into a `types/` folder by domain, re-exported from `types/mod.rs`; bindings unchanged.
+- Money: a `Cents(i64)` newtype with checked operations and one `parse_amount(text, style)`; OFX and CSV each keep the inputs they accept today.
+- Shared Rust test kit (`TestDb::unlocked()`, `.import(file)`, a row builder) replacing the per-module `Fixture` structs and hand-written `INSERT INTO raw_transactions`.
+- Ledger module: every read of `raw_transactions` and `effective_categories` (rows, totals, count, with one filter type) goes through it, and the account scope is decided in one place.
+- Functional core for import, nickname matching and categorize batching: a pure plan (new rows, duplicates, suspects, balance check) applied by a thin shell; table-driven tests with no database.
+- UI: hierarchical query keys and one `invalidate(change)` map; no component lists keys itself.
+- Property tests on amount parsing and ledger totals (`proptest` dev-dependency, needs approval).
+- Agent rules for each new seam (ledger only, `Cents` only, pure decisions, test kit only, `invalidate(change)` only), with `scripts/check.sh` policy greps once the code exists.
 
-- CSV parser (`csv` crate) with column mapping saved per layout.
-- Duplicate matching on a mapped transaction ID, falling back to date + amount + description; cross-format overlap review.
-- Running-balance check when the CSV has a balance column.
+## Foundations
 
-## V4: Backup and restore
+These change what the data is, so they come before anything that reports on it.
 
-- One-click timestamped backup using SQLite's online backup API.
-- Restore with confirmation, keeping a safety copy of the replaced database.
-- Encrypted fields stay encrypted; restoring needs the same key.
+### Accounts and debts
 
-## V5: Nicknames
+- Account types: checking, savings, credit card, loan.
+- Optional owner label per account (one app user; the label only groups accounts).
+- Choose the account on import.
+- Transfers between accounts and card payments are matched and excluded from spending.
+- Per-account views and an owner filter where useful.
+- `raw_transactions` and `imports` already carry `account_id`; the Foundations refactor's ledger decides the account scope in one place.
+- Transfer matching is pure decision logic with table-driven tests.
+- Engineering carried with it:
+  - A clock port (`today()`, `now()`) in place of `date('now')` in SQL, needed by bills, goals, forecast and month close.
+  - Network ports: small traits for the update check and the Ollama client, like `Keyring` and `Categorizer`.
+  - Compile-time checked SQL (`query!`, a committed `.sqlx` cache, `cargo sqlx prepare --check` in `check.sh`), converting each module as it is touched; `sqlx-cli` needs approval.
+  - UI domain hooks (`useTransactions`, `useSetCategory`, ...) and one fake backend through Tauri `mockIPC`, shared by tests and snapshots.
 
-- Nicknames table.
-- Right-click "Rename it" with a "What's its nickname?" pop-up.
-- Match modes: exact, contains, regex; match on description or memo.
-- Precedence: exact, then contains, then regex.
-- Applies to all past and future matching transactions; unmapped items show raw text.
-- Match count, last matched date, stale flag, stale-flag exempt option, on/off switch.
-- Nicknames management page.
+### Line items
 
-## V6: Categorization
+- Split a transaction into lines (name, amount, category) through a receipt form.
+- Lines are an overlay; the imported row is never changed.
+- Lines must add up exactly to the bank amount, or the save is refused.
+- Spending uses the lines' categories when a transaction has lines.
 
-- Flat categories table with an editable starter list and descriptions; category editor.
-- Transaction overlay table: category, note, set by (model or user), reviewed.
-- Ollama integration: detect Ollama, list installed models, choose a base model.
-- Prompts constrained to the category list; out-of-list answers rejected.
-- "Categorize now" and "Recategorize all" (skips user- and nickname-set rows).
-- Batch review screen grouped by category, with a "Looks good" button.
-- Model builds: up to N reviewed examples per category, Modelfile generation, builds table, choose the active build.
-- Nickname default category skips the model.
-- Rules: savings transfers tagged and excluded from spending; refunds count as negative spending.
-- Pluggable categoriser interface for future backends.
+### Attachments
 
-## V7: CI/CD, installer and updates
+- Link one or more image or PDF files to a transaction, and view them. The app never reads their contents.
+- Backups become one archive holding the database and the attachment files; restore replaces both.
+- The safety copy and Undo restore cover the files; database-only backups from earlier versions still restore.
+- `docs/security.md`: attachments are plain files by design and may show card last-4 digits and addresses.
+- One-way door: it changes the backup format.
 
-One major version for builds and delivery, so it doesn't collide with the PRDs already written for V3.1 to V6.
+## Planning
 
-- GitHub Actions on every PR and push to `main`: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `tsc`, `pnpm test`, and a check that the ts-rs bindings in `src/types/bindings/` are up to date.
-- Build the `.deb` on every PR to catch packaging breakage.
-- Required status checks on `main` (branch protection), so a PR can't merge with red checks. The user turns this on in the GitHub settings.
-- Release pipeline: pushing a `v*` tag builds the `.deb` on Ubuntu 24.04 and publishes it to a GitHub Release with notes.
-- Workflow: after opening a PR, the organizer waits for the pipeline and confirms it passes; a failing run goes back to the owning devs as fix tasks, like a blocking council finding, until it is green.
-- New `devops` dev agent that owns the CI/CD pipeline (`.github/workflows/**`) and fixes pipeline failures; `build-version`, the dev contract's ownership table and `CLAUDE.md` gain it.
-- Standard GitHub-hosted runners are free for public repositories ([GitHub Actions billing](https://docs.github.com/en/billing/concepts/product-billing/github-actions)).
-- `.deb` package for Pop!_OS: app icon (a green Z in a dark, green-outlined flat-top hexagon), desktop entry (Office;Finance) shown in the COSMIC launcher, and declared runtime dependencies (WebKitGTK, Secret Service) so install pulls them in.
-- Update notice: on launch, at most once a day, check the GitHub Releases published by the release pipeline for a newer version and offer a download link; the user installs the `.deb` by hand. A Settings switch turns the check off; it is the app's only outside network call and sends no user data.
-- Backup before update: the first launch on a new version takes a V4 backup before running migrations.
-- After an update, show that release's notes in the app.
-- Settings > About shows the installed version and whether update checks are on.
-- Uninstall: `apt remove` and `apt purge` never delete user data; purge prints where it lives.
-- `docs/install.md`: install, update, uninstall and data location.
+### Monthly budget
 
-## V8: Dashboard
-
-- Prototype phase: at least three variants via Podman Compose. Checkpoint: the user picks one before the build continues.
-- Design: Copilot Money style; dark, colourful, clean, limited data per chart.
-- Charts: shadcn charts (Recharts), ECharts for heavier visuals.
-- Main page: headline numbers, spending by category, month-over-month trend, status badges.
-- Secondary pages: top nicknames, running balance, cash-flow Sankey, spending heatmap, biggest transactions, category drill-down.
-- Date range picker driving every view.
-
-## V9: Recurring charges
-
-- Recurring charges table.
-- Detection: 3 or more occurrences at a regular interval, amounts within 10%.
-- Confirm or dismiss suggestions.
-- Next expected date.
-- Upcoming recurring charges on the dashboard main page, plus a recurring list page.
-
-## V10: Multiple accounts and people
-
-- People table; accounts linked to owners.
-- Multiple checking and savings accounts; choose the account on import.
-- Savings transfers matched across accounts.
-- Person filter on every chart (one or several people).
-- Per-account views.
-
-## V11: Budget
-
-- One-time import of the Monthly Tracker tab by an AI agent, producing a seed file (see appendix).
-- Budget items and income tables, types and 50/30/20 buckets.
+- Budget lines attached to categories, with a nickname as a shortcut to a line.
+- 50/30/20 bucket per line; planned vs actual per month; rollups by type and owner.
 - Budget editor.
-- Linking transactions to budget items (overlay link, nickname default budget item).
-- Over/under comparison, 50/30/20 goals, rollups by type and person.
-- Loan estimator and savings calculator.
+- One-time seed from the Monthly Tracker (see appendix).
 
-## V12: Advisor
+### Bills and recurring charges
 
-- Claude API integration, with the API key stored via Secret Service.
-- Research financial-certification study material to shape the prompts.
-- Data preparation for advisor prompts.
-- Forward-looking advice: upcoming issues, investing suggestions, needs.
+- Detection: 3 or more occurrences at a regular interval, amounts within 10%; confirm or dismiss.
+- Bills calendar: due, paid, late; next expected date.
+- Due-soon desktop notification.
+- Price-increase flag when a confirmed charge's amount goes up.
 
-## Future items to review (not assigned to a version)
+### Savings goals
 
+- Goal: name, target amount, target date.
+- Monthly amount needed to reach it.
+- Progress from a chosen account's balance.
+
+### Cash-flow forecast
+
+- Projected balance per account 30, 60 and 90 days out, from recurring charges, income and the budget.
+- Low-balance warning with the date it happens.
+
+### What-if planner
+
+- Extra monthly income (for example a second job) needed to reach a goal by a date.
+- Debt payoff: avalanche vs snowball, with a debt-free date per plan.
+- Investing-readiness checklist of common milestones (emergency fund covered, high-interest debt paid), each showing where the user stands.
+- Every result shows its inputs and assumptions.
+
+## Insight
+
+### Month close
+
+- Guided monthly routine: accounts not imported this month, unreviewed or uncategorized rows, budget vs actual.
+- Close the month once every step is done.
+
+### Spending insights
+
+- Cut candidates: non-essential items or categories bought often and not budgeted, from line items and categories.
+- Unusual and duplicate charges.
+- Yearly tax summary: spending in user-tagged tax-relevant categories, organized for a tax preparer (no tax advice).
+
+### Dashboard
+
+- Built once, after the data above exists.
+- One chart library.
+- Main page: headline numbers, spending by category, month-over-month trend, upcoming bills, goal progress, forecast warning.
+- Date range picker driving every view.
+- Secondary pages only when a feature needs one.
+- Design variants through the snapshot harness (`snapshot.html`), not a separate prototype setup. Checkpoint: the user picks one variant before the build continues.
+
+## Future items (after the core app works; each one optional)
+
+- Financial guide: an opt-in background crawler builds a local RAG library of articles (tags, description, URL) matched to the user's milestones. Needs a Settings switch, since it breaks "the update check is the only outside call"; a trusted-source allowlist; local Ollama embeddings; vector search would need a dependency such as `sqlite-vec`.
 - Teller bank connections.
-- Jev categoriser (TypeSafe System One model; cheap, confidence scores).
-- Unsloth fine-tuning.
+- Claude API advisor.
+- Jev categorizer, Unsloth fine-tuning.
 - GPUI or Dioxus UI rewrite.
-- Split transactions.
+- Structured `AppError`: typed reasons inside variants (database kind, I/O apart from database, validation field), turned into the user's string only at the command boundary; same binding shape, same no-secrets rule.
+- `cargo-mutants` as an occasional run on money, ledger, imports and crypto (dev tool; needs approval, and a decision on CI).
 
-## Appendix: Budget Details (V11)
+## Decided against
+
+- Onboarding: a well-designed app needs none.
+- Data export: backups are the export.
+- Demo mode.
+- Manual transactions: they would undermine the accuracy of the data.
+- Reading or scanning attachments (OCR, vision): item codes aren't reliably readable; the user enters line items.
+
+## Appendix: Budget details (Monthly budget)
 
 **Source:** the app replaces the Household Budget Google Sheet. Only the Monthly Tracker tab is imported, once, by an AI agent with Sheets access (other tabs are outdated). The agent produces a seed file the app loads; the app needs no Google sign-in. After that, budgets are edited in the app.
 
@@ -161,8 +172,5 @@ One major version for builds and delivery, so it doesn't collide with the PRDs a
 - Summary: total income, total expenses, total debt, non-house debt.
 - Goals: 50/30/20 targets vs actual, plus an Unplanned amount.
 - Rollups: spending and debt by type; debt and income per person; monthly unplanned per person.
-- Calculators: Loan Estimator and Savings Calculator (target with 3, 5 and 10 year plans).
 
-**Budget items:** name, monthly amount, balance owed, type, 50/30/20 bucket, owner, due day. Income gets its own small table.
-
-**Linking:** a secondary categorisation. The transaction overlay gets an optional budget item link, and nicknames get an optional default budget item, so e.g. every CenterPoint payment links to the CenterPoint budget line automatically.
+**Budget lines:** name, monthly amount, type, 50/30/20 bucket, owner, due day, linked category. Balances owed come from the loan and card accounts of Accounts and debts rather than the budget. Income gets its own small table. The Sheet's Loan Estimator and Savings Calculator are replaced by the What-if planner and Savings goals.

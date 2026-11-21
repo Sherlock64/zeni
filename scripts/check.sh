@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Zeni verification gate. Spec: snapshots/V3.1.1/contracts.md ("scripts/check.sh").
+# Zeni verification gate. What each check enforces: CONSTRAINTS.md.
 # Usage: scripts/check.sh fast
 #        scripts/check.sh task [--rust <cargo test filter>]... [--ts <vitest path or pattern>]...
-#        scripts/check.sh integration [--evidence snapshots/V<n>/evidence.yaml]
-#        scripts/check.sh fresh snapshots/V<n>/evidence.yaml
+#        scripts/check.sh integration [--evidence snapshots/t<issue>/evidence.yaml]
+#        scripts/check.sh fresh snapshots/t<issue>/evidence.yaml
 # Overrides: ZENI_DEPS_APPROVED=1, ZENI_SUPPRESSIONS_APPROVED=1 (only for what the user approved).
 set -uo pipefail
 export LC_ALL=C # stable sort order for comm and the diff hash
@@ -76,7 +76,31 @@ policy() {
         'eslint-disable' '@ts-ignore' '@ts-expect-error' '@ts-nocheck' '.skip(' '.only(' 'it.todo('
     } | sort -u)
   fi
+
+  # 4. Rule greps over the whole tree, tracked and untracked (CONSTRAINTS.md).
+  while IFS= read -r f; do
+    echo "POLICY FAIL: $f"; ok=1
+  done < <(rules)
   return $ok
+}
+
+# rule <message> <extended regex> <pathspec>...: print "<message> <file>:<line>" per hit.
+# A line marked float-ok is skipped (the only exemption marker).
+rule() {
+  local msg=$1 re=$2
+  shift 2
+  git grep --untracked -nIE -e "$re" -- "$@" | grep -v 'float-ok' | cut -d: -f1,2 | sed "s|^|$msg |"
+}
+
+rules() {
+  # A non-money float carries "// float-ok: <why>" on its line.
+  rule "float type (money is integer cents)" '\bf(32|64)\b' 'src-tauri/src/*.rs'
+  rule "backend call outside src/lib/commands.ts" '@tauri-apps/api/core' 'src/*.ts' 'src/*.tsx' \
+    ':!src/lib/commands.ts' ':!src/lib/commands.test.ts'
+  rule "raw colour (use theme tokens)" \
+    '-(red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|slate|gray|zinc|neutral|stone)-[0-9]{2,3}\b|#[0-9a-fA-F]{6}\b' \
+    'src/*.tsx' ':!src/components/ui/'
+  rule "console.log" 'console\.log' 'src/*.ts' 'src/*.tsx'
 }
 
 # suppressions <pathspec>... -- <pattern>...: print each file with an added line containing a pattern.
