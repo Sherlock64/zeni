@@ -1,59 +1,80 @@
 # Factory workflow
 
-How Zeni's Claude Code agents and skills (`.claude/`) turn a request into a pull request. The rules live in the skills; this page is the map.
+How Zeni's Claude Code factory (`.claude/`) turns a request into a release. The rules live in `.claude/factory/spine.md` and the station guides; this page is the map.
 
-## Routing
-
-```mermaid
-flowchart TD
-  Req["User request"] --> Q{"What kind?"}
-  Q -- "question, no code change" --> Inv["investigate"]
-  Q -- "bug or small fix<br/>issue or SB-n" --> Fix["fix-bug<br/>brief as story S1"]
-  Q -- "clean up factory-bug issues" --> FC["factory-cleanup<br/>one story per issue"]
-  Q -- "major or minor version" --> HasPRD{"PRD exists?"}
-  HasPRD -- no --> WP["write-prd<br/>grill, PDF summary, one yes"]
-  WP --> BV
-  HasPRD -- yes --> BV["build-version"]
-  FC --> BV
-  Inv -. "novel or high-risk" .-> DC["Design check<br/>2-3 Plan agents, ADR"]
-  Fix -. "novel or high-risk" .-> DC
-  BV -. "novel or high-risk" .-> DC
-```
-
-## build-version
+## Units
 
 ```mermaid
-flowchart TD
-  Plan["Plan: PRD tasks S#-T# become the task graph<br/>files, acceptance proof, contracts.md, waves<br/>incl. app version and CHANGELOG.md section"] --> Waves
-  Waves["Code waves: core-dev + ui-dev, devops for pipeline files<br/>in parallel, one owner per file; reports with COVERS"] --> Cov["coverage.md<br/>criterion to test map"]
-  Cov --> Int["Integration: scripts/check.sh integration<br/>writes evidence.yaml"]
-  Int --> Docs{"Docs or workflow changed?"}
-  Docs -- yes --> DW["docs-writer and/or prompt-engineer"]
-  Docs -- no --> Council
-  DW --> Council["council-review<br/>members selected by risk<br/>council-devops for pipeline files"]
-  Council -- "blocking findings" --> FixW["Fix waves to the file owners"]
-  FixW --> Int2["Integration again"] --> Re["Targeted re-review:<br/>members with findings, affected dimensions,<br/>prd-compliance every round"]
-  Re -- "still blocking" --> FixW
-  Re -- pass --> PR
-  Council -- pass --> PR["PR to main"]
-  PR --> CI{"CI green?<br/>host CI monitor or gh pr checks --watch"}
-  CI -- "failing job" --> CIFix["Fix task to the cited file's owner<br/>pipeline files: devops"]
-  CIFix --> Int2
-  CI -- green --> Hand["App running, metrics, hand-off"]
+erDiagram
+  REQUEST }o--o| EPIC : "shapes into"
+  REQUEST }o--o| TICKET : "or becomes"
+  EPIC ||--|{ TICKET : "splits into"
+  TICKET }o--o{ TICKET : "blocked by"
+  TICKET ||--|{ RUN : "worked by"
+  TICKET ||--o| PR : "lands as"
+  RELEASE ||--|{ PR : "ships"
 ```
 
-`scripts/check.sh` tiers: `fast` (policy, type-check, fmt, clippy), `task` (fast plus named tests, run by each dev), `integration` (full suites, bindings freshness, evidence manifest) and `fresh` (whether the manifest still matches the tree).
+The issue number ties them together: branch `t<issue>-<words>`, `Closes #<n>`, ticket comments, the changelog bullet. An epic is not a release.
 
-## After a PR
+## Stations
 
 ```mermaid
 flowchart LR
-  PR["PR opened"] --> Retro["retrospective<br/>tally, HTML write-up in retros/"]
-  PR --> Merge["User merges"] --> Ask{"Push release tag vX.Y.Z?<br/>ask once"}
-  Ask -- yes --> Tag["git push origin tag"] --> Rel["Release workflow<br/>release-check.sh, .deb, GitHub Release"]
-  Retro --> Triage["One security triage pass<br/>(council-security)"]
-  Triage -- public --> Issue["factory-bug issue<br/>with a severity label, after the user's yes"]
-  Triage -- private --> SB["SB-n in snapshots/security-bugs.md<br/>(gitignored)"]
+  IN["Intake<br/>sort requests"] --> SH["Shape + slice<br/>epic issue, tickets"]
+  IN -- "small and clear" --> BU
+  SH --> BU["Build<br/>one owner, test-first"]
+  BU --> VE["Verify<br/>fresh verifier, real app"]
+  VE --> RV["Review<br/>5 seats by risk,<br/>block only with proof"]
+  RV -- "proven blocker" --> BU
+  RV --> ME["Merge"]
+  ME --> RE["Release<br/>on the user's yes"]
+  RE --> LE["Learn<br/>sampled retros"]
+  LE -. "at most 3 changes" .-> IN
+  RV -. "follow-ups" .-> IN
+  BU & VE & RV -. "eject" .-> NH["needs-human<br/>brief on the ticket"]
+  NH -. "answered" .-> BU
 ```
 
-Blocking findings, earlier rounds' failures and every `council-security` finding stay private, whatever the triage says (`build-version` step 6.2). Process ideas stay retrospective recommendations and are never filed.
+Each ticket carries one `state:` label: `intake`, `shaping`, `ready`, `building`, `verifying`, `reviewing`, `merged`, `released`, `needs-human`.
+
+## Dispatch
+
+```mermaid
+flowchart TD
+  You["/factory, with optional input"] --> Read["Read state: issues and labels, PRs and CI,<br/>commits since last tag, light.json, runs.tsv, private count"]
+  Read --> In{"New input?"} -- yes --> Intake["Intake"]
+  In -- no --> Pick
+  Intake --> Pick["Pick: answered ejects, failing PRs,<br/>frontier tickets, intake backlog"]
+  Pick --> Gate{"Light green and a slot free?<br/>Trust level lets it run?"}
+  Gate -- no --> List["List it for the user"]
+  Gate -- yes --> Claim["Claim: state:building + comment"] --> Spawn["start_session per ticket,<br/>own worktree, model from models.md"]
+```
+
+## Factory run and the traffic light
+
+```mermaid
+flowchart LR
+  Start["/factory-start<br/>pickup, light, watchdog"] --> Run["runs read light.json<br/>at every pivot"]
+  WD["watchdog session<br/>every 10-20 min: get_usage"] -- "green / yellow / red,<br/>slots from weekly pace" --> Run
+  Run --> Shut["/factory-shutdown<br/>now: off · drain: yellow, then off"]
+  Shut --> Dig["/factory-digest"]
+```
+
+The 5-hour window sets the light (green under 70%, yellow 70-89%, red 90%+). The weekly window is paced into 3, 2, 1 or 0 slots and turns the light red at 97%. A light older than 45 minutes counts as yellow.
+
+## Release
+
+```mermaid
+flowchart LR
+  M["PRs merged since last tag"] --> D{"largest door"}
+  D -- "door:one-way" --> Maj["major"]
+  D -- "door:two-way" --> Min["minor"]
+  D -- "door:none" --> Pat["patch"]
+  D -- "only door:docs" --> No["no release"]
+  Maj & Min & Pat --> RP["release PR: bump version,<br/>## Unreleased → ## x.y.z"] --> Tag["tag v x.y.z, on the user's yes"] --> GH["Release workflow:<br/>release-check.sh, .deb, GitHub Release"]
+```
+
+## Checks
+
+`scripts/check.sh` tiers: `fast` (policy greps from `CONSTRAINTS.md`, type-check, fmt, clippy), `task` (fast plus named tests), `integration` (full suites, bindings freshness, optional evidence manifest) and `fresh`. CI runs `integration` and both self-tests; the `Door` workflow checks each PR's label.

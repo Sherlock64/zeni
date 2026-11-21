@@ -4,7 +4,7 @@ An ADR records one technical choice that is surprising or hard to reverse, so la
 
 ## When to write one
 
-- Write one when the build-version "Design check" picks between structurally different designs; it hands docs-writer an ADR task.
+- Write one when the design check in Shape and slice (`.claude/factory/stations/shape-slice.md`) picks between structurally different designs; it becomes its own ticket.
 - Write one for a choice a later reader would question or could not cheaply undo, for example key handling, a schema shape that migrations lock in, or an external interface.
 - Do not write one for a choice the code or `CLAUDE.md` already makes obvious.
 

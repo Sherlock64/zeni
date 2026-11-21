@@ -5,7 +5,7 @@ description: Add or change a typed Tauri command in Zeni, end to end from the Ru
 
 # Add a command
 
-The reference implementations are `app_info` / `load_app_info` (a database read behind a thin wrapper), `set_backup_retention` / `backup::set_retention` (validated input), and `reveal_account_numbers` / `accounts::reveal` (domain logic that needs the data key). Every step below is `core-dev` work. Paths are relative to the repo root.
+The reference implementations are `app_info` / `load_app_info` (a database read behind a thin wrapper), `set_backup_retention` / `backup::set_retention` (validated input), and `reveal_account_numbers` / `accounts::reveal` (domain logic that needs the data key). Steps 1-10 are the backend half (`.claude/factory/guides/backend.md`). Paths are relative to the repo root.
 
 1. **Types** go in `src-tauri/src/types.rs`, or the `types` module once it is split. Each type needs `#[derive(TS)]`, `#[ts(export)]` and `#[serde(rename_all = "camelCase")]`.
    - Request: `#[derive(Debug, Deserialize, TS)]`, named `<Name>Request`.
@@ -49,8 +49,8 @@ The reference implementations are `app_info` / `load_app_info` (a database read 
    - A command that returns `()` uses `call<null>`.
    - Export only the wrappers.
 9. **TS test** in `src/lib/commands.test.ts`: assert that `invoke` was called with `"<snake_name>"` and `{ request: ... }`.
-10. **Check:** run the task checks in `.claude/skills/build-version/dev-contract.md` rule 9, with `--rust commands::` (plus the logic module, if any) and `--ts src/lib/commands.test.ts`.
+10. **Check:** run `scripts/check.sh task` with `--rust commands::` (plus the logic module, if any) and `--ts src/lib/commands.test.ts`.
 
-The UI side is `ui-dev`'s work:
+The UI half (`.claude/factory/guides/ui.md`):
 - Read with `useQuery({ queryKey: ["<snake_name>"], queryFn: <camelName> })`, or use `useMutation` for writes. A query used in more than one place gets a hook in `src/hooks/`, like `use-app-info.ts`.
 - A new `AppError` kind needs a next step in `src/components/command-error-alert.tsx`.

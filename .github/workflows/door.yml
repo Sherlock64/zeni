@@ -1,0 +1,31 @@
+name: Door
+
+# Every PR carries exactly one door label (.claude/factory/spine.md, Doors). Its own workflow, so
+# adding a label reruns only this check and never cancels CI.
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize, labeled, unlabeled]
+
+permissions: {}
+
+concurrency:
+  group: door-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  door:
+    name: Door label
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Exactly one door label
+        env:
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        run: |
+          doors=$(jq -r '.[] | select(test("^door:(one-way|two-way|none|docs)$"))' <<<"$LABELS")
+          count=$(grep -c . <<<"$doors" || true)
+          if [[ $count != 1 ]]; then
+            echo "::error::A PR needs exactly one door label (door:one-way, door:two-way, door:none or door:docs); it has $count."
+            exit 1
+          fi
+          echo "Door: $doors"

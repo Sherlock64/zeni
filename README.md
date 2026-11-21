@@ -30,7 +30,7 @@ To give transactions short names: [docs/nicknames.md](docs/nicknames.md).
 
 To categorize transactions, with or without a local Ollama model: [docs/categories.md](docs/categories.md).
 
-How the app fits together: [docs/architecture.md](docs/architecture.md). How the Claude Code agents build it: [docs/workflow.md](docs/workflow.md).
+How the app fits together: [docs/architecture.md](docs/architecture.md). How the Claude Code agents build it: [docs/workflow.md](docs/workflow.md). To run that agent "factory" yourself: [how-to-factory.md](how-to-factory.md).
 
 ## Commands
 

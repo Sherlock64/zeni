@@ -27,6 +27,7 @@ jobs:
           fetch-depth: 0 # check.sh diffs against the merge base with origin/main
 
       - run: scripts/release-check.test.sh
+      - run: scripts/check.test.sh
 
       # Tauri 2 Linux prerequisites: https://v2.tauri.app/start/prerequisites/
       - name: Install system packages

@@ -36,5 +36,5 @@ snapshots/
 # Real bank exports next to the PRDs must never be committed
 plans/*.csv
 
-# Session retrospectives (retrospective skill)
+# Old session retrospectives (now in .git/factory/retros/)
 retros/
