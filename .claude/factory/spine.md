@@ -21,6 +21,7 @@ Each ticket has exactly one `state:` label: `intake`, `shaping`, `ready`, `build
 
 - **Ready** means every "blocked by" ticket is closed and nobody claimed it. The ready set is the frontier.
 - **Claim**: the dispatcher sets `state:building` and comments `claimed by <session name>` before it starts the run, so runs never claim for themselves. It never starts two tickets that name the same module.
+- **Only the dispatcher starts runs.** A run that finishes sets the next state and ends; it never starts the next station's session, so every report comes back to the dispatcher.
 - **Private work** (security findings, anything a public issue would teach an attacker) keeps the same states in the local list `$(git rev-parse --git-common-dir)/factory/private.md`. Its branches, commits and PRs use neutral wording.
 
 ## Eject
@@ -88,4 +89,4 @@ A station moves up one level after 10 clean passes in a row and down one on any 
 
 ## Run log
 
-Every run ends with one comment on its ticket: station, outcome, evidence, what's next. It also appends one tab-separated row to `$(git rev-parse --git-common-dir)/factory/runs.tsv`: `ended_at`, `session_id`, `ticket` (`#n`, or `SB-n` for private work), `station`, `outcome` (`done`, `back`, `eject`, `checkpoint`), `note`. Learn and the digest add cost from the transcripts later. Models and effort per role: `models.md`.
+Every run ends with one comment on its ticket: station, outcome, evidence, what's next. Its final report starts with the outcome, then any question for the user, in the first 400 characters (only those reach the dispatcher); detail comes after. It also appends one tab-separated row to `$(git rev-parse --git-common-dir)/factory/runs.tsv`: `ended_at`, `session_id`, `ticket` (`#n`, or `SB-n` for private work), `station`, `outcome` (`done`, `back`, `eject`, `checkpoint`), `note`. Learn and the digest add cost from the transcripts later. Models and effort per role: `models.md`.

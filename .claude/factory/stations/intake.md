@@ -2,7 +2,7 @@
 
 **Outcome:** every raw request is sorted: bug or feature, size, public or private, new or duplicate.
 
-**Done when:** each request has a next state with a one-line reason in a comment, or is closed with one. Next states:
+**Done when:** each request has a next state with a one-line reason in a comment, or is closed with one, and one `runs.tsv` row per request is appended (`spine.md`, Run log), also when Intake runs inside `/factory`. Intake only sets the next state; it never starts the Shape or Build session (the dispatcher does). Next states:
 
 | Request | Next |
 |---|---|
