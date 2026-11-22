@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Internal: the backend's shared types are split into one file per domain; nothing changes in the app.
+
 ## 7.2.0
 
 - Ollama job messages are clearer, with a link to Settings and Try again on Transactions.
