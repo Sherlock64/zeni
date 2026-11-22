@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BoxesIcon } from "lucide-react";
 import { type FormEvent, type MouseEvent, useEffect, useId, useRef, useState } from "react";
+import { BuildIssuesDialog, buildIssues } from "@/components/build-issues-dialog";
 import { CommandErrorAlert } from "@/components/command-error-alert";
 import { TextField } from "@/components/text-field";
 import {
@@ -128,9 +129,6 @@ export function ModelBuildsSection() {
           : null;
   const buildBlocked = Boolean(reason) || Boolean(building) || start.isPending || !status.data || !settings.data;
   const active = builds.data?.find((build) => build.active);
-  // A build made before 7.2 may hold more examples than the window, which stalls categorizing.
-  const tooBig = Boolean(active && preview.data && !settings.data?.allowOverWindow && active.exampleCount > preview.data.fit);
-  const rebuild = Boolean(active?.outOfDate) || tooBig;
 
   function build() {
     if (buildBlocked) return;
@@ -174,6 +172,8 @@ export function ModelBuildsSection() {
 
   const previewError = preview.error ?? retriedError;
   const allowOverWindow = overWindow.isPending ? overWindow.variables.enabled : Boolean(settings.data?.allowOverWindow);
+  const issuesOf = (build: ModelBuild) => buildIssues(build, preview.data, allowOverWindow);
+  const rebuild = Boolean(active && issuesOf(active).length > 0);
 
   return (
     <section aria-labelledby={`${id}-heading`} className="flex flex-col gap-4">
@@ -268,12 +268,6 @@ export function ModelBuildsSection() {
         </div>
       )}
 
-      {tooBig && active && <p className="text-sm">{active.name} is larger than Ollama's window: Rebuild to fit.</p>}
-      {active?.outOfDate && (
-        <p className="text-sm">
-          {active.name} is out of date: your categories changed since it was built. Rebuild so it learns the new list.
-        </p>
-      )}
       <div className="flex flex-wrap items-center gap-3">
         <Button aria-disabled={buildBlocked} aria-describedby={reason ? `${id}-reason` : undefined} onClick={build}>
           {building ? runningJobLabel(building) : start.isPending ? "Starting…" : rebuild ? "Rebuild" : "Build"}
@@ -324,7 +318,7 @@ export function ModelBuildsSection() {
                 <div className="flex items-center gap-2">
                   <span className="font-mono text-sm">{build.name}</span>
                   {build.active && <Badge>Active</Badge>}
-                  {build.outOfDate && <Badge variant="outline">Out of date</Badge>}
+                  {issuesOf(build).length > 0 && <BuildIssuesDialog name={build.name} issues={issuesOf(build)} />}
                 </div>
                 <p className="text-sm text-muted-foreground">
                   From {build.baseModel} on {formatDate(build.createdAt.slice(0, 10))},{" "}
