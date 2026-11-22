@@ -16,7 +16,7 @@ Read `.claude/factory/spine.md` first. You dispatch; you don't build, review or 
 - `$F/light.json` (word, `slots`, `set_at`), `$F/runs.tsv`, and the count of open items in `$F/private.md` (count only, never content).
 - Live runs: `list_sessions` with `linked: true`; a ticket in `building`, `verifying` or `reviewing` whose run is gone is a vanished run (`factory-start` picks it up).
 
-A child's report is a hint, not the state. Take each item's state from its GitHub label and its last ticket comment, and a run's liveness from `list_sessions`; say a run waits on the user only when its ticket is `state:needs-human`, its PR waits on a level 0 or 1 station, or `get_session` shows it blocked on a question. Where a report and GitHub disagree, say GitHub's state and note the report.
+A child's report is a hint, not the state. Take each item's state from its GitHub label and its last ticket comment, and a run's liveness from `list_sessions`; say an item waits on the user only when its ticket is `state:needs-human`, `get_session` shows its run blocked on a question, or no run is live for it and the user hasn't yet given the yes it needs: the station that just finished is at level 1, or the next station is at level 0 or is Shape and slice, Merge or Release. Where a report and GitHub disagree, say GitHub's state and note the report.
 
 Show the user one short status, in this order:
 
@@ -37,7 +37,7 @@ If the user gave something new, run Intake on it (`stations/intake.md`) before p
 ## 4. Gate
 
 - Start nothing unless the light is `green` (a stale or missing light counts as `yellow`), and never more runs than `slots` minus those in flight.
-- Trust dial: read each station's level from the "Now" column of the table in `spine.md` every time, never from memory. A station at level 0 lists the work with a one-line brief and waits for the user's yes; at level 1 the run goes, and its next station waits for the user's yes; at level 2 or 3 nothing waits (today Build and Verify are 2, so Verify starts after Build, and Review after Verify, without asking). Shape and slice, Merge and Release never start without the user's yes.
+- Trust dial: read each station's level from the "Now" column of the table in `spine.md` every time, never from memory. A station at level 0 lists the work with a one-line brief and waits for the user's yes; at level 1 the run goes, and its next station waits for the user's yes; at level 2 or 3 nothing waits (e.g. with Build and Verify at 2, Verify starts after Build, and Review after Verify, without asking). Shape and slice, Merge and Release never start without the user's yes.
 
 ## 5. Start runs
 
