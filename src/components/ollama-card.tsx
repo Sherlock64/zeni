@@ -21,10 +21,10 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useJobStatus, invalidateJobStatus } from "@/hooks/use-job-status";
+import { useJobStatus } from "@/hooks/use-job-status";
 import { cancelJob, ollamaSettings, ollamaStatus, setBaseModel, setOllamaPort, startModelDownload } from "@/lib/commands";
 import { runningJobLabel } from "@/lib/job-label";
-import { BUILDS_KEY, JOB_STATUS_KEY, OLLAMA_SETTINGS_KEY, OLLAMA_STATUS_KEY } from "@/lib/query-keys";
+import { invalidate, JOB_STATUS_KEY, OLLAMA_SETTINGS_KEY, OLLAMA_STATUS_KEY } from "@/lib/query-keys";
 import type { RecommendedModel } from "@/types/bindings/RecommendedModel";
 
 // Ollama treats "name" and "name:latest" as the same model.
@@ -58,7 +58,7 @@ export function OllamaCard() {
     mutationFn: setOllamaPort,
     onSuccess: (saved) => {
       queryClient.setQueryData(OLLAMA_SETTINGS_KEY, saved);
-      queryClient.invalidateQueries({ queryKey: OLLAMA_STATUS_KEY });
+      invalidate(queryClient, "ollama");
     },
   });
   const saveModel = useMutation({
@@ -66,14 +66,14 @@ export function OllamaCard() {
     onSuccess: (saved) => {
       queryClient.setQueryData(OLLAMA_SETTINGS_KEY, saved);
       // Picking a base model deactivates the active build.
-      queryClient.invalidateQueries({ queryKey: BUILDS_KEY });
+      invalidate(queryClient, "ollama");
     },
   });
   const download = useMutation({
     mutationFn: startModelDownload,
     onSuccess: (started) => queryClient.setQueryData(JOB_STATUS_KEY, started),
   });
-  const cancel = useMutation({ mutationFn: cancelJob, onSuccess: () => invalidateJobStatus(queryClient) });
+  const cancel = useMutation({ mutationFn: cancelJob, onSuccess: () => invalidate(queryClient, "job") });
 
   const running = job.data?.running ?? null;
   const downloading = running?.kind === "download" ? running : null;
@@ -87,8 +87,7 @@ export function OllamaCard() {
       setSawDownload(true);
     } else if (wasDownloading.current) {
       wasDownloading.current = false;
-      queryClient.invalidateQueries({ queryKey: OLLAMA_STATUS_KEY });
-      queryClient.invalidateQueries({ queryKey: OLLAMA_SETTINGS_KEY });
+      invalidate(queryClient, "download");
       // The progress bar and its Cancel button are gone, so don't leave focus on nothing.
       if (document.activeElement === document.body) heading.current?.focus();
     }

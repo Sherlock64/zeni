@@ -32,13 +32,12 @@ import {
 } from "@/lib/commands";
 import { runningJobLabel } from "@/lib/job-label";
 import { formatDate } from "@/lib/dates";
-import { BUILDS_KEY, JOB_STATUS_KEY, OLLAMA_SETTINGS_KEY, OLLAMA_STATUS_KEY } from "@/lib/query-keys";
+import { BUILD_PREVIEW_KEY, BUILDS_KEY, invalidate, JOB_STATUS_KEY, OLLAMA_SETTINGS_KEY, OLLAMA_STATUS_KEY } from "@/lib/query-keys";
 import type { BuildPreview } from "@/types/bindings/BuildPreview";
 import type { ModelBuild } from "@/types/bindings/ModelBuild";
 import type { OllamaSettings } from "@/types/bindings/OllamaSettings";
 import type { CommandError } from "@/types/command";
 
-const PREVIEW_KEY = ["build_preview"] as const;
 
 function previewText({ windowTokens, fit, total }: BuildPreview, allowOverWindow: boolean) {
   const windowText = `Ollama's ${windowTokens.toLocaleString("en-US")}-token window`;
@@ -56,7 +55,7 @@ export function ModelBuildsSection() {
   const job = useJobStatus();
   const baseModel = settings.data?.baseModel;
   // The base model is in the key so picking another one rechecks its window.
-  const preview = useQuery({ queryKey: [...PREVIEW_KEY, baseModel], queryFn: buildPreview, enabled: Boolean(baseModel) });
+  const preview = useQuery({ queryKey: [...BUILD_PREVIEW_KEY, baseModel], queryFn: buildPreview, enabled: Boolean(baseModel) });
   const id = useId();
   const heading = useRef<HTMLHeadingElement>(null);
   const opener = useRef<HTMLButtonElement | null>(null);
@@ -70,10 +69,7 @@ export function ModelBuildsSection() {
   const [retriedError, setRetriedError] = useState<CommandError | null>(null);
 
   // A build or a delete changes the models Ollama has installed.
-  const refreshBuilds = () => {
-    queryClient.invalidateQueries({ queryKey: BUILDS_KEY });
-    queryClient.invalidateQueries({ queryKey: OLLAMA_STATUS_KEY });
-  };
+  const refreshBuilds = () => invalidate(queryClient, "ollama");
   const start = useMutation({
     mutationFn: startBuild,
     onSuccess: (started) => queryClient.setQueryData(JOB_STATUS_KEY, started),
@@ -81,8 +77,7 @@ export function ModelBuildsSection() {
   const activate = useMutation({
     mutationFn: activateBuild,
     onSuccess: async () => {
-      queryClient.invalidateQueries({ queryKey: OLLAMA_STATUS_KEY });
-      await queryClient.invalidateQueries({ queryKey: BUILDS_KEY });
+      await invalidate(queryClient, "ollama");
       // The pressed "Make active" button unmounts once its build is active, so don't leave focus on nothing.
       heading.current?.focus();
     },
@@ -97,7 +92,7 @@ export function ModelBuildsSection() {
   // Both settings change what the next build uses, so recheck the preview.
   const savedSettings = (saved: OllamaSettings) => {
     queryClient.setQueryData(OLLAMA_SETTINGS_KEY, saved);
-    queryClient.invalidateQueries({ queryKey: PREVIEW_KEY });
+    invalidate(queryClient, "ollama");
   };
   const saveExamples = useMutation({
     mutationFn: setExamplesPerCategory,
@@ -119,9 +114,7 @@ export function ModelBuildsSection() {
       setSawBuild(true);
     } else if (wasBuilding.current) {
       wasBuilding.current = false;
-      queryClient.invalidateQueries({ queryKey: BUILDS_KEY });
-      queryClient.invalidateQueries({ queryKey: OLLAMA_STATUS_KEY });
-      queryClient.invalidateQueries({ queryKey: PREVIEW_KEY });
+      invalidate(queryClient, "ollama");
     }
   }, [building, queryClient]);
 

@@ -37,7 +37,8 @@ test.each<[QueryChange, string[]]>([
   ["security", ["SECURITY_STATUS_KEY"]],
   ["csvLayouts", ["CSV_LAYOUTS_KEY"]],
   ["backups", ["BACKUPS_KEY"]],
-  ["ollama", ["BUILDS_KEY", "BUILD_PREVIEW_KEY", "OLLAMA_SETTINGS_KEY", "OLLAMA_STATUS_KEY"]],
+  ["ollama", ["BUILDS_KEY", "BUILD_PREVIEW_KEY", "OLLAMA_STATUS_KEY"]],
+  ["download", ["BUILDS_KEY", "BUILD_PREVIEW_KEY", "OLLAMA_SETTINGS_KEY", "OLLAMA_STATUS_KEY"]],
   ["job", ["JOB_STATUS_KEY"]],
 ])("a %s change makes exactly these queries stale", async (change, expected) => {
   expect(await staleAfter(change)).toEqual(expected);

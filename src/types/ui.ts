@@ -29,6 +29,7 @@ export type QueryChange =
   | "csvLayouts"
   | "backups"
   | "ollama"
+  | "download"
   | "job";
 
 export type PageProps = { title: string; description: string; children: ReactNode };

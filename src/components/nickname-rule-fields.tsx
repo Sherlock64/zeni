@@ -11,6 +11,7 @@ import type { MatchField } from "@/types/bindings/MatchField";
 import type { MatchMode } from "@/types/bindings/MatchMode";
 import type { RuleInput } from "@/types/bindings/RuleInput";
 import type { NicknameRuleFieldsProps, RuleMatchCountProps } from "@/types/ui";
+import { RULE_MATCHES_KEY } from "@/lib/query-keys";
 
 const modes: [MatchMode, string, string][] = [
   ["exact", "Exact", "The whole text, ignoring case."],
@@ -31,7 +32,7 @@ function useRuleCount(value: RuleInput) {
   }, [value]);
   const blank = !rule.pattern.trim();
   const count = useQuery({
-    queryKey: ["count_rule_matches", rule],
+    queryKey: [...RULE_MATCHES_KEY, rule],
     queryFn: () => countRuleMatches(rule),
     enabled: !blank,
     placeholderData: keepPreviousData,

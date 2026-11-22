@@ -13,13 +13,7 @@ import { listNicknames, saveNicknameRule, updateNickname } from "@/lib/commands"
 import { focusFirstInvalid } from "@/lib/focus";
 import { errorField } from "@/lib/nickname-errors";
 import { NICKNAME_MAX_LEN } from "@/lib/nickname-limits";
-import {
-  CATEGORIES_KEY,
-  NICKNAMES_KEY,
-  REVIEW_GROUPS_KEY,
-  TRANSACTIONS_KEY,
-  UNREVIEWED_COUNT_KEY,
-} from "@/lib/query-keys";
+import { invalidate, NICKNAMES_KEY } from "@/lib/query-keys";
 import type { Nickname } from "@/types/bindings/Nickname";
 import type { RuleInput } from "@/types/bindings/RuleInput";
 import type { CommandError } from "@/types/command";
@@ -64,9 +58,7 @@ export function RenameDialog({ transaction, open, onOpenChange, onCloseAutoFocus
   const save = useMutation({
     mutationFn: (send: () => Promise<Nickname>) => send(),
     onSuccess: () => {
-      for (const queryKey of [TRANSACTIONS_KEY, NICKNAMES_KEY, REVIEW_GROUPS_KEY, UNREVIEWED_COUNT_KEY, CATEGORIES_KEY]) {
-        queryClient.invalidateQueries({ queryKey });
-      }
+      invalidate(queryClient, "nickname");
       onOpenChange(false);
     },
     // The pattern field may be inside the closed expander.

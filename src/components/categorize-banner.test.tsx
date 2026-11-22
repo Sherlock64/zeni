@@ -1,9 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { CategorizeBanner } from "@/components/categorize-banner";
-import { invalidateJobStatus } from "@/hooks/use-job-status";
 import { cancelJob, clearJobOutcome, jobStatus } from "@/lib/commands";
-import { BUILDS_KEY, CATEGORIES_KEY, JOB_STATUS_KEY, REVIEW_GROUPS_KEY, TRANSACTIONS_KEY, UNREVIEWED_COUNT_KEY } from "@/lib/query-keys";
+import { invalidate, JOB_STATUS_KEY, LEDGER_KEY, OLLAMA_KEY } from "@/lib/query-keys";
 import type { JobOutcome } from "@/types/bindings/JobOutcome";
 import type { JobStatus } from "@/types/bindings/JobStatus";
 
@@ -46,7 +45,7 @@ const visibleText = { ignore: "[role=status]" };
 // Stands in for the next 500 ms poll, so no test waits on real time.
 const poll = (client: QueryClient, next: JobStatus) => {
   vi.mocked(jobStatus).mockResolvedValue(next);
-  return act(() => invalidateJobStatus(client));
+  return act(() => invalidate(client, "job"));
 };
 
 test("shows progress outside the live region, announces it coarsely, then the summary, and refreshes the data", async () => {
@@ -72,10 +71,8 @@ test("shows progress outside the live region, announces it coarsely, then the su
   expect(status()).toBe(summary);
   expect(screen.queryByRole("progressbar")).toBeNull();
   expect(screen.getByRole("link", { name: "Review them" }).getAttribute("href")).toBe("#/review");
-  for (const queryKey of [TRANSACTIONS_KEY, REVIEW_GROUPS_KEY, UNREVIEWED_COUNT_KEY, CATEGORIES_KEY]) {
-    expect(invalidate).toHaveBeenCalledWith({ queryKey });
-  }
-  expect(invalidate).not.toHaveBeenCalledWith({ queryKey: BUILDS_KEY });
+  expect(invalidate).toHaveBeenCalledWith({ queryKey: LEDGER_KEY });
+  expect(invalidate).not.toHaveBeenCalledWith({ queryKey: OLLAMA_KEY });
 });
 
 test("offers no review link when nothing was categorized", async () => {
@@ -102,8 +99,8 @@ test("shows a running build with an animated bar and Cancel, then that it was bu
   expect(await screen.findByText("Built zeni-3.", visibleText)).toBeTruthy();
   expect(status()).toBe("Built zeni-3.");
   expect(button("Dismiss")).toBeTruthy();
-  expect(invalidate).toHaveBeenCalledWith({ queryKey: BUILDS_KEY });
-  expect(invalidate).not.toHaveBeenCalledWith({ queryKey: TRANSACTIONS_KEY });
+  expect(invalidate).toHaveBeenCalledWith({ queryKey: OLLAMA_KEY });
+  expect(invalidate).not.toHaveBeenCalledWith({ queryKey: LEDGER_KEY });
 });
 
 test("a counted run's bar doesn't pulse", async () => {

@@ -15,7 +15,6 @@ export const RULE_MATCHES_KEY = [...LEDGER_KEY, "count_rule_matches"] as const;
 
 export const OLLAMA_KEY = ["ollama"] as const;
 export const OLLAMA_STATUS_KEY = [...OLLAMA_KEY, "ollama_status"] as const;
-export const OLLAMA_SETTINGS_KEY = [...OLLAMA_KEY, "ollama_settings"] as const;
 export const BUILDS_KEY = [...OLLAMA_KEY, "list_builds"] as const;
 export const BUILD_PREVIEW_KEY = [...OLLAMA_KEY, "build_preview"] as const;
 
@@ -28,6 +27,8 @@ export const CSV_PREVIEW_KEY = ["preview_csv_mapping"] as const;
 export const NICKNAME_SETTINGS_KEY = ["nickname_settings"] as const;
 export const BACKUP_SETTINGS_KEY = ["backup_settings"] as const;
 export const BACKUPS_KEY = ["list_backups"] as const;
+// Outside OLLAMA_KEY: every save writes the answer here, so an "ollama" change must not re-read a stale copy.
+export const OLLAMA_SETTINGS_KEY = ["ollama_settings"] as const;
 export const JOB_STATUS_KEY = ["job_status"] as const;
 export const STARTUP_STATUS_KEY = ["startup_status"] as const;
 export const UPDATE_STATUS_KEY = ["update_status"] as const;
@@ -47,7 +48,10 @@ const STALE: Record<QueryChange, readonly QueryKey[] | null> = {
   security: [SECURITY_STATUS_KEY],
   csvLayouts: [CSV_LAYOUTS_KEY],
   backups: [BACKUPS_KEY],
+  // Installed models, builds and the build preview.
   ollama: [OLLAMA_KEY],
+  // A finished download can also change the base model.
+  download: [OLLAMA_KEY, OLLAMA_SETTINGS_KEY],
   // After starting, cancelling or clearing a job, so every banner, action and card sees it.
   job: [JOB_STATUS_KEY],
 };

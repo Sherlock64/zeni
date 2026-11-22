@@ -20,6 +20,7 @@ import { useSecurityStatus } from "@/hooks/use-security-status";
 import { masterPasswordErrors } from "@/lib/validation";
 import type { LockReason } from "@/types/bindings/LockReason";
 import type { FieldErrors, UndoRestoreProps } from "@/types/ui";
+import { invalidate } from "@/lib/query-keys";
 
 const reasons: Record<LockReason, string> = {
   keyringLocked: "Your system keyring is locked, so Zeni can't read its key from it.",
@@ -97,7 +98,7 @@ export function UnlockPage() {
 const useRefetchStatus = () => {
   const queryClient = useQueryClient();
   // Returning the promise keeps the mutation pending until the gate has the new status.
-  return () => queryClient.invalidateQueries({ queryKey: ["security_status"] });
+  return () => invalidate(queryClient, "security");
 };
 
 function PasswordForm() {
@@ -264,7 +265,7 @@ function UndoRestore({ onUndone }: UndoRestoreProps) {
   const mutation = useMutation({
     mutationFn: undoRestore,
     onSuccess: async () => {
-      await queryClient.invalidateQueries();
+      await invalidate(queryClient, "restore");
       onUndone();
     },
   });

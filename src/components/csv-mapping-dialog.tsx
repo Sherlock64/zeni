@@ -15,6 +15,7 @@ import { formatCents } from "@/lib/money";
 import type { CsvMapping } from "@/types/bindings/CsvMapping";
 import type { CsvPreviewRow } from "@/types/bindings/CsvPreviewRow";
 import type { CsvMappingDialogProps } from "@/types/ui";
+import { CSV_PREVIEW_KEY, invalidate } from "@/lib/query-keys";
 
 const fixMapping = "Check the chosen columns and date format, or cancel.";
 const cents = (value: number | null) => (value === null ? "" : formatCents(value));
@@ -44,7 +45,7 @@ export function CsvMappingDialog({ needed, onStep, onCancel, cancelling, onClose
   const attempted = attempts > 0;
   const formRef = useRef<HTMLFormElement>(null);
   const preview = useQuery({
-    queryKey: ["preview_csv_mapping", mapping],
+    queryKey: [...CSV_PREVIEW_KEY, mapping],
     queryFn: () => previewCsvMapping(mapping!),
     enabled: mapping !== null,
     placeholderData: keepPreviousData,
@@ -52,7 +53,7 @@ export function CsvMappingDialog({ needed, onStep, onCancel, cancelling, onClose
   const save = useMutation({
     mutationFn: saveCsvLayout,
     onSuccess: (step) => {
-      queryClient.invalidateQueries({ queryKey: ["list_csv_layouts"] });
+      invalidate(queryClient, "csvLayouts");
       onStep(step);
     },
   });

@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { setTransactionCategory } from "@/lib/commands";
-import { CATEGORIES_KEY, REVIEW_GROUPS_KEY, TRANSACTIONS_KEY, UNREVIEWED_COUNT_KEY } from "@/lib/query-keys";
+import { invalidate } from "@/lib/query-keys";
 import type { CategorizeDialogProps } from "@/types/ui";
 
 // Sets or clears the user's category of one row and its note. "Uncategorized" keeps the note.
@@ -19,9 +19,7 @@ export function CategorizeDialog({ transaction, open, onOpenChange, onCloseAutoF
   const save = useMutation({
     mutationFn: () => setTransactionCategory({ transactionId: transaction.id, categoryId, note }),
     onSuccess: () => {
-      for (const queryKey of [TRANSACTIONS_KEY, REVIEW_GROUPS_KEY, UNREVIEWED_COUNT_KEY, CATEGORIES_KEY]) {
-        queryClient.invalidateQueries({ queryKey });
-      }
+      invalidate(queryClient, "category");
       onOpenChange(false);
     },
   });

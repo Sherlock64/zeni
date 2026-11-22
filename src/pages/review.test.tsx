@@ -7,6 +7,7 @@ import { ReviewPage } from "@/pages/review";
 import type { Category } from "@/types/bindings/Category";
 import type { ReviewGroup } from "@/types/bindings/ReviewGroup";
 import type { Transaction } from "@/types/bindings/Transaction";
+import { CATEGORIES_KEY, REVIEW_GROUPS_KEY, TRANSACTIONS_KEY, UNREVIEWED_COUNT_KEY } from "@/lib/query-keys";
 
 vi.mock("@/lib/commands", () => ({
   reviewGroups: vi.fn(),
@@ -87,7 +88,7 @@ const pickIn = async (name: string, option: string) => {
 };
 // The groups come from the cache, not a refetch; only the count and transactions reload.
 const expectRefreshed = (invalidate: ReturnType<typeof renderPage>) => {
-  expect(invalidate.mock.calls.map(([filters]) => filters?.queryKey)).toEqual([["unreviewed_count"], ["list_transactions"]]);
+  expect(invalidate.mock.calls.map(([filters]) => filters?.queryKey)).toEqual([UNREVIEWED_COUNT_KEY, TRANSACTIONS_KEY]);
   expect(reviewGroups).toHaveBeenCalledTimes(1);
 };
 
@@ -568,7 +569,7 @@ test("the status falls back to \"the new category\" when the categories aren't c
   const client = renderWithClient();
   fireEvent.click(await screen.findByRole("checkbox", { name: "Select Pizza night" }));
   await pickIn(BAR_SELECT, "Groceries");
-  client.removeQueries({ queryKey: ["list_categories"] });
+  client.removeQueries({ queryKey: CATEGORIES_KEY });
   resolve(1);
   await waitFor(() => expect(screen.getByRole("status").textContent).toBe("Changed 1 row to the new category."));
 });
@@ -580,7 +581,7 @@ test("a selected row that a refetch drops is no longer counted or sent", async (
   fireEvent.click(await screen.findByRole("checkbox", { name: "Select Pizza night" }));
   fireEvent.click(screen.getByRole("checkbox", { name: "Select FRESH MART #12" }));
   expect(screen.getByText("2 selected")).toBeTruthy();
-  await client.refetchQueries({ queryKey: ["review_groups"] });
+  await client.refetchQueries({ queryKey: REVIEW_GROUPS_KEY });
   expect(await screen.findByText("1 selected")).toBeTruthy();
   await pickIn(BAR_SELECT, "Dining out");
   await waitFor(() => expect(setTransactionsCategory).toHaveBeenCalledWith({ transactionIds: [60], categoryId: 5 }));
@@ -597,7 +598,7 @@ test("the loading status clears once the last group draws, and a refetch that ad
   expect(groupRegions()).toHaveLength(20);
   expect(screen.getByRole("status").textContent).toBe("");
 
-  await client.refetchQueries({ queryKey: ["review_groups"] });
+  await client.refetchQueries({ queryKey: REVIEW_GROUPS_KEY });
   // The new groups still draw in a later frame, but the status stays clear.
   await waitFor(() => expect(groupSkeletons().length).toBeGreaterThan(0));
   expect(screen.getByRole("status").textContent).toBe("");

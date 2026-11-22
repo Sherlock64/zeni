@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { completeSetup } from "@/lib/commands";
 import { masterPasswordErrors } from "@/lib/validation";
 import type { FieldErrors, SetupPageProps } from "@/types/ui";
+import { invalidate } from "@/lib/query-keys";
 
 const textError = (value: string, what: string) => {
   const length = [...value.trim()].length;
@@ -107,7 +108,7 @@ export function SetupPage({ defaultOwner }: SetupPageProps) {
           )}
           <RecoveryCodes
             codes={setup.data.recoveryCodes}
-            onContinue={() => queryClient.invalidateQueries({ queryKey: ["security_status"] })}
+            onContinue={() => invalidate(queryClient, "security")}
           />
         </CardContent>
       </Card>

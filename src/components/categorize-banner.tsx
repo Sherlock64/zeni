@@ -4,10 +4,10 @@ import { CommandErrorAlert } from "@/components/command-error-alert";
 import { PAGE_WIDTH } from "@/components/page";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { invalidateJobStatus, useJobStatus } from "@/hooks/use-job-status";
+import { useJobStatus } from "@/hooks/use-job-status";
 import { cancelJob, clearJobOutcome } from "@/lib/commands";
 import { finishedJobName, runningJobLabel } from "@/lib/job-label";
-import { BUILDS_KEY, CATEGORIES_KEY, REVIEW_GROUPS_KEY, TRANSACTIONS_KEY, UNREVIEWED_COUNT_KEY } from "@/lib/query-keys";
+import { invalidate } from "@/lib/query-keys";
 import type { JobKind } from "@/types/bindings/JobKind";
 import type { JobOutcome } from "@/types/bindings/JobOutcome";
 
@@ -21,8 +21,8 @@ export function CategorizeBanner() {
   const queryClient = useQueryClient();
   const job = useJobStatus();
   const labelId = useId();
-  const cancel = useMutation({ mutationFn: cancelJob, onSuccess: () => invalidateJobStatus(queryClient) });
-  const dismiss = useMutation({ mutationFn: clearJobOutcome, onSuccess: () => invalidateJobStatus(queryClient) });
+  const cancel = useMutation({ mutationFn: cancelJob, onSuccess: () => invalidate(queryClient, "job") });
+  const dismiss = useMutation({ mutationFn: clearJobOutcome, onSuccess: () => invalidate(queryClient, "job") });
 
   const running = job.data?.running && isShown(job.data.running.kind) ? job.data.running : null;
   const last = !job.data?.running && job.data?.last && isShown(job.data.last.kind) ? job.data.last : null;
@@ -34,12 +34,9 @@ export function CategorizeBanner() {
     if (runningKind) {
       endedKind.current = runningKind;
     } else if (endedKind.current) {
-      const keys =
-        endedKind.current === "build"
-          ? [BUILDS_KEY]
-          : [TRANSACTIONS_KEY, REVIEW_GROUPS_KEY, UNREVIEWED_COUNT_KEY, CATEGORIES_KEY];
+      const change = endedKind.current === "build" ? "ollama" : "category";
       endedKind.current = null;
-      for (const queryKey of keys) queryClient.invalidateQueries({ queryKey });
+      invalidate(queryClient, change);
     }
   }, [runningKind, queryClient]);
 

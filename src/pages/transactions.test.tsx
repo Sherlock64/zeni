@@ -5,6 +5,7 @@ import { formatCents } from "@/lib/money";
 import { TransactionsPage } from "@/pages/transactions";
 import type { Category } from "@/types/bindings/Category";
 import type { Transaction } from "@/types/bindings/Transaction";
+import { invalidate, LEDGER_KEY } from "@/lib/query-keys";
 
 vi.mock("@/lib/commands", () => ({
   listTransactions: vi.fn(),
@@ -210,7 +211,7 @@ test("steps back to the last page when a refetch shrinks the total", async () =>
     rows: query.page === 0 ? [{ ...row, description: "STILL HERE" }] : [],
     total: 45,
   }));
-  await act(() => client.invalidateQueries({ queryKey: ["list_transactions"] }));
+  await act(() => invalidate(client, "import"));
   expect(await screen.findByText("STILL HERE")).toBeTruthy();
   expect(lastQuery()).toEqual(base);
   expect(screen.getByText("Page 1 of 1")).toBeTruthy();
@@ -481,9 +482,7 @@ test("the Category cell opens the Categorize dialog; saving shows You and return
   fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
   await vi.waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   expect(setTransactionCategory).toHaveBeenCalledWith({ transactionId: 1, categoryId: 5, note: "" });
-  for (const key of ["list_transactions", "review_groups", "unreviewed_count", "list_categories"]) {
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: [key] });
-  }
+  expect(invalidate).toHaveBeenCalledWith({ queryKey: LEDGER_KEY });
   expect(await screen.findByRole("button", { name: "Dining out, set by You" })).toBeTruthy();
   await vi.waitFor(() => expect(document.activeElement?.getAttribute("aria-label")).toBe("Dining out, set by You"));
 });

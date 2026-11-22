@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen } from "@testing-library/react";
-import { invalidateJobStatus, useJobStatus } from "@/hooks/use-job-status";
+import { useJobStatus } from "@/hooks/use-job-status";
+import { invalidate } from "@/lib/query-keys";
 import { jobStatus } from "@/lib/commands";
 import type { JobStatus } from "@/types/bindings/JobStatus";
 
@@ -55,7 +56,7 @@ test("fetches once when idle and again when invalidated", async () => {
   await advance(5000);
   expect(jobStatus).toHaveBeenCalledTimes(1);
 
-  await act(() => invalidateJobStatus(client));
+  await act(() => invalidate(client, "job"));
   await advance(0);
   expect(screen.getByText("Categorize now")).toBeTruthy();
   await advance(500);
