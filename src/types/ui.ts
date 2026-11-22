@@ -272,3 +272,5 @@ export type TextSize = 90 | 100 | 115 | 130 | 150;
 
 /** One problem with a model build, shown in its row's issue dialog. */
 export type BuildIssue = { title: string; detail: string };
+
+export type BuildIssuesDialogProps = { name: string; active: boolean; issues: BuildIssue[] };

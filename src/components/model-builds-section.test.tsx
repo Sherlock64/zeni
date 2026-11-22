@@ -310,6 +310,25 @@ test("suggests Rebuild when the active build is larger than the window", async (
   expect(screen.queryByText(/Larger than Ollama's window/)).toBeNull();
 });
 
+test("an inactive build larger than the window shows no too-large issue", async () => {
+  // The preview's window is the current base model's, so it says nothing about an older build.
+  vi.mocked(listBuilds).mockResolvedValue([{ ...builds[0], exampleCount: 10 }, { ...tooBig, id: 9, name: "zeni-9", active: false }]);
+  vi.mocked(buildPreview).mockResolvedValue(preV72Window);
+  renderSection();
+  await screen.findByText(/examples/, { selector: "p[aria-live]" });
+  await screen.findAllByRole("listitem");
+  expect(screen.queryByRole("button", { name: /issues? with/ })).toBeNull();
+});
+
+test("an inactive build's dialog doesn't offer Rebuild as its fix", async () => {
+  renderSection();
+  fireEvent.click(await screen.findByRole("button", { name: "1 issue with zeni-1" }));
+  const dialog = await screen.findByRole("dialog", { name: "1 issue with zeni-1" });
+  expect(within(dialog).getByText("Out of date")).toBeTruthy();
+  expect(within(dialog).queryByText(/Rebuild/)).toBeNull();
+  expect(within(dialog).getByText(/isn't the active build/)).toBeTruthy();
+});
+
 test("the issue pill opens a dialog detailing each issue and gives focus back on close", async () => {
   vi.mocked(listBuilds).mockResolvedValue([{ ...tooBig, outOfDate: true }]);
   vi.mocked(buildPreview).mockResolvedValue(preV72Window);
