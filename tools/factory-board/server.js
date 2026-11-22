@@ -63,6 +63,12 @@ readNew();
 fs.watchFile(EVENTS, { interval: 150 }, readNew);
 
 const server = http.createServer((req, res) => {
+  // Only our own origin: a page that points its hostname at 127.0.0.1 must not read the board.
+  const port = server.address().port;
+  if (req.headers.host !== `127.0.0.1:${port}` && req.headers.host !== `localhost:${port}`) {
+    res.writeHead(403, { "content-type": "text/plain" });
+    return res.end("forbidden");
+  }
   const url = new URL(req.url, "http://127.0.0.1");
   if (url.pathname === "/" || url.pathname === "/index.html") {
     res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });

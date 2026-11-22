@@ -5,6 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import net from "node:net";
+import http from "node:http";
 import { spawn, execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { defaultEvents } from "./paths.js";
@@ -54,6 +55,18 @@ test("serves the page on 127.0.0.1 only", async (t) => {
       s.on("error", fail);
     }), undefined, `reachable on ${addr}`);
   }
+});
+
+test("answers only its own host names", async (t) => {
+  const { real } = tmpFiles(t);
+  const { port } = await start(t, { EVENTS: real });
+  const get = (host) => new Promise((ok, fail) => {
+    http.get({ host: "127.0.0.1", port, path: "/api/snapshot", headers: { host } }, (res) => { res.resume(); ok(res.statusCode); }).on("error", fail);
+  });
+  assert.equal(await get(`127.0.0.1:${port}`), 200);
+  assert.equal(await get(`localhost:${port}`), 200);
+  assert.equal(await get(`evil.example:${port}`), 403);
+  assert.equal(await get("127.0.0.1"), 403);
 });
 
 test("without the simulator it reads the real events file", async (t) => {

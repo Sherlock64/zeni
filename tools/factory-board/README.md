@@ -23,7 +23,7 @@ Self-checks: `node --test tools/factory-board/*.check.js`. `scripts/check.sh fas
 ## How data flows
 
 ```
-writers (watchdog, runs; today: simulate.js)
+writers (watchdog, runs)            (--simulate: simulate.js writes state/sim-events.jsonl instead)
    │ append one JSON object per line
    ▼
 factory/events.jsonl ► server.js (127.0.0.1 only) ──► SSE /api/stream ──► index.html
@@ -34,6 +34,7 @@ factory/events.jsonl ► server.js (127.0.0.1 only) ──► SSE /api/stream �
 - **Writers append** events to one JSONL file. The file is the contract: the future watchdog and runs append the same lines. Truncating the file starts over (the server notices it shrank).
 - **The server** folds events into state (`state.js`, `apply`), derives the view (`view`) and pushes the whole view to every open page over server-sent events. Malformed lines are skipped with a warning. It binds `127.0.0.1` only.
 - **The page** keeps one DOM node per card and per token row and moves them; a FLIP animation makes cards fly between columns and rows slide. `prefers-reduced-motion` turns animation off.
+- It answers only requests addressed to `127.0.0.1:<port>` or `localhost:<port>` (403 otherwise).
 - Routes: `/` the page, `/api/stream` (SSE), `/api/snapshot` (the current view as JSON). Later pages (epic detail, run history, trust dial) get their own `/api/...` routes that compute from the same state when opened.
 
 ## Message format (v1)
