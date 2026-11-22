@@ -7,10 +7,10 @@ description: Add or change a typed Tauri command in Zeni, end to end from the Ru
 
 The reference implementations are `app_info` / `load_app_info` (a database read behind a thin wrapper), `set_backup_retention` / `backup::set_retention` (validated input), and `reveal_account_numbers` / `accounts::reveal` (domain logic that needs the data key). Steps 1-10 are the backend half (`.claude/factory/guides/backend.md`). Paths are relative to the repo root.
 
-1. **Types** go in `src-tauri/src/types.rs`, or the `types` module once it is split. Each type needs `#[derive(TS)]`, `#[ts(export)]` and `#[serde(rename_all = "camelCase")]`.
+1. **Types** go in `src-tauri/src/types/<domain>.rs` (re-exported from `types/mod.rs`). Each type needs `#[derive(TS)]`, `#[ts(export)]` and `#[serde(rename_all = "camelCase")]`.
    - Request: `#[derive(Debug, Deserialize, TS)]`, named `<Name>Request`.
    - Response: `#[derive(Debug, Serialize, TS)]`.
-   - A secret-holding type (`CLAUDE.md`), such as `SetupRequest` or `AccountNumbers`, drops `Debug` and goes below the comment in `types.rs` that marks them.
+   - A secret-holding type (`CLAUDE.md`), such as `SetupRequest` or `AccountNumbers`, drops `Debug` and goes below the comment in its `types/<domain>.rs` that marks them.
    - Money fields: `i64` cents with `#[ts(type = "number")]`. Without it, ts-rs emits `bigint`, which doesn't match the JSON number serde sends.
    - Errors: use `AppError::Validation` for bad input. `sqlx`, migrate and `std::io` errors become `AppError::Database` through the `From` impls, so use `?`. A new kind gets a variant holding one `String`, with `#[error("{0}")]`. A unit variant would serialize without `message` and break `CommandError`.
 2. **Logic** goes in a private plain function in `src-tauri/src/commands.rs`, which knows nothing about Tauri. Only its wrapper and tests call it, so it gets no `pub`. Logic for a domain with its own module (`security.rs`, `accounts.rs`) goes there instead, as a `pub` function the wrapper calls, with its tests in that module:

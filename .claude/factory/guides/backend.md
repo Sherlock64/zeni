@@ -4,10 +4,11 @@ Load when a ticket touches `src-tauri/`, migrations, commands, shared types, bin
 
 ## How this codebase works
 
-- In `setup`, `src-tauri/src/lib.rs` stores the result of `db::connect` in `AppState` (`src-tauri/src/types.rs`): `db` (`RwLock<Result<Database, String>>`, swapped by a restore), `session` (the data key once unlocked), `pending_import` and `backup`. Startup never panics over the database; the UI shows the error instead. Commands are registered in `generate_handler!`.
+- In `setup`, `src-tauri/src/lib.rs` stores the result of `db::connect` in `AppState` (`src-tauri/src/types/state.rs`): `db` (`RwLock<Result<Database, String>>`, swapped by a restore), `session` (the data key once unlocked), `pending_import` and `backup`. Startup never panics over the database; the UI shows the error instead. Commands are registered in `generate_handler!`.
 - `src-tauri/src/commands.rs` holds thin `#[tauri::command]` wrappers over private plain functions (`app_info` calls `load_app_info`). Mark an item `pub` only if another module calls it. Queries live in `db.rs` or a domain module.
 - The app version lives only in `src-tauri/Cargo.toml`; `tauri.conf.json` has no `version` key.
 - `keyring.rs` holds the `Keyring` trait and its thin oo7 `SecretService` impl; tests use `FakeKeyring` in `security.rs`.
+- A domain's types go in `src-tauri/src/types/<domain>.rs`; `types/mod.rs` re-exports every one, so `use crate::types::X` keeps working.
 - To add or change a command, its types or its `AppError`s, follow `.claude/skills/add-command/SKILL.md`.
 
 ## Migrations
