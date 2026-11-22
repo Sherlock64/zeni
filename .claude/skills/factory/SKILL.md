@@ -16,7 +16,12 @@ Read `.claude/factory/spine.md` first. You dispatch; you don't build, review or 
 - `$F/light.json` (word, `slots`, `set_at`), `$F/runs.tsv`, and the count of open items in `$F/private.md` (count only, never content).
 - Live runs: `list_sessions` with `linked: true`; a ticket in `building`, `verifying` or `reviewing` whose run is gone is a vanished run (`factory-start` picks it up).
 
-Show the user one short status: needs them, running (of the slot count), the frontier, what the next release holds (version from the doors), private count.
+A child's report is a hint, not the state. Take each item's state from its GitHub label and its last ticket comment, and a run's liveness from `list_sessions`; say a run waits on the user only when its ticket is `state:needs-human`, its PR waits on a level 0 or 1 station, or `get_session` shows it blocked on a question. Where a report and GitHub disagree, say GitHub's state and note the report.
+
+Show the user one short status, in this order:
+
+1. **Needs you**, first and alone at the top: each item as one line with the question or yes it waits on and its link. "Nothing" when empty.
+2. Running (of the slot count), the frontier, what the next release holds (version from the doors), private count.
 
 ## 2. New input
 
@@ -32,11 +37,11 @@ If the user gave something new, run Intake on it (`stations/intake.md`) before p
 ## 4. Gate
 
 - Start nothing unless the light is `green` (a stale or missing light counts as `yellow`), and never more runs than `slots` minus those in flight.
-- Trust dial: a station at level 0 lists the work with a one-line brief and waits for the user's yes; at level 1 the run goes, and its next station waits for the user's yes. Shape and slice, Merge and Release never start without the user's yes.
+- Trust dial: read each station's level from the "Now" column of the table in `spine.md` every time, never from memory. A station at level 0 lists the work with a one-line brief and waits for the user's yes; at level 1 the run goes, and its next station waits for the user's yes; at level 2 or 3 nothing waits (today Build and Verify are 2, so Verify starts after Build, and Review after Verify, without asking). Shape and slice, Merge and Release never start without the user's yes.
 
 ## 5. Start runs
 
-For each picked ticket: claim it (`state:building`, comment `claimed by <session name>`), then `start_session` with `initiation: "user_asked"`, `use_worktree: true`, `branch_name: t<issue>-<words>`, the model and effort from `.claude/factory/models.md`, and a prompt of only:
+You are the only one who starts runs (`spine.md`). For each picked ticket: claim it (`state:building`, comment `claimed by <session name>`), then `start_session` with `initiation: "user_asked"`, `use_worktree: true`, `branch_name: t<issue>-<words>` (the app may add a prefix or suffix; Build renames it), the model and effort from `.claude/factory/models.md`, and a prompt of only:
 
 ```
 Ticket #<n>, station <station>. Read .claude/factory/spine.md, then .claude/factory/stations/<station>.md, then the ticket.

@@ -7,7 +7,7 @@
 ## Shape of the work
 
 - You own the ticket end to end, backend to UI. Load the guides its modules need: `guides/backend.md`, `guides/ui.md`, `guides/pipeline.md`. A new or changed Tauri command follows the `add-command` skill.
-- Work in your own worktree on `t<issue>-<words>`, from the latest `origin/main`.
+- Work in your own worktree on `t<issue>-<words>`, from the latest `origin/main`. The app may name the worktree branch `claude/t<issue>-<words>-<suffix>`; rename it with `git branch -m t<issue>-<words>` before the first commit.
 - The first commit is the failing acceptance tests, at a public seam (a module's `pub fn`, the plain function a command calls, the rendered component). Then make them pass with the smallest change.
 - Hand independent parts (a separate module, a page) to subagents with a narrow brief: the criterion, the module, the interface. Keep the decisions yourself.
 - The ticket names behaviour and modules, not files. Choose the files; stay inside the modules it names plus the shared hubs: `types.rs` (or `types/`), `commands.rs`, `lib.rs`, `src/lib/commands.ts`, `src/router.tsx`, `src/components/app-shell.tsx`, `src/lib/snapshot-fixtures.ts`. Hub conflicts between parallel PRs are settled by the later PR rebasing.
