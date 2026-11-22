@@ -86,10 +86,10 @@ test("lists builds with base model, date, example count and badges", async () =>
   const items = await screen.findAllByRole("listitem");
   expect(items[0].textContent).toContain("zeni-2");
   expect(within(items[0]).getByText("Active")).toBeTruthy();
-  expect(within(items[0]).queryByText("Out of date")).toBeNull();
+  expect(within(items[0]).queryByRole("button", { name: /issues? with/ })).toBeNull();
   expect(within(items[0]).getByText("From phi4-mini on Nov 10, 2026, 41 examples")).toBeTruthy();
   expect(within(items[0]).queryByRole("button", { name: "Make zeni-2 active" })).toBeNull();
-  expect(within(items[1]).getByText("Out of date")).toBeTruthy();
+  expect(within(items[1]).getByRole("button", { name: "1 issue with zeni-1" })).toBeTruthy();
   expect(within(items[1]).getByText("From qwen2.5:3b on Nov 3, 2026, 1 example")).toBeTruthy();
   expect(within(items[1]).getByRole("button", { name: "Make zeni-1 active" })).toBeTruthy();
   expect((await buildButton()).textContent).toBe("Build");
@@ -285,7 +285,7 @@ test("suggests Rebuild when the active build is out of date", async () => {
   vi.mocked(listBuilds).mockResolvedValue([{ ...builds[0], outOfDate: true }, builds[1]]);
   vi.mocked(startBuild).mockResolvedValue(building);
   renderSection();
-  expect(await screen.findByText(/zeni-2 is out of date/)).toBeTruthy();
+  expect(await screen.findByRole("button", { name: "1 issue with zeni-2" })).toBeTruthy();
   fireEvent.click(await readyBuildButton());
   await waitFor(() => expect(startBuild).toHaveBeenCalledTimes(1));
 });
@@ -293,7 +293,71 @@ test("suggests Rebuild when the active build is out of date", async () => {
 test("doesn't suggest Rebuild when only an inactive build is out of date", async () => {
   renderSection();
   await screen.findAllByRole("listitem");
-  expect(screen.queryByText(/is out of date/)).toBeNull();
+  expect(screen.queryByRole("button", { name: "Rebuild" })).toBeNull();
+});
+
+// A build made before 7.2 kept every example, past the window.
+const tooBig: ModelBuild = { ...builds[0], name: "zeni-1", exampleCount: 244 };
+const preV72Window = { windowTokens: 4096, fit: 63, total: 244 };
+
+test("suggests Rebuild when the active build is larger than the window", async () => {
+  vi.mocked(listBuilds).mockResolvedValue([tooBig]);
+  vi.mocked(buildPreview).mockResolvedValue(preV72Window);
+  renderSection();
+  expect(await screen.findByRole("button", { name: "1 issue with zeni-1" })).toBeTruthy();
+  expect((await readyBuildButton()).textContent).toBe("Rebuild");
+  // The issues sit on the row, not stacked above the list.
+  expect(screen.queryByText(/Larger than Ollama's window/)).toBeNull();
+});
+
+test("an inactive build larger than the window shows no too-large issue", async () => {
+  // The preview's window is the current base model's, so it says nothing about an older build.
+  vi.mocked(listBuilds).mockResolvedValue([{ ...builds[0], exampleCount: 10 }, { ...tooBig, id: 9, name: "zeni-9", active: false }]);
+  vi.mocked(buildPreview).mockResolvedValue(preV72Window);
+  renderSection();
+  await screen.findByText(/examples/, { selector: "p[aria-live]" });
+  await screen.findAllByRole("listitem");
+  expect(screen.queryByRole("button", { name: /issues? with/ })).toBeNull();
+});
+
+test("an inactive build's dialog doesn't offer Rebuild as its fix", async () => {
+  renderSection();
+  fireEvent.click(await screen.findByRole("button", { name: "1 issue with zeni-1" }));
+  const dialog = await screen.findByRole("dialog", { name: "1 issue with zeni-1" });
+  expect(within(dialog).getByText("Out of date")).toBeTruthy();
+  expect(within(dialog).queryByText(/Rebuild/)).toBeNull();
+  expect(within(dialog).getByText(/isn't the active build/)).toBeTruthy();
+});
+
+test("the issue pill opens a dialog detailing each issue and gives focus back on close", async () => {
+  vi.mocked(listBuilds).mockResolvedValue([{ ...tooBig, outOfDate: true }]);
+  vi.mocked(buildPreview).mockResolvedValue(preV72Window);
+  renderSection();
+  const pill = await screen.findByRole("button", { name: "2 issues with zeni-1" });
+  expect(pill.textContent).toBe("2 issues");
+  pill.focus();
+  fireEvent.click(pill);
+  const dialog = await screen.findByRole("dialog", { name: "2 issues with zeni-1" });
+  expect(within(dialog).getByText("Larger than Ollama's window")).toBeTruthy();
+  expect(within(dialog).getByText(/It has 244 examples; Ollama's 4,096-token window fits 63\. .*Rebuild to fit\./)).toBeTruthy();
+  expect(within(dialog).getByText("Out of date")).toBeTruthy();
+  expect(dialog.contains(document.activeElement)).toBe(true);
+  fireEvent.keyDown(dialog, { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(document.activeElement).toBe(pill);
+});
+
+test.each([
+  ["the active build fits", { ...tooBig, exampleCount: 63 }, settings],
+  ["the override is on", tooBig, { ...settings, allowOverWindow: true }],
+])("doesn't say the build is too large when %s", async (_, active, saved) => {
+  vi.mocked(listBuilds).mockResolvedValue([active]);
+  vi.mocked(ollamaSettings).mockResolvedValue(saved);
+  vi.mocked(buildPreview).mockResolvedValue(preV72Window);
+  renderSection();
+  await screen.findByText(/examples/, { selector: "p[aria-live]" });
+  await screen.findAllByRole("listitem");
+  expect(screen.queryByRole("button", { name: /issues? with/ })).toBeNull();
   expect(screen.queryByRole("button", { name: "Rebuild" })).toBeNull();
 });
 

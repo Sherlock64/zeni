@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BoxesIcon } from "lucide-react";
 import { type FormEvent, type MouseEvent, useEffect, useId, useRef, useState } from "react";
+import { BuildIssuesDialog, buildIssues } from "@/components/build-issues-dialog";
 import { CommandErrorAlert } from "@/components/command-error-alert";
 import { TextField } from "@/components/text-field";
 import {
@@ -128,7 +129,6 @@ export function ModelBuildsSection() {
           : null;
   const buildBlocked = Boolean(reason) || Boolean(building) || start.isPending || !status.data || !settings.data;
   const active = builds.data?.find((build) => build.active);
-  const rebuild = Boolean(active?.outOfDate);
 
   function build() {
     if (buildBlocked) return;
@@ -172,6 +172,8 @@ export function ModelBuildsSection() {
 
   const previewError = preview.error ?? retriedError;
   const allowOverWindow = overWindow.isPending ? overWindow.variables.enabled : Boolean(settings.data?.allowOverWindow);
+  const issuesOf = (build: ModelBuild) => buildIssues(build, preview.data, allowOverWindow);
+  const rebuild = Boolean(active && issuesOf(active).length > 0);
 
   return (
     <section aria-labelledby={`${id}-heading`} className="flex flex-col gap-4">
@@ -266,11 +268,6 @@ export function ModelBuildsSection() {
         </div>
       )}
 
-      {rebuild && active && (
-        <p className="text-sm">
-          {active.name} is out of date: your categories changed since it was built. Rebuild so it learns the new list.
-        </p>
-      )}
       <div className="flex flex-wrap items-center gap-3">
         <Button aria-disabled={buildBlocked} aria-describedby={reason ? `${id}-reason` : undefined} onClick={build}>
           {building ? runningJobLabel(building) : start.isPending ? "Starting…" : rebuild ? "Rebuild" : "Build"}
@@ -315,42 +312,45 @@ export function ModelBuildsSection() {
         </Empty>
       ) : (
         <ul className="flex flex-col divide-y rounded-lg border">
-          {builds.data.map((build) => (
-            <li key={build.id} className="flex flex-wrap items-center justify-between gap-4 px-4 py-3">
-              <div className="flex min-w-0 flex-col gap-1">
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-sm">{build.name}</span>
-                  {build.active && <Badge>Active</Badge>}
-                  {build.outOfDate && <Badge variant="outline">Out of date</Badge>}
+          {builds.data.map((build) => {
+            const issues = issuesOf(build);
+            return (
+              <li key={build.id} className="flex flex-wrap items-center justify-between gap-4 px-4 py-3">
+                <div className="flex min-w-0 flex-col gap-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-sm">{build.name}</span>
+                    {build.active && <Badge>Active</Badge>}
+                    {issues.length > 0 && <BuildIssuesDialog name={build.name} active={build.active} issues={issues} />}
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    From {build.baseModel} on {formatDate(build.createdAt.slice(0, 10))},{" "}
+                    {build.exampleCount === 1 ? "1 example" : `${build.exampleCount} examples`}
+                  </p>
                 </div>
-                <p className="text-sm text-muted-foreground">
-                  From {build.baseModel} on {formatDate(build.createdAt.slice(0, 10))},{" "}
-                  {build.exampleCount === 1 ? "1 example" : `${build.exampleCount} examples`}
-                </p>
-              </div>
-              <div className="flex gap-2">
-                {!build.active && (
+                <div className="flex gap-2">
+                  {!build.active && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      aria-label={`Make ${build.name} active`}
+                      aria-disabled={activate.isPending}
+                      onClick={() => !activate.isPending && activate.mutate({ id: build.id })}
+                    >
+                      {activate.isPending && activate.variables?.id === build.id ? "Saving…" : "Make active"}
+                    </Button>
+                  )}
                   <Button
                     variant="outline"
                     size="sm"
-                    aria-label={`Make ${build.name} active`}
-                    aria-disabled={activate.isPending}
-                    onClick={() => !activate.isPending && activate.mutate({ id: build.id })}
+                    aria-label={`Delete ${build.name}`}
+                    onClick={(event) => askDelete(build, event)}
                   >
-                    {activate.isPending && activate.variables?.id === build.id ? "Saving…" : "Make active"}
+                    Delete
                   </Button>
-                )}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  aria-label={`Delete ${build.name}`}
-                  onClick={(event) => askDelete(build, event)}
-                >
-                  Delete
-                </Button>
-              </div>
-            </li>
-          ))}
+                </div>
+              </li>
+            );
+          })}
         </ul>
       )}
       {activate.isError && <CommandErrorAlert title="Couldn't make the build active" error={activate.error} />}
