@@ -128,7 +128,9 @@ export function ModelBuildsSection() {
           : null;
   const buildBlocked = Boolean(reason) || Boolean(building) || start.isPending || !status.data || !settings.data;
   const active = builds.data?.find((build) => build.active);
-  const rebuild = Boolean(active?.outOfDate);
+  // A build made before 7.2 may hold more examples than the window, which stalls categorizing.
+  const tooBig = Boolean(active && preview.data && !settings.data?.allowOverWindow && active.exampleCount > preview.data.fit);
+  const rebuild = Boolean(active?.outOfDate) || tooBig;
 
   function build() {
     if (buildBlocked) return;
@@ -266,7 +268,8 @@ export function ModelBuildsSection() {
         </div>
       )}
 
-      {rebuild && active && (
+      {tooBig && active && <p className="text-sm">{active.name} is larger than Ollama's window: Rebuild to fit.</p>}
+      {active?.outOfDate && (
         <p className="text-sm">
           {active.name} is out of date: your categories changed since it was built. Rebuild so it learns the new list.
         </p>

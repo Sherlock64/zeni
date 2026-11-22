@@ -4,6 +4,7 @@
 
 - Internal: the backend's shared types are split into one file per domain; nothing changes in the app.
 - Deleting a category now also refreshes the Review page and its count.
+- Settings now says when the active model build is larger than Ollama's window and suggests a rebuild.
 
 ## 7.2.0
 
