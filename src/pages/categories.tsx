@@ -23,7 +23,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/
 import { Skeleton } from "@/components/ui/skeleton";
 import { useJobStatus } from "@/hooks/use-job-status";
 import { listCategories, reorderCategories } from "@/lib/commands";
-import { CATEGORIES_KEY } from "@/lib/query-keys";
+import { CATEGORIES_KEY, invalidate } from "@/lib/query-keys";
 import type { Category } from "@/types/bindings/Category";
 import type { JobKind } from "@/types/bindings/JobKind";
 import type { CommandError } from "@/types/command";
@@ -118,7 +118,7 @@ export function CategoriesPage() {
       return previous;
     },
     onError: (_error, _ids, previous) => queryClient.setQueryData(CATEGORIES_KEY, previous),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: CATEGORIES_KEY }),
+    onSettled: () => invalidate(queryClient, "category"),
   });
 
   const sensors = useSensors(

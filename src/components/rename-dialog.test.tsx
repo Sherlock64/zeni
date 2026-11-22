@@ -5,6 +5,7 @@ import { countRuleMatches, listCategories, listNicknames, saveNicknameRule, upda
 import type { Category } from "@/types/bindings/Category";
 import type { Nickname } from "@/types/bindings/Nickname";
 import type { Transaction } from "@/types/bindings/Transaction";
+import { LEDGER_KEY } from "@/lib/query-keys";
 
 vi.mock("@/lib/commands", () => ({
   listNicknames: vi.fn(),
@@ -171,8 +172,7 @@ test("saves the rule, refreshes the lists and closes", async () => {
 
   await vi.waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
   expect(vi.mocked(saveNicknameRule).mock.calls[0][0]).toEqual({ name: "Coffee", rule: exact });
-  expect(invalidate).toHaveBeenCalledWith({ queryKey: ["list_transactions"] });
-  expect(invalidate).toHaveBeenCalledWith({ queryKey: ["list_nicknames"] });
+  expect(invalidate).toHaveBeenCalledWith({ queryKey: LEDGER_KEY });
 });
 
 test("ignores repeat presses and closing while saving", async () => {
@@ -386,8 +386,7 @@ describe("on a row that already has a nickname", () => {
     await vi.waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
     expect(updateNickname).toHaveBeenCalledWith({ id: 3, name: "Morning coffee", enabled: true, staleExempt: false });
     expect(saveNicknameRule).not.toHaveBeenCalled();
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["list_transactions"] });
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["list_nicknames"] });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: LEDGER_KEY });
   });
 
   test("ignores repeat presses while renaming", async () => {
@@ -470,9 +469,7 @@ describe("default category", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save nickname" }));
     await vi.waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
     expect(vi.mocked(saveNicknameRule).mock.calls[0][0]).toEqual({ name: "coffee", rule: exact, defaultCategoryId: 1 });
-    for (const key of ["review_groups", "unreviewed_count", "list_categories"]) {
-      expect(invalidate).toHaveBeenCalledWith({ queryKey: [key] });
-    }
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: LEDGER_KEY });
   });
 
   test("saves the chosen default with a new rule", async () => {

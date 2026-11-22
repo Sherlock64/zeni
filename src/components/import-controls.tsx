@@ -1,4 +1,4 @@
-import { type QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CircleCheckIcon, CircleDotIcon, CircleMinusIcon, FileCheckIcon, HistoryIcon, TriangleAlertIcon, UploadIcon, XIcon } from "lucide-react";
 import { useRef, useState } from "react";
 import { CommandErrorAlert } from "@/components/command-error-alert";
@@ -18,10 +18,9 @@ import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
-import { invalidateJobStatus } from "@/hooks/use-job-status";
 import { cancelImport, importFile, listImports, revertImport } from "@/lib/commands";
 import { formatCents } from "@/lib/money";
-import { TRANSACTIONS_KEY } from "@/lib/query-keys";
+import { IMPORTS_KEY, invalidate } from "@/lib/query-keys";
 import type { ImportRecord } from "@/types/bindings/ImportRecord";
 import type { ImportStep } from "@/types/bindings/ImportStep";
 import type { ImportSummary } from "@/types/bindings/ImportSummary";
@@ -32,11 +31,6 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 const dateTime = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
 // imported_at is SQLite CURRENT_TIMESTAMP: UTC "YYYY-MM-DD HH:MM:SS".
 const importedDate = (importedAt: string) => dateTime.format(new Date(`${importedAt.replace(" ", "T")}Z`));
-
-function invalidateImports(queryClient: QueryClient) {
-  queryClient.invalidateQueries({ queryKey: TRANSACTIONS_KEY });
-  queryClient.invalidateQueries({ queryKey: ["list_imports"] });
-}
 
 export function ImportControls() {
   const queryClient = useQueryClient();
@@ -50,9 +44,9 @@ export function ImportControls() {
     if (step.step === "imported") {
       setPending(null);
       setSummary(step.data);
-      invalidateImports(queryClient);
+      invalidate(queryClient, "import");
       // The commit may have started the after-import run; polling only starts once the status says so.
-      invalidateJobStatus(queryClient);
+      invalidate(queryClient, "job");
     } else setPending(step);
   }
 
@@ -224,7 +218,7 @@ function ImportHistory({ onReverted }: ImportListProps) {
 
 function ImportList({ onReverted }: ImportListProps) {
   const queryClient = useQueryClient();
-  const imports = useQuery({ queryKey: ["list_imports"], queryFn: listImports });
+  const imports = useQuery({ queryKey: IMPORTS_KEY, queryFn: listImports });
   const [target, setTarget] = useState<ImportRecord | null>(null);
   const [open, setOpen] = useState(false);
   const title = useRef<HTMLHeadingElement>(null);
@@ -233,7 +227,7 @@ function ImportList({ onReverted }: ImportListProps) {
     onSuccess: (_, { importId }) => {
       setOpen(false);
       onReverted(importId);
-      invalidateImports(queryClient);
+      invalidate(queryClient, "import");
     },
   });
 

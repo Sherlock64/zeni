@@ -101,6 +101,7 @@ rules() {
     '-(red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|slate|gray|zinc|neutral|stone)-[0-9]{2,3}\b|#[0-9a-fA-F]{6}\b' \
     'src/*.tsx' ':!src/components/ui/'
   rule "console.log" 'console\.log' 'src/*.ts' 'src/*.tsx'
+  rule "invalidateQueries outside src/lib (use invalidate(change))" 'invalidateQueries\(' 'src/*.ts' 'src/*.tsx' ':!src/lib/'
 }
 
 # suppressions <pathspec>... -- <pattern>...: print each file with an added line containing a pattern.

@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { addCategory, deleteCategory, jobStatus, listCategories, reorderCategories, updateCategory } from "@/lib/commands";
-import { JOB_STATUS_KEY } from "@/lib/query-keys";
+import { JOB_STATUS_KEY, LEDGER_KEY } from "@/lib/query-keys";
 import { CategoriesPage } from "@/pages/categories";
 import type { Category } from "@/types/bindings/Category";
 
@@ -130,7 +130,7 @@ test("adds a category, shows Saved. and refreshes the list", async () => {
   expect(addCategory).toHaveBeenCalledWith({ name: "Pets", description: "Vet and food", kind: "transfer" });
   await act(async () => resolve(category(4, "Pets")));
   expect(await screen.findByText("Saved.")).toBeTruthy();
-  expect(invalidate).toHaveBeenCalledWith({ queryKey: ["list_categories"] });
+  expect(invalidate).toHaveBeenCalledWith({ queryKey: LEDGER_KEY });
   expect((screen.getByLabelText("Name") as HTMLInputElement).value).toBe("");
 });
 
@@ -264,8 +264,7 @@ test("deleting an unused category asks to confirm, then deletes it", async () =>
   fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
   await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
   expect(deleteCategory).toHaveBeenCalledWith({ id: 2, replacementId: null });
-  for (const key of ["list_categories", "list_transactions", "list_nicknames"])
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: [key] });
+  expect(invalidate).toHaveBeenCalledWith({ queryKey: LEDGER_KEY });
   await waitFor(() => expect(screen.queryByText("Groceries")).toBeNull());
   expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1 }));
 });

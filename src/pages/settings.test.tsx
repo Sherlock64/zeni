@@ -7,6 +7,7 @@ import {
   setNicknameStaleDays,
 } from "@/lib/commands";
 import { SettingsPage } from "@/pages/settings";
+import { LEDGER_KEY } from "@/lib/query-keys";
 
 // The layouts, backup, Ollama and About cards have their own tests and status regions.
 vi.mock("@/components/csv-layouts-card", () => ({ CsvLayoutsCard: () => null }));
@@ -176,7 +177,7 @@ test("shows the stale days setting and saves a new value", async () => {
   fireEvent.click(nicknamesCard().getByRole("button", { name: "Save" }));
   expect(await nicknamesCard().findByText("Saved.")).toBeTruthy();
   expect(vi.mocked(setNicknameStaleDays).mock.calls[0][0]).toEqual({ staleDays: 30 });
-  expect(invalidate).toHaveBeenCalledWith({ queryKey: ["list_nicknames"] });
+  expect(invalidate).toHaveBeenCalledWith({ queryKey: LEDGER_KEY });
   expect(field.value).toBe("30");
 });
 

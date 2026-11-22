@@ -14,7 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { deleteCategory } from "@/lib/commands";
-import { CATEGORIES_KEY, NICKNAMES_KEY, TRANSACTIONS_KEY } from "@/lib/query-keys";
+import { invalidate } from "@/lib/query-keys";
 import type { CategoryDeleteDialogProps } from "@/types/ui";
 
 const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
@@ -28,9 +28,7 @@ export function CategoryDeleteDialog({ category, open, onOpenChange, onCloseAuto
     mutationFn: (id: number) => deleteCategory({ id, replacementId }),
     // Close once the list shows the change, so focus goes to a control that still exists.
     onSuccess: async () => {
-      await Promise.all(
-        [CATEGORIES_KEY, TRANSACTIONS_KEY, NICKNAMES_KEY].map((queryKey) => queryClient.invalidateQueries({ queryKey })),
-      );
+      await invalidate(queryClient, "category");
       onOpenChange(false);
     },
   });

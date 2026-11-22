@@ -11,9 +11,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { listAccounts, revealAccountNumbers } from "@/lib/commands";
 import type { CommandError } from "@/types/command";
 import type { AccountCardProps, SecretValueProps } from "@/types/ui";
+import { ACCOUNTS_KEY } from "@/lib/query-keys";
 
 export function AccountsPage() {
-  const accounts = useQuery({ queryKey: ["list_accounts"], queryFn: listAccounts });
+  const accounts = useQuery({ queryKey: ACCOUNTS_KEY, queryFn: listAccounts });
   const listHeading = useRef<HTMLHeadingElement>(null);
 
   // A refetch clears the query's error while it runs, so keep showing the last one until the retry settles.

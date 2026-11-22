@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
 import { listCategories, markReviewed, reviewGroups, setTransactionCategory, setTransactionsCategory } from "@/lib/commands";
-import { CATEGORIES_KEY, REVIEW_GROUPS_KEY, TRANSACTIONS_KEY, UNREVIEWED_COUNT_KEY } from "@/lib/query-keys";
+import { CATEGORIES_KEY, invalidate, REVIEW_GROUPS_KEY } from "@/lib/query-keys";
 import type { Category } from "@/types/bindings/Category";
 import type { ReviewGroup } from "@/types/bindings/ReviewGroup";
 import type { CommandError } from "@/types/command";
@@ -70,7 +70,7 @@ export function ReviewPage() {
       .filter((group) => group.rows.length > 0);
     queryClient.setQueryData<ReviewGroup[]>(REVIEW_GROUPS_KEY, left);
     setSelected((current) => new Set([...current].filter((id) => !gone.has(id))));
-    for (const queryKey of [UNREVIEWED_COUNT_KEY, TRANSACTIONS_KEY]) void queryClient.invalidateQueries({ queryKey });
+    void invalidate(queryClient, "review");
     return left;
   }
   // Focus stays in the group while it has rows, else moves to the first group left, else the heading.

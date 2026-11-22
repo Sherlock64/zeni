@@ -153,6 +153,13 @@ echo 'import test from "node:test"; test("bad", () => { throw new Error("x"); })
 run fast; expect 1 "CHECK factory board self-checks: fail" "a failing board self-check fails fast"
 reset
 
+mkdir -p src/lib src/pages
+echo 'client.invalidateQueries({ queryKey });' >src/lib/query-keys.ts
+run fast; expect 0 "CHECK policy: pass" "invalidateQueries inside src/lib is fine"
+echo 'client.invalidateQueries({ queryKey: ["x"] });' >src/pages/x.tsx
+run fast; expect 1 "POLICY FAIL: invalidateQueries outside src/lib (use invalidate(change)) src/pages/x.tsx:1" "invalidateQueries in a page"
+reset
+
 run task; expect 0 "ran fast checks only" "task with no filters"
 STUB_FAIL=1 run task --rust foo; expect 1 "CHECK cargo test --locked foo: fail" "task reports failing filter"
 

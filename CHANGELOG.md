@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Internal: the backend's shared types are split into one file per domain; nothing changes in the app.
+- Deleting a category now also refreshes the Review page and its count.
 
 ## 7.2.0
 

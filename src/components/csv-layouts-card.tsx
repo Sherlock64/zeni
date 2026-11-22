@@ -23,6 +23,7 @@ import { focusFirstInvalid } from "@/lib/focus";
 import type { CsvLayout } from "@/types/bindings/CsvLayout";
 import type { CommandError } from "@/types/command";
 import type { CsvMappingDraft } from "@/types/ui";
+import { CSV_LAYOUTS_KEY, invalidate } from "@/lib/query-keys";
 
 function summary({ headers, mapping }: CsvLayout) {
   const column = (index: number) => headers[index] || `column ${index + 1}`;
@@ -35,7 +36,7 @@ function summary({ headers, mapping }: CsvLayout) {
 
 export function CsvLayoutsCard() {
   const queryClient = useQueryClient();
-  const layouts = useQuery({ queryKey: ["list_csv_layouts"], queryFn: listCsvLayouts });
+  const layouts = useQuery({ queryKey: CSV_LAYOUTS_KEY, queryFn: listCsvLayouts });
   const heading = useRef<HTMLHeadingElement>(null);
   // A refetch clears the query's error while it runs, so keep showing the last one until the retry settles.
   const [retriedError, setRetriedError] = useState<CommandError | null>(null);
@@ -58,14 +59,14 @@ export function CsvLayoutsCard() {
   const update = useMutation({
     mutationFn: updateCsvLayout,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["list_csv_layouts"] });
+      invalidate(queryClient, "csvLayouts");
       setEditOpen(false);
     },
   });
   const remove = useMutation({
     mutationFn: deleteCsvLayout,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["list_csv_layouts"] });
+      invalidate(queryClient, "csvLayouts");
       setDeleteOpen(false);
     },
   });

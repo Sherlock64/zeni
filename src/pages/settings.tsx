@@ -27,7 +27,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useSecurityStatus } from "@/hooks/use-security-status";
 import { nicknameSettings, regenerateRecoveryCodes, setNicknameStaleDays } from "@/lib/commands";
 import { STALE_DAYS_MAX, STALE_DAYS_MIN } from "@/lib/nickname-limits";
-import { NICKNAMES_KEY } from "@/lib/query-keys";
+import { invalidate, NICKNAME_SETTINGS_KEY } from "@/lib/query-keys";
 import type { CommandError } from "@/types/command";
 
 export function SettingsPage() {
@@ -95,7 +95,7 @@ function SecurityCard() {
 
 function NicknamesCard() {
   const queryClient = useQueryClient();
-  const settings = useQuery({ queryKey: ["nickname_settings"], queryFn: nicknameSettings });
+  const settings = useQuery({ queryKey: NICKNAME_SETTINGS_KEY, queryFn: nicknameSettings });
   const [days, setDays] = useState<string | null>(null);
   const [rangeError, setRangeError] = useState(false);
   const heading = useRef<HTMLHeadingElement>(null);
@@ -105,9 +105,9 @@ function NicknamesCard() {
   const save = useMutation({
     mutationFn: setNicknameStaleDays,
     onSuccess: (saved) => {
-      queryClient.setQueryData(["nickname_settings"], saved);
+      queryClient.setQueryData(NICKNAME_SETTINGS_KEY, saved);
       // The stale badges depend on this setting.
-      queryClient.invalidateQueries({ queryKey: NICKNAMES_KEY });
+      invalidate(queryClient, "nickname");
     },
   });
   const value = days ?? String(settings.data?.staleDays ?? "");
@@ -248,7 +248,7 @@ function RegenerateCodesDialog() {
     setOpen(false);
     setPassword("");
     mutation.reset();
-    queryClient.invalidateQueries({ queryKey: ["security_status"] });
+    invalidate(queryClient, "security");
   }
 
   return (

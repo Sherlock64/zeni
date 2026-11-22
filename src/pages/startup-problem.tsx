@@ -16,7 +16,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useStartupStatus } from "@/hooks/use-startup-status";
 import { continueStartup } from "@/lib/commands";
-import { STARTUP_STATUS_KEY } from "@/lib/query-keys";
+import { APP_INFO_KEY, SECURITY_STATUS_KEY, STARTUP_STATUS_KEY } from "@/lib/query-keys";
 
 const INSTALL_GUIDE = "https://github.com/Sherlock64/zeni/blob/main/docs/install.md";
 
@@ -62,7 +62,7 @@ function BackupFailed() {
     onSuccess: (next) => {
       queryClient.setQueryData(STARTUP_STATUS_KEY, next);
       // Both failed while the database was held back, so load them afresh behind the loading screen.
-      if (next.state === "ready") for (const queryKey of [["security_status"], ["app_info"]]) queryClient.resetQueries({ queryKey });
+      if (next.state === "ready") for (const queryKey of [SECURITY_STATUS_KEY, APP_INFO_KEY]) queryClient.resetQueries({ queryKey });
     },
   });
   const run = (withoutBackup: boolean) => !attempt.isPending && attempt.mutate({ withoutBackup });

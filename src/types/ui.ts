@@ -18,6 +18,20 @@ import type { TransactionQuery } from "@/types/bindings/TransactionQuery";
 import type { TransactionSort } from "@/types/bindings/TransactionSort";
 import type { CommandError } from "@/types/command";
 
+// A kind of data change; src/lib/query-keys.ts maps each to the queries it makes stale.
+export type QueryChange =
+  | "category"
+  | "nickname"
+  | "import"
+  | "review"
+  | "restore"
+  | "security"
+  | "csvLayouts"
+  | "backups"
+  | "ollama"
+  | "download"
+  | "job";
+
 export type PageProps = { title: string; description: string; children: ReactNode };
 
 export type CommandErrorAlertProps = {

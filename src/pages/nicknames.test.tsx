@@ -13,6 +13,7 @@ import {
 import { NicknamesPage } from "@/pages/nicknames";
 import type { Category } from "@/types/bindings/Category";
 import type { Nickname } from "@/types/bindings/Nickname";
+import { LEDGER_KEY } from "@/lib/query-keys";
 
 vi.mock("@/lib/commands", () => ({
   listNicknames: vi.fn(),
@@ -114,8 +115,7 @@ async function defaultOption(nickname: string, option: string) {
   return within(screen.getByRole("listbox")).getByRole("option", { name: option });
 }
 const expectRefreshed = (invalidate: ReturnType<typeof renderPage>) => {
-  expect(invalidate).toHaveBeenCalledWith({ queryKey: ["list_nicknames"] });
-  expect(invalidate).toHaveBeenCalledWith({ queryKey: ["list_transactions"] });
+  expect(invalidate).toHaveBeenCalledWith({ queryKey: LEDGER_KEY });
 };
 
 test("shows a loading status, then each nickname with its rules, counts, dates and stale badge", async () => {
@@ -266,9 +266,7 @@ test("a default category picker saves the chosen default at once and refreshes t
   await waitFor(() => expect(picker.textContent).toBe("Groceries"));
   expect(firstArg(updateNickname)).toEqual({ id: 2, name: "Gym", enabled: true, staleExempt: false, defaultCategoryId: 4 });
   await waitFor(() => expectRefreshed(invalidate));
-  for (const key of ["review_groups", "unreviewed_count", "list_categories"]) {
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: [key] });
-  }
+  expect(invalidate).toHaveBeenCalledWith({ queryKey: LEDGER_KEY });
 });
 
 test("No default clears the default", async () => {

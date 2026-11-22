@@ -33,6 +33,7 @@ import type { BackupKind } from "@/types/bindings/BackupKind";
 import type { BackupSettings } from "@/types/bindings/BackupSettings";
 import type { CommandError } from "@/types/command";
 import type { RestoreTarget } from "@/types/ui";
+import { BACKUP_SETTINGS_KEY, BACKUPS_KEY, invalidate } from "@/lib/query-keys";
 
 const kindLabels: Record<BackupKind, string> = {
   manual: "Manual",
@@ -55,8 +56,8 @@ const kindNouns: Record<BackupKind, string> = {
 
 export function BackupCard() {
   const queryClient = useQueryClient();
-  const settings = useQuery({ queryKey: ["backup_settings"], queryFn: backupSettings });
-  const backups = useQuery({ queryKey: ["list_backups"], queryFn: listBackups });
+  const settings = useQuery({ queryKey: BACKUP_SETTINGS_KEY, queryFn: backupSettings });
+  const backups = useQuery({ queryKey: BACKUPS_KEY, queryFn: listBackups });
   const heading = useRef<HTMLHeadingElement>(null);
   // A refetch clears the query's error while it runs, so keep showing the last one until the retry settles.
   const [retriedSettingsError, setRetriedSettingsError] = useState<CommandError | null>(null);
@@ -70,9 +71,9 @@ export function BackupCard() {
   const opener = useRef<HTMLElement | null>(null);
 
   const settled = (data: BackupSettings) => {
-    queryClient.setQueryData(["backup_settings"], data);
+    queryClient.setQueryData(BACKUP_SETTINGS_KEY, data);
     // A new folder or a smaller N changes the list.
-    queryClient.invalidateQueries({ queryKey: ["list_backups"] });
+    invalidate(queryClient, "backups");
   };
   const folder = useMutation({ mutationFn: chooseBackupFolder, onSuccess: (data) => data && settled(data) });
   const retention = useMutation({
@@ -84,7 +85,7 @@ export function BackupCard() {
   });
   const backUp = useMutation({
     mutationFn: backUpNow,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["list_backups"] }),
+    onSuccess: () => invalidate(queryClient, "backups"),
   });
   const pick = useMutation({
     mutationFn: pickRestoreFile,
@@ -95,7 +96,7 @@ export function BackupCard() {
     // Everything may have changed, including whether Zeni is locked, so the shell re-reads it all.
     onSuccess: async () => {
       setConfirmOpen(false);
-      await queryClient.invalidateQueries();
+      await invalidate(queryClient, "restore");
     },
   });
 

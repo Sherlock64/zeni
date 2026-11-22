@@ -1,4 +1,4 @@
-import { type QueryClient, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { jobStatus } from "@/lib/commands";
 import { JOB_STATUS_KEY } from "@/lib/query-keys";
 
@@ -10,6 +10,3 @@ export const useJobStatus = () =>
     refetchInterval: (query) => (query.state.data?.running ? 500 : false),
     refetchOnWindowFocus: false,
   });
-
-// Call after starting, cancelling or clearing a job so every banner, action and card sees it.
-export const invalidateJobStatus = (client: QueryClient) => client.invalidateQueries({ queryKey: JOB_STATUS_KEY });

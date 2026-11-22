@@ -16,6 +16,7 @@ import type { CsvPreviewRow } from "@/types/bindings/CsvPreviewRow";
 import type { ImportRecord } from "@/types/bindings/ImportRecord";
 import type { ImportStep } from "@/types/bindings/ImportStep";
 import type { ImportSummary } from "@/types/bindings/ImportSummary";
+import { CSV_LAYOUTS_KEY, IMPORTS_KEY, JOB_STATUS_KEY, LEDGER_KEY } from "@/lib/query-keys";
 
 vi.mock("@/lib/commands", () => ({
   importFile: vi.fn(),
@@ -105,7 +106,7 @@ test.each([
   const status = screen.getByRole("status");
   expect(within(status).getByText("12 transactions added, 1 duplicate skipped.")).toBeTruthy();
   expect(status.textContent).toContain(text);
-  expect(invalidatedKeys(invalidate)).toEqual([["list_transactions"], ["list_imports"], ["job_status"]]);
+  expect(invalidatedKeys(invalidate)).toEqual([LEDGER_KEY, IMPORTS_KEY, JOB_STATUS_KEY]);
 
   fireEvent.click(screen.getByRole("button", { name: "Dismiss import summary" }));
   expect(screen.queryByText("Imported checking-2026-10.qfx")).toBeNull();
@@ -241,7 +242,7 @@ test("reverts an import after confirming and drops its summary", async () => {
   expect(await screen.findByText("Reverted checking-2026-10.qfx.")).toBeTruthy();
   expect(vi.mocked(revertImport).mock.calls.map(([request]) => request)).toEqual([{ importId: 3 }]);
   expect(screen.queryByRole("alertdialog")).toBeNull();
-  expect(invalidatedKeys(invalidate)).toEqual([["list_transactions"], ["list_imports"]]);
+  expect(invalidatedKeys(invalidate)).toEqual([LEDGER_KEY, IMPORTS_KEY]);
   expect(screen.queryByText("Imported checking-2026-10.qfx")).toBeNull();
   expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Import history" }));
 });
@@ -440,7 +441,7 @@ test("maps a new CSV layout with guessed columns, previews it and imports", asyn
   resolve(imported(csvSummary));
   await screen.findByText("Imported checking-2026-10.csv");
   expect(screen.queryByRole("dialog")).toBeNull();
-  expect(invalidatedKeys(invalidate)).toEqual([["list_csv_layouts"], ["list_transactions"], ["list_imports"], ["job_status"]]);
+  expect(invalidatedKeys(invalidate)).toEqual([CSV_LAYOUTS_KEY, LEDGER_KEY, IMPORTS_KEY, JOB_STATUS_KEY]);
 });
 
 test("switching to debit and credit columns asks for them before previewing", async () => {
@@ -549,7 +550,7 @@ test("maps a layout, then reviews possible duplicates and imports the answers", 
   resolve(csvSummary);
   await screen.findByText("Imported checking-2026-10.csv");
   expect(screen.queryByRole("dialog")).toBeNull();
-  expect(invalidatedKeys(invalidate)).toEqual([["list_csv_layouts"], ["list_transactions"], ["list_imports"], ["job_status"]]);
+  expect(invalidatedKeys(invalidate)).toEqual([CSV_LAYOUTS_KEY, LEDGER_KEY, IMPORTS_KEY, JOB_STATUS_KEY]);
 });
 
 test("keeps the review dialog open when the commit fails", async () => {

@@ -36,13 +36,7 @@ import { formatDate } from "@/lib/dates";
 import { focusFirstInvalid } from "@/lib/focus";
 import { errorField } from "@/lib/nickname-errors";
 import { NICKNAME_MAX_LEN } from "@/lib/nickname-limits";
-import {
-  CATEGORIES_KEY,
-  NICKNAMES_KEY,
-  REVIEW_GROUPS_KEY,
-  TRANSACTIONS_KEY,
-  UNREVIEWED_COUNT_KEY,
-} from "@/lib/query-keys";
+import { invalidate, NICKNAMES_KEY } from "@/lib/query-keys";
 import type { Nickname } from "@/types/bindings/Nickname";
 import type { NicknameRule } from "@/types/bindings/NicknameRule";
 import type { RuleInput } from "@/types/bindings/RuleInput";
@@ -61,12 +55,7 @@ const fieldLabels = { description: "Description", memo: "Memo" } as const;
 
 function useRefresh() {
   const queryClient = useQueryClient();
-  return () =>
-    Promise.all(
-      [NICKNAMES_KEY, TRANSACTIONS_KEY, REVIEW_GROUPS_KEY, UNREVIEWED_COUNT_KEY, CATEGORIES_KEY].map((queryKey) =>
-        queryClient.invalidateQueries({ queryKey }),
-      ),
-    );
+  return () => invalidate(queryClient, "nickname");
 }
 
 // The whole nickname goes back on every update, so a save never clears its default category by accident.

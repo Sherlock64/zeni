@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { addCategory, updateCategory } from "@/lib/commands";
 import { focusFirstInvalid } from "@/lib/focus";
-import { CATEGORIES_KEY } from "@/lib/query-keys";
+import { invalidate } from "@/lib/query-keys";
 import type { CategoryKind } from "@/types/bindings/CategoryKind";
 import type { CommandError } from "@/types/command";
 import type { CategoryFormProps } from "@/types/ui";
@@ -49,7 +49,7 @@ export function CategoryForm({ editing, onDone, locked, lockId }: CategoryFormPr
     mutationFn: () =>
       editing ? updateCategory({ id: editing.id, name, description, kind }) : addCategory({ name, description, kind }),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: CATEGORIES_KEY });
+      await invalidate(queryClient, "category");
       setName("");
       setDescription("");
       setKind("spending");
