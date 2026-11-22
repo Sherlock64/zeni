@@ -297,6 +297,32 @@ test("doesn't suggest Rebuild when only an inactive build is out of date", async
   expect(screen.queryByRole("button", { name: "Rebuild" })).toBeNull();
 });
 
+// A build made before 7.2 kept every example, past the window.
+const tooBig: ModelBuild = { ...builds[0], name: "zeni-1", exampleCount: 244 };
+const preV72Window = { windowTokens: 4096, fit: 63, total: 244 };
+
+test("suggests Rebuild when the active build is larger than the window", async () => {
+  vi.mocked(listBuilds).mockResolvedValue([tooBig]);
+  vi.mocked(buildPreview).mockResolvedValue(preV72Window);
+  renderSection();
+  expect(await screen.findByText("zeni-1 is larger than Ollama's window: Rebuild to fit.")).toBeTruthy();
+  expect((await readyBuildButton()).textContent).toBe("Rebuild");
+});
+
+test.each([
+  ["the active build fits", { ...tooBig, exampleCount: 63 }, settings],
+  ["the override is on", tooBig, { ...settings, allowOverWindow: true }],
+])("doesn't say the build is too large when %s", async (_, active, saved) => {
+  vi.mocked(listBuilds).mockResolvedValue([active]);
+  vi.mocked(ollamaSettings).mockResolvedValue(saved);
+  vi.mocked(buildPreview).mockResolvedValue(preV72Window);
+  renderSection();
+  await screen.findByText(/examples/, { selector: "p[aria-live]" });
+  await screen.findAllByRole("listitem");
+  expect(screen.queryByText(/larger than Ollama's window/)).toBeNull();
+  expect(screen.queryByRole("button", { name: "Rebuild" })).toBeNull();
+});
+
 test.each([
   ["Ollama is unreachable", () => vi.mocked(ollamaStatus).mockResolvedValue({ ...reachable, reachable: false }), "Start Ollama to build a model."],
   ["no base model is picked", () => vi.mocked(ollamaSettings).mockResolvedValue({ ...settings, baseModel: null }), "Pick a base model to build."],
