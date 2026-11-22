@@ -10,3 +10,6 @@ export function defaultEvents(dir) {
     return path.join(dir, "state", "events.jsonl"); // not in a git checkout
   }
 }
+
+// The simulator's own file: worktree-local and gitignored, never the shared real one.
+export const simEvents = (dir) => path.join(dir, "state", "sim-events.jsonl");

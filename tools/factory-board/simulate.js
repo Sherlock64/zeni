@@ -1,13 +1,17 @@
 // Simulator: appends fake factory events to the events file, in a loop, so the
 // board's animations can be watched. All epics, tickets and numbers are fake.
-// Usage: node simulate.js   (env: EVENTS, SPEED=2 runs twice as fast)
+// Usage: node simulate.js   (env: SIM_EVENTS, SPEED=2 runs twice as fast)
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { defaultEvents } from "./paths.js";
+import { defaultEvents, simEvents } from "./paths.js";
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
-const EVENTS = path.resolve(process.env.EVENTS ?? defaultEvents(dir));
+const EVENTS = path.resolve(process.env.SIM_EVENTS ?? simEvents(dir));
+if (EVENTS === path.resolve(process.env.EVENTS ?? defaultEvents(dir))) {
+  console.error(`simulate.js: refusing to write the real events file ${EVENTS}`);
+  process.exit(1);
+}
 const SPEED = Number(process.env.SPEED ?? 1);
 const sleep = (s) => new Promise((r) => setTimeout(r, (s * 1000) / SPEED));
 const rand = (lo, hi) => lo + Math.floor(Math.random() * (hi - lo));

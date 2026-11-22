@@ -1,6 +1,6 @@
-# Factory board (prototype)
+# Factory board
 
-A live view of Zeni's agent factory: the spine board, epic progress, tokens, the traffic light with its usage windows and resume countdown, needs-human items and retro links. This prototype runs on **simulated data only**: no GitHub, transcripts or real usage. No dependencies beyond Node (22+).
+A live view of Zeni's agent factory: the spine board, epic progress, tokens, the traffic light with its usage windows and resume countdown, needs-human items and retro links. Factory tooling only; it never ships with the app. Until the collector lands it shows only what writers append; `--simulate` shows fake data. No dependencies beyond Node (22+).
 
 ## Run
 
@@ -10,16 +10,15 @@ From the repo root:
 node tools/factory-board/server.js --simulate
 ```
 
-Open <http://127.0.0.1:4317/>. `--simulate` starts the simulator beside the server. To run them apart (for example to point a real writer at the server instead):
+Open <http://127.0.0.1:4317/>. `--simulate` starts the simulator beside the server, and the board then shows the simulator's own file, `tools/factory-board/state/sim-events.jsonl` (gitignored), never the real one. Without it the board reads the real, shared events file:
 
 ```bash
 node tools/factory-board/server.js
-node tools/factory-board/simulate.js
 ```
 
-Env: `PORT` (default `4317`), `EVENTS` (default `$(git rev-parse --git-common-dir)/factory/events.jsonl`, beside the other local factory state, so every worktree sees the same file; `tools/factory-board/state/events.jsonl` outside git), `SPEED` (simulator only; `2` runs twice as fast).
+Env: `PORT` (default `4317`), `EVENTS` (the real file; default `$(git rev-parse --git-common-dir)/factory/events.jsonl`, beside the other local factory state, so every worktree sees the same file; `tools/factory-board/state/events.jsonl` outside git), `SIM_EVENTS` (the simulator's file), `SPEED` (simulator only; `2` runs twice as fast). `simulate.js` refuses to run when its file is the real one.
 
-Self-check: `node --test tools/factory-board/state.check.js`
+Self-checks: `node --test tools/factory-board/*.check.js`. `scripts/check.sh fast` runs them, so every gate does.
 
 ## How data flows
 
@@ -87,7 +86,7 @@ Example:
 
 ## What the simulator fakes
 
-On start it truncates the file and emits `reset`; then it loops a fake factory run (about 3 minutes at `SPEED=1`), each cycle putting the same cards back at their start columns:
+On start it truncates its own file and emits `reset`; then it loops a fake factory run (about 3 minutes at `SPEED=1`), each cycle putting the same cards back at their start columns:
 
 - Three fake epics, **Foundations** (#201-204), **Accounts and debts** (#211-215) and **Budgets** (#221-222, stays in intake), with tickets moving station by station, at most 3 runs at once. A PR card (#3xx) appears at review and is removed when its ticket merges.
 - Each station is a new run with its own session name (`t212-build-debt-account`); active runs burn tokens, so the top-10 list re-sorts.

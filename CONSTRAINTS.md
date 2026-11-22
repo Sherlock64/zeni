@@ -13,7 +13,7 @@ Every rule the factory works under, paired with what enforces it. A rule a check
 | The UI calls the backend only through `src/lib/commands.ts` | policy: no `@tauri-apps/api/core` import elsewhere in `src/` | none |
 | Colours come from theme tokens | policy: no Tailwind palette colour or `#rrggbb` in `src/**/*.tsx` outside `src/components/ui/` | none |
 | No stray debug output in the UI | policy: no `console.log` in `src/` | none |
-| Formatted, lint-clean, type-checks | `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `pnpm exec tsc` | none |
+| Formatted, lint-clean, type-checks | `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `pnpm exec tsc`; the factory board's self-checks, `node --test tools/factory-board/*.check.js` | none |
 | Tests pass | `cargo test`, `pnpm test` (filtered in `task`, full in `integration`) | none |
 | ts-rs bindings are committed and fresh | `integration`: `cargo test` must not change `src/types/bindings/` | none |
 | Raw imported data is never modified | database triggers abort every `UPDATE` on `raw_transactions` and the file-read columns of `imports` (tested in `db.rs`, `imports.rs`); judgment (Security) for `DELETE` beyond revert | none |

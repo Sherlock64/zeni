@@ -121,6 +121,9 @@ fast() {
   step "pnpm exec tsc" pnpm exec tsc
   step "cargo fmt --check" bash -c 'cd src-tauri && cargo fmt --check'
   step "cargo clippy --locked --all-targets -- -D warnings" bash -c 'cd src-tauri && cargo clippy --locked --all-targets -- -D warnings'
+  local board=(tools/factory-board/*.check.js)
+  [[ -e ${board[0]} ]] && step "factory board self-checks" node --test "${board[@]}"
+  return 0
 }
 
 usage() { sed -n '/^# Usage:/,/^# Overrides:/p' "$0" >&2; exit 2; }

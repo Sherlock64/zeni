@@ -146,6 +146,13 @@ echo 'console.log(1);' >src/x.ts
 run fast; expect 1 "POLICY FAIL: console.log src/x.ts:1" "console.log"
 reset
 
+mkdir -p tools/factory-board
+echo 'import test from "node:test"; test("ok", () => {});' >tools/factory-board/a.check.js
+run fast; expect 0 "CHECK factory board self-checks: pass" "board self-checks pass"
+echo 'import test from "node:test"; test("bad", () => { throw new Error("x"); });' >tools/factory-board/b.check.js
+run fast; expect 1 "CHECK factory board self-checks: fail" "a failing board self-check fails fast"
+reset
+
 run task; expect 0 "ran fast checks only" "task with no filters"
 STUB_FAIL=1 run task --rust foo; expect 1 "CHECK cargo test --locked foo: fail" "task reports failing filter"
 

@@ -1,17 +1,19 @@
 // Factory board server: tails the events file, folds it into a snapshot and
 // pushes every new snapshot to open pages over server-sent events.
-// Usage: node server.js [--simulate]   (env: PORT, EVENTS)
+// Usage: node server.js [--simulate]   (env: PORT, EVENTS; SIM_EVENTS with --simulate)
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import { fork } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { defaultEvents } from "./paths.js";
+import { defaultEvents, simEvents } from "./paths.js";
 import { apply, empty, view } from "./state.js";
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT ?? 4317);
-const EVENTS = path.resolve(process.env.EVENTS ?? defaultEvents(dir));
+const SIMULATE = process.argv.includes("--simulate");
+// With --simulate the board shows the simulator's own file, so the real one is never touched.
+const EVENTS = path.resolve(SIMULATE ? process.env.SIM_EVENTS ?? simEvents(dir) : process.env.EVENTS ?? defaultEvents(dir));
 
 let state = empty();
 let offset = 0;
@@ -82,9 +84,9 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, "127.0.0.1", () => {
-  console.log(`factory board: http://127.0.0.1:${PORT}/  (events: ${EVENTS})`);
-  if (process.argv.includes("--simulate")) {
-    const sim = fork(path.join(dir, "simulate.js"), [], { env: { ...process.env, EVENTS } });
+  console.log(`factory board: http://127.0.0.1:${server.address().port}/  (events: ${EVENTS})`);
+  if (SIMULATE) {
+    const sim = fork(path.join(dir, "simulate.js"), [], { env: { ...process.env, SIM_EVENTS: EVENTS } });
     process.on("exit", () => sim.kill());
     process.on("SIGINT", () => process.exit(0));
     process.on("SIGTERM", () => process.exit(0));
