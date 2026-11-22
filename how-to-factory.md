@@ -70,4 +70,5 @@ Each station has a trust level, from 0 (it only proposes; nothing happens withou
 - **Models.** Which model and effort each role uses is in [`.claude/factory/models.md`](.claude/factory/models.md). Change one row at a time so its effect shows.
 - **Verify is partly manual for now.** Until tauri-driver is set up, the verifier drives what it can through the snapshot harness and lists the rest as manual checks in the PR comment, so read that comment before you merge.
 - **One real app at a time.** The dev build uses port 1420, so only one run can drive the real app at once; others wait their turn.
+- **The factory board** is a local live page of all this: `node tools/factory-board/server.js`, then <http://127.0.0.1:4317/>. How to run, simulate and self-check it: [`tools/factory-board/README.md`](tools/factory-board/README.md).
 - **The roadmap** of epics is [`plans/ROADMAP.md`](plans/ROADMAP.md).
