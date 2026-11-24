@@ -27,6 +27,11 @@ const MAX_EXAMPLES: u32 = 20;
 /// Longest NDJSON line and largest unstreamed body read from Ollama.
 const MAX_LINE: usize = 1 << 20;
 const MAX_BODY: usize = 8 << 20;
+/// What a chat request that runs out of time returns; categorize stops on it without a retry.
+pub const CHAT_TIMEOUT: &str =
+    "Ollama didn't answer within 2 minutes. Restart Ollama and try again.";
+// Tests can't wait two minutes for a stub that never answers.
+const CHAT_WAIT: Duration = Duration::from_secs(if cfg!(test) { 1 } else { 120 });
 
 /// Name, download size in bytes and note, in the order the UI shows them.
 const RECOMMENDED: [(&str, u64, &str); 3] = [
@@ -349,12 +354,19 @@ impl Ollama {
             "options": { "temperature": 0 },
         });
         let response = self
-            .client(Some(Duration::from_secs(120)))?
+            .client(Some(CHAT_WAIT))?
             .post(self.url("/api/chat"))
             .json(&body)
             .send()
             .await
-            .map_err(|error| self.error(error))?;
+            // An unstreamed reply arrives whole once the answer is done, so a hang ends here.
+            .map_err(|error| {
+                if error.is_timeout() {
+                    AppError::Ollama(CHAT_TIMEOUT.into())
+                } else {
+                    self.error(error)
+                }
+            })?;
         let reply = self.json(self.check(response).await?).await?;
         reply["message"]["content"]
             .as_str()
@@ -1136,6 +1148,23 @@ mod tests {
                     "options": { "temperature": 0 },
                 })
             )
+        );
+    }
+
+    #[test]
+    fn a_chat_ollama_never_answers_times_out_with_the_restart_hint() {
+        // Accepts the connection and never replies.
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let ollama = Ollama {
+            port: listener.local_addr().unwrap().port(),
+        };
+        match run(ollama.chat("phi4-mini", "Pick one.", "Fresh Mart", json!({}))) {
+            Err(AppError::Ollama(message)) => assert_eq!(message, CHAT_TIMEOUT),
+            other => panic!("expected a timeout, got {other:?}"),
+        }
+        assert_eq!(
+            CHAT_TIMEOUT,
+            "Ollama didn't answer within 2 minutes. Restart Ollama and try again."
         );
     }
 

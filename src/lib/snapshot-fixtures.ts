@@ -450,6 +450,13 @@ export const variants: Record<string, Record<string, Record<string, unknown>>> =
         last: { kind: "categorizeNow", label: "Categorize now", cancelled: false, error: "Ollama isn't running on port 11434. Start it with `ollama serve`.", summary: { categorized: 12, couldntCategorize: 0, notReached: 30 } },
       },
     },
+    // With `?preview=trimmed` the active build is larger than the window, so the banner says so.
+    timedOut: {
+      job_status: {
+        running: null,
+        last: { kind: "categorizeNow", label: "Categorize now", cancelled: false, error: "Ollama didn't answer within 2 minutes. Restart Ollama and try again.", summary: { categorized: 12, couldntCategorize: 0, notReached: 30 } },
+      },
+    },
     downloaded: { job_status: { running: null, last: { kind: "download", label: "Download qwen2.5:3b", cancelled: false, error: null, summary: null } } },
   },
   ollama: {

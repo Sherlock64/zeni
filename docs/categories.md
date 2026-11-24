@@ -60,7 +60,7 @@ The buttons are disabled, with the reason, when Ollama is not running, no model 
 
 A banner shows "Categorizing <done> of <total>" with **Cancel**. It stays when you change pages. Cancel stops at once, even in the middle of a row. It keeps the finished rows and leaves the rest alone. When the run ends the banner shows "Categorized <a>. Couldn't categorize <b>. Not reached <c>." Click **Dismiss** to clear it.
 
-Zeni sends the model one row at a time, with the nickname, description, memo, amount and the CSV bank category when there is one, plus your category list. An answer not on the list is retried once. If it is still wrong, the row stays uncategorized and counts as "couldn't categorize". If Ollama stops answering, the run stops and the summary says after how many rows.
+Zeni sends the model one row at a time, with the nickname, description, memo, amount and the CSV bank category when there is one, plus your category list. An answer not on the list is retried once. If it is still wrong, the row stays uncategorized and counts as "couldn't categorize". If Ollama stops answering, the run stops and the summary says after how many rows. A request Ollama doesn't answer within 2 minutes is not retried: the run stops at once and says to restart Ollama. If the active build is larger than Ollama's window, the summary also says "<build> is larger than Ollama's window: Rebuild it in Settings." Rows already categorized stay; the rest stay uncategorized for the next run.
 
 Model answers are marked **Model** and unreviewed.
 

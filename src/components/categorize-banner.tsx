@@ -5,6 +5,7 @@ import { PAGE_WIDTH } from "@/components/page";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { useJobStatus } from "@/hooks/use-job-status";
+import { useOversizedBuild } from "@/hooks/use-oversized-build";
 import { cancelJob, clearJobOutcome } from "@/lib/commands";
 import { finishedJobName, runningJobLabel } from "@/lib/job-label";
 import { invalidate } from "@/lib/query-keys";
@@ -52,8 +53,11 @@ export function CategorizeBanner() {
     }
   }, [hasRunning, hasLast]);
 
+  // An oversized build stalls Ollama, so a stopped categorize run says so.
+  const oversized = useOversizedBuild(Boolean(last?.error && last.kind !== "build"));
+
   const visible = running || last || job.isError || cancel.isError || dismiss.isError;
-  const lines = last ? outcomeLines(last) : [];
+  const lines = last ? outcomeLines(last, oversized) : [];
   const announcement = running ? progressAnnouncement(runningJobLabel(running), running.done, running.total) : lines.join(" ");
 
   return (
@@ -124,7 +128,7 @@ function progressAnnouncement(label: string, done: number, total: number) {
   return quarter ? `${label} ${quarter}% done.` : label;
 }
 
-function outcomeLines(last: JobOutcome) {
+function outcomeLines(last: JobOutcome, oversized: string | null) {
   const lines: string[] = [];
   const name = finishedJobName(last);
   if (last.cancelled) lines.push(`${name} was cancelled.`);
@@ -136,6 +140,7 @@ function outcomeLines(last: JobOutcome) {
     const { categorized, couldntCategorize, notReached } = last.summary;
     lines.push(`Categorized ${categorized}. Couldn't categorize ${couldntCategorize}. Not reached ${notReached}.`);
   }
+  if (oversized) lines.push(`${oversized} is larger than Ollama's window: Rebuild it in Settings.`);
   if (last.kind === "build" && !last.cancelled && !last.error) lines.push(`Built ${builtModel(last.label)}.`);
   return lines;
 }

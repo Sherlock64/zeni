@@ -29,6 +29,9 @@ vi.mock("@/lib/commands", () => ({
   jobStatus: vi.fn(),
   cancelJob: vi.fn(),
   clearJobOutcome: vi.fn(),
+  listBuilds: vi.fn(),
+  ollamaSettings: vi.fn(),
+  buildPreview: vi.fn(),
 }));
 beforeEach(() => vi.resetAllMocks());
 // Radix Select and RadioGroup need these pointer, scroll and resize APIs that jsdom lacks.
