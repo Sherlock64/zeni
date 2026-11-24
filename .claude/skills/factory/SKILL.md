@@ -37,6 +37,7 @@ If the user gave something new, run Intake on it (`stations/intake.md`) before p
 ## 4. Gate
 
 - Start nothing unless the light is `green` (a stale or missing light counts as `yellow`), and never more runs than `slots` minus those in flight.
+- Idle shutdown (`spine.md`): if the light is `yellow` or `red`, no linked run is in flight and Needs you is "Nothing", propose `/factory-shutdown` (now) to the user instead of waiting for the next wake. Name the reset time to restart at (the `resets_at` of the `five_hour` or `weekly` window in `light.json` whose light isn't `green`) and what is left to pick up (frontier, open PRs, intake backlog), then end.
 - Trust dial: read each station's level from the "Now" column of the table in `spine.md` every time, never from memory. A station at level 0 lists the work with a one-line brief and waits for the user's yes; at level 1 the run goes, and its next station waits for the user's yes; at level 2 or 3 nothing waits (e.g. with Build and Verify at 2, Verify starts after Build, and Review after Verify, without asking). Shape and slice, Merge and Release never start without the user's yes.
 
 ## 5. Start runs

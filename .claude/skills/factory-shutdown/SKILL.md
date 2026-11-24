@@ -6,7 +6,7 @@ argument-hint: "now | drain"
 
 # Factory shutdown
 
-Local state: `F=$(git rev-parse --git-common-dir)/factory/`. Ask "now or drain?" only if the user didn't say.
+Local state: `F=$(git rev-parse --git-common-dir)/factory/`. Ask "now or drain?" only if the user didn't say. Before writing the light file, note its `five_hour` and `weekly` windows (`light`, `resets_at`) for the closing message.
 
 ## Now
 
@@ -38,3 +38,5 @@ rm -f "$P"
 ## Then
 
 Offer the `factory-digest` skill for this factory run.
+
+Close by naming the reset time to restart at: the `resets_at` of the window you noted whose light wasn't `green`, in the user's local time, or "any time" if both were `green`. Say to restart with `/factory-start` in a new session on the dispatcher model (`.claude/factory/models.md`), not in this one.
