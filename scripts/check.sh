@@ -141,12 +141,13 @@ light_path() {
 
 # light when every changed file (tracked or untracked; a rename under both names) is a light path; empty is full.
 scope() {
-  local f n=0
+  local f n=0 full=0
+  # Read the whole list: leaving early breaks the pipe and sort writes errors (#177).
   while IFS= read -r -d '' f; do
-    light_path "$f" || { echo full; return; }
+    light_path "$f" || full=1
     n=$((n + 1))
   done < <(git diff -z --no-renames --name-only "$base"; untracked)
-  ((n)) && echo light || echo full
+  ((n && !full)) && echo light || echo full
 }
 
 usage() { sed -n '/^# Usage:/,/^# Overrides:/p' "$0" >&2; exit 2; }
