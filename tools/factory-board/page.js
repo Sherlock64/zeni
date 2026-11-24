@@ -85,3 +85,29 @@ export function slotsLine(snap) {
   const names = live.length ? live : snap.sessions.length ? [] : l.sessions ?? [];
   return `${running} of ${l.slots} run slots in use · weekly pace ${l.pace.toFixed(2)}` + (names.length ? ` · sessions: ${names.join(", ")}` : "");
 }
+
+// Page 2 (#144). Durations in their two largest units: "2 d 4 h", "6 m 40 s".
+export const dur = (ms) => {
+  const s = Math.max(0, Math.round(ms / 1000)), d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
+  return d ? `${d} d ${h} h` : h ? `${h} h ${m} m` : m ? `${m} m ${r} s` : `${r} s`;
+};
+
+// The next-version and CI tiles from /api/page2; with no data they say so.
+export function page2Tiles(p) {
+  const d = p.doors, ci = p.ci;
+  let version = { title: "Next version", value: "–", sub: "No tag or merge data yet." };
+  if (d) {
+    const since = d.tag ? ` since ${d.tag}` : "";
+    const parts = ["one-way", "two-way", "none"].filter((k) => d.counts[k]).map((k) => `${d.counts[k]} ${k}`);
+    const merged = Object.values(d.counts).some(Boolean);
+    const unl = d.counts.unlabelled ? ` · ${d.counts.unlabelled} unlabelled` : "";
+    version = !d.tag ? { ...version, sub: "No version tag yet." }
+      : !merged ? { ...version, value: "no release", sub: `Nothing merged${since}.` }
+      : d.next ? { ...version, value: d.next, sub: `from ${parts.join(", ")}${since}${unl}` }
+      : { ...version, value: "no release", sub: `only ${d.counts.docs ? "docs" : "unlabelled"}${d.counts.docs && d.counts.unlabelled ? " and unlabelled" : ""}${since}` };
+  }
+  const rate = ci
+    ? { title: "CI pass rate", value: `${Math.round((100 * ci.passed) / ci.of)}%`, sub: `${ci.passed} of the last ${ci.of} runs · median ${dur(ci.median_ms)}` }
+    : { title: "CI pass rate", value: "–", sub: "No completed CI runs yet." };
+  return [version, rate];
+}

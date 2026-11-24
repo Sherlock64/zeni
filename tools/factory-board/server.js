@@ -8,9 +8,9 @@ import path from "node:path";
 import { fork } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { defaultEvents, factoryDir, simEvents } from "./paths.js";
-import { apply, empty, view } from "./state.js";
+import { apply, empty, page2, view } from "./state.js";
 import { diff, fetchGitHub } from "./collect.js";
-import { defaultProjects, diffRuns, readRuns } from "./runs.js";
+import { defaultProjects, defaultSpine, diffRuns, readRuns } from "./runs.js";
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT ?? 4317);
@@ -80,7 +80,7 @@ async function collect() {
     github = { ok: false, error: err.message, checked_at: new Date().toISOString() };
   }
   try {
-    const runs = await readRuns(FACTORY, PROJECTS);
+    const runs = await readRuns(FACTORY, PROJECTS, defaultSpine());
     readNew();
     append(diffRuns(state, runs, new Date().toISOString()));
   } catch (err) {
@@ -130,6 +130,10 @@ const server = http.createServer((req, res) => {
   if (url.pathname === "/api/snapshot") {
     res.writeHead(200, { "content-type": "application/json" });
     return res.end(JSON.stringify(snap()));
+  }
+  if (url.pathname === "/api/page2") {
+    res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+    return res.end(JSON.stringify(page2(state, Date.now())));
   }
   if (url.pathname === "/api/stream") {
     res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store", connection: "keep-alive" });
