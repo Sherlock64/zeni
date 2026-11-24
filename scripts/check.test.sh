@@ -41,6 +41,41 @@ reset() { git checkout -q -- . && git clean -qfd; }
 run fast; expect 0 "CHECK policy: pass" "clean tree passes"
 grep -qF "CHECK cargo clippy --locked --all-targets -- -D warnings: pass" <<<"$out" || { echo "FAIL: clippy label"; exit 1; }
 
+scope_is() { # scope_is <light|full> <description>
+  run scope; [[ $code == 0 && $out == "$1" ]] || { printf 'FAIL: scope %s (exit %s, got %q, wanted %s)\n' "$2" "$code" "$out" "$1"; exit 1; }
+  pass=$((pass + 1))
+}
+scope_is full "empty change"
+mkdir -p docs plans .claude/x tools/factory-board
+echo a >docs/a.md; echo a >plans/p.md; echo a >.claude/x/y.md; echo a >tools/factory-board/b.js
+echo a >README.md; echo a >LICENSE
+scope_is light "light paths only"
+echo 'fn y() {}' >>src-tauri/src/main.rs
+scope_is full "mixed change"
+reset
+echo 'fn y() {}' >>src-tauri/src/main.rs
+scope_is full "one app file"
+reset
+echo a >newthing.txt
+scope_is full "unsorted new top-level file"
+reset
+mkdir -p tools/other && echo a >tools/other/notes.md
+scope_is full "a nested .md outside the light paths"
+reset
+echo a >CHANGELOG.md
+scope_is full "CHANGELOG.md alone"
+reset
+mkdir -p src && echo 'export {};' >src/new.ts
+scope_is full "untracked app file"
+reset
+mkdir -p docs && echo a >docs/a.md && git add docs/a.md && git commit -qm "light file" && git update-ref refs/remotes/origin/main HEAD
+mkdir -p src && git mv docs/a.md src/a.md
+scope_is full "rename from a light path to an app path"
+git reset -q --hard HEAD~1 && git update-ref refs/remotes/origin/main HEAD
+mkdir -p docs && git mv src-tauri/src/main.rs docs/main.rs
+scope_is full "rename from an app path to a light path"
+git reset -q --hard && git clean -qfd
+
 echo 'CREATE TABLE b (id INTEGER);' >src-tauri/migrations/0002_b.sql
 run fast; expect 0 "CHECK policy: pass" "new untracked migration is fine"
 reset

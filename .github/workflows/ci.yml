@@ -26,11 +26,31 @@ jobs:
           persist-credentials: false
           fetch-depth: 0 # check.sh diffs against the merge base with origin/main
 
+      # light: only docs, plans or factory files changed (scripts/check.sh scope); pushes to main are always full.
+      # The job still runs and reports CI, which Main lock requires, so there is no paths: filter.
+      - name: Scope
+        id: scope
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          scope=full
+          if [[ $EVENT == pull_request ]]; then scope=$(scripts/check.sh scope) || scope=full; fi
+          echo "scope=$scope" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Scope: $scope"
+            if [[ $scope == light ]]; then
+              echo "Only docs, plans or factory files changed, so these steps were skipped: system packages, Rust, pnpm, \`scripts/check.sh integration\`, the \`.deb\` build."
+            else
+              echo "Every step runs."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - run: scripts/release-check.test.sh
       - run: scripts/check.test.sh
 
       # Tauri 2 Linux prerequisites: https://v2.tauri.app/start/prerequisites/
       - name: Install system packages
+        if: steps.scope.outputs.scope == 'full'
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev \
@@ -38,6 +58,7 @@ jobs:
             libayatana-appindicator3-dev librsvg2-dev
 
       - name: Install Rust
+        if: steps.scope.outputs.scope == 'full'
         run: |
           rustup toolchain install stable --profile minimal --component rustfmt,clippy
           rustup default stable
@@ -47,12 +68,22 @@ jobs:
         with:
           node-version: 22
 
+      # On full scope check.sh fast runs these two.
+      - name: Factory board self-checks
+        if: steps.scope.outputs.scope == 'light'
+        run: node --test tools/factory-board/*.check.js
+      - name: Worktree check self-test
+        if: steps.scope.outputs.scope == 'light'
+        run: .claude/factory/tools/worktree-check.test.sh
+
       - name: Enable pnpm
+        if: steps.scope.outputs.scope == 'full'
         run: |
           corepack enable
           echo "PNPM_STORE=$(pnpm store path --silent)" >> "$GITHUB_ENV"
 
       - uses: actions/cache@v6
+        if: steps.scope.outputs.scope == 'full'
         with:
           path: |
             ~/.cargo/registry
@@ -62,20 +93,24 @@ jobs:
           restore-keys: cargo-${{ runner.os }}-${{ env.RUSTC_VERSION }}-
 
       - uses: actions/cache@v6
+        if: steps.scope.outputs.scope == 'full'
         with:
           path: ${{ env.PNPM_STORE }}
           key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
           restore-keys: pnpm-${{ runner.os }}-
 
       - run: pnpm install --frozen-lockfile
+        if: steps.scope.outputs.scope == 'full'
 
       # Tauri's generate_context! needs dist/ to exist before cargo builds.
       - run: pnpm build
+        if: steps.scope.outputs.scope == 'full'
 
       # The user approves dependencies and suppressions locally.
       - name: scripts/check.sh integration
+        if: steps.scope.outputs.scope == 'full'
         run: ZENI_DEPS_APPROVED=1 ZENI_SUPPRESSIONS_APPROVED=1 scripts/check.sh integration
 
       - name: Build the .deb
-        if: github.event_name == 'pull_request'
+        if: steps.scope.outputs.scope == 'full' && github.event_name == 'pull_request'
         run: pnpm tauri build -- --locked

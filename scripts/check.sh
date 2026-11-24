@@ -4,6 +4,7 @@
 #        scripts/check.sh task [--rust <cargo test filter>]... [--ts <vitest path or pattern>]...
 #        scripts/check.sh integration [--evidence snapshots/t<issue>/evidence.yaml]
 #        scripts/check.sh fresh snapshots/t<issue>/evidence.yaml
+#        scripts/check.sh scope   (prints light or full: which checks CI runs for this change)
 # Overrides: ZENI_DEPS_APPROVED=1, ZENI_SUPPRESSIONS_APPROVED=1 (only for what the user approved).
 set -uo pipefail
 export LC_ALL=C # stable sort order for comm and the diff hash
@@ -128,6 +129,27 @@ fast() {
   return 0
 }
 
+# Paths the app is never built from. CHANGELOG.md is compiled in (release_notes.rs), so it is full.
+light_path() {
+  case $1 in
+    docs/* | plans/* | .claude/* | tools/factory-board/* | LICENSE) return 0 ;;
+    CHANGELOG.md | */*) return 1 ;;
+    *.md) return 0 ;;
+  esac
+  return 1
+}
+
+# light when every changed file (tracked or untracked; a rename under both names) is a light path; empty is full.
+scope() {
+  local f n=0 full=0
+  # Read the whole list: leaving early breaks the pipe and sort writes errors (#177).
+  while IFS= read -r -d '' f; do
+    light_path "$f" || full=1
+    n=$((n + 1))
+  done < <(git diff -z --no-renames --name-only "$base"; untracked)
+  ((n && !full)) && echo light || echo full
+}
+
 usage() { sed -n '/^# Usage:/,/^# Overrides:/p' "$0" >&2; exit 2; }
 
 q() { local s=${1//\'/\'\'}; printf "'%s'" "$s"; } # YAML single-quoted scalar
@@ -160,6 +182,7 @@ mode=${1:-}
 shift || true
 case $mode in
   fast) fast ;;
+  scope) scope ;;
   task)
     rust=() ts=()
     while (($#)); do
