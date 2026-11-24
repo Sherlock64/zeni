@@ -1,6 +1,6 @@
 # Factory board
 
-A live view of Zeni's agent factory: the spine board, epic progress, tokens, the traffic light with its usage windows and resume countdown, needs-human items and retro links. Factory tooling only; it never ships with the app. Until the collector lands it shows only what writers append; `--simulate` shows fake data. No dependencies beyond Node (22+).
+A live view of Zeni's agent factory: the spine board, epic progress, tokens, the traffic light with its usage windows and resume countdown, needs-human items and retro links. Factory tooling only; it never ships with the app. Without `--simulate` it collects GitHub every 60 s (below); `--simulate` shows fake data instead. No dependencies beyond Node (22+).
 
 ## Run
 
@@ -16,14 +16,14 @@ Open <http://127.0.0.1:4317/>. `--simulate` starts the simulator beside the serv
 node tools/factory-board/server.js
 ```
 
-Env: `PORT` (default `4317`), `EVENTS` (the real file; default `$(git rev-parse --git-common-dir)/factory/events.jsonl`, beside the other local factory state, so every worktree sees the same file; `tools/factory-board/state/events.jsonl` outside git), `SIM_EVENTS` (the simulator's file), `SPEED` (simulator only; `2` runs twice as fast). `simulate.js` refuses to run when its file is the real one.
+Env: `PORT` (default `4317`), `EVENTS` (the real file; default `$(git rev-parse --git-common-dir)/factory/events.jsonl`, beside the other local factory state, so every worktree sees the same file; `tools/factory-board/state/events.jsonl` outside git), `SIM_EVENTS` (the simulator's file), `SPEED` (simulator only; `2` runs twice as fast), `GH` (the `gh` binary; default `gh`), `COLLECT_MS` (collect interval; default `60000`). `simulate.js` refuses to run when its file is the real one.
 
 Self-checks: `node --test tools/factory-board/*.check.js`. `scripts/check.sh fast` runs them, so every gate does.
 
 ## How data flows
 
 ```
-writers (watchdog, runs)            (--simulate: simulate.js writes state/sim-events.jsonl instead)
+writers (collect.js, watchdog, runs) (--simulate: simulate.js writes state/sim-events.jsonl instead)
    │ append one JSON object per line
    ▼
 factory/events.jsonl ► server.js (127.0.0.1 only) ──► SSE /api/stream ──► index.html
@@ -32,10 +32,11 @@ factory/events.jsonl ► server.js (127.0.0.1 only) ──► SSE /api/stream �
 ```
 
 - **Writers append** events to one JSONL file. The file is the contract: the future watchdog and runs append the same lines. Truncating the file starts over (the server notices it shrank).
+- **The collector** (`collect.js`, GitHub part) runs inside the server while it is open, without `--simulate`: once at start, then every `COLLECT_MS`. One `gh api graphql` pass reads every issue (open or closed) and every open PR carrying a `state:` label, then appends only the events that differ from the folded state, so a collect that finds no change appends nothing and a restart does not repeat the file. Cards are `#<number>`: an issue with sub-issues is an `epic`, an issue's sub-issue parent is its `epic`, an open PR is a `pr`. An issue or PR that loses its `state:` label, or a PR that merges or closes, gets `item.remove`. A `state:needs-human` issue also gets `needs_human.open` (`nh-#<number>`) with the session from its latest "claimed by <session>" comment (`unknown` if none), the first line of its latest comment as the question, and that comment's link; it clears when the label goes. When `gh` is missing or fails, nothing is appended, the board keeps its last state and shows "GitHub unavailable".
 - **The server** folds events into state (`state.js`, `apply`), derives the view (`view`) and pushes the whole view to every open page over server-sent events. Malformed lines are skipped with a warning. It binds `127.0.0.1` only.
 - **The page** keeps one DOM node per card and per token row and moves them; a FLIP animation makes cards fly between columns and rows slide. `prefers-reduced-motion` turns animation off.
 - It answers only requests addressed to `127.0.0.1:<port>` or `localhost:<port>` (403 otherwise).
-- Routes: `/` the page, `/api/stream` (SSE), `/api/snapshot` (the current view as JSON). Later pages (epic detail, run history, trust dial) get their own `/api/...` routes that compute from the same state when opened.
+- Routes: `/` the page, `/api/stream` (SSE), `/api/snapshot` (the current view as JSON, plus `github: {ok, error, checked_at}`, the collector's last result). Later pages (epic detail, run history, trust dial) get their own `/api/...` routes that compute from the same state when opened.
 
 ## Message format (v1)
 
@@ -49,7 +50,7 @@ One JSON object per line. Every event has `v: 1`, `ts` (ISO 8601 time) and `type
 | `item.remove` | `id` | Drop a card (closed, merged into another). |
 | `run.tokens` | `run`, `session` (Claude session name), `tokens` (integer total so far), `item?`, `station?` | A run's token total. The newest run of an item is its current session. |
 | `light` | `light`, `reason`, `set_at`, `resume_at` (null unless red), `slots` (0-3), `pace`, `five_hour: {pct, resets_at?}`, `weekly: {pct, resets_at?}`, `sessions?` | The watchdog's whole state, the traffic light (below). Each one replaces the last. |
-| `needs_human.open` | `id`, `session`, `question`, `item?` | An eject: which Claude session to open, and the one-line question. |
+| `needs_human.open` | `id`, `session`, `question`, `item?`, `href?` (link to the latest comment) | An eject: which Claude session to open, and the one-line question. |
 | `needs_human.clear` | `id` | The human answered. |
 | `factory_run.start` | `id` | A factory run began. |
 | `factory_run.end` | `id`, `retros: [{title, href}]` | It ended, with links to its retros (may be empty). |
