@@ -1,12 +1,19 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { CategorizeBanner } from "@/components/categorize-banner";
-import { cancelJob, clearJobOutcome, jobStatus } from "@/lib/commands";
+import { buildPreview, cancelJob, clearJobOutcome, jobStatus, listBuilds, ollamaSettings } from "@/lib/commands";
 import { invalidate, JOB_STATUS_KEY, LEDGER_KEY, OLLAMA_KEY } from "@/lib/query-keys";
 import type { JobOutcome } from "@/types/bindings/JobOutcome";
 import type { JobStatus } from "@/types/bindings/JobStatus";
 
-vi.mock("@/lib/commands", () => ({ jobStatus: vi.fn(), cancelJob: vi.fn(), clearJobOutcome: vi.fn() }));
+vi.mock("@/lib/commands", () => ({
+  jobStatus: vi.fn(),
+  cancelJob: vi.fn(),
+  clearJobOutcome: vi.fn(),
+  listBuilds: vi.fn(),
+  ollamaSettings: vi.fn(),
+  buildPreview: vi.fn(),
+}));
 beforeEach(() => vi.resetAllMocks());
 
 const running = (done: number, total = 42): JobStatus => ({
@@ -158,6 +165,57 @@ test("shows a stopped run's error as an Ollama alert outside the status, with th
   expect(alert.textContent).toContain("Check that Ollama is running, then try again.");
   expect(screen.getByText("Categorizing stopped after 12 rows.", visibleText)).toBeTruthy();
   expect(status()).toBe("Categorizing stopped after 12 rows. Categorized 11. Couldn't categorize 1. Not reached 30.");
+});
+
+const TIMEOUT = "Ollama didn't answer within 2 minutes. Restart Ollama and try again.";
+const build = { id: 7, name: "zeni-7", baseModel: "phi4-mini", createdAt: "2026-11-01 10:00:00", outOfDate: false };
+const settings = { port: 11434, baseModel: "phi4-mini", autoCategorize: true, examplesPerCategory: 5, allowOverWindow: false };
+
+describe("a run stopped by a request timeout", () => {
+  test.each([
+    ["the active build is larger than the window", { exampleCount: 40, active: true }, false, true],
+    ["the active build fits", { exampleCount: 10, active: true }, false, false],
+    ["the override is on", { exampleCount: 40, active: true }, true, false],
+    ["only an inactive build is larger", { exampleCount: 40, active: false }, false, false],
+  ])("shows the restart hint; the build hint only when %s", async (_, builds, allowOverWindow, hinted) => {
+    vi.mocked(jobStatus).mockResolvedValue(finished({ error: TIMEOUT, summary: { categorized: 2, couldntCategorize: 0, notReached: 4 } }));
+    vi.mocked(listBuilds).mockResolvedValue([{ ...build, ...builds }]);
+    vi.mocked(ollamaSettings).mockResolvedValue({ ...settings, allowOverWindow });
+    vi.mocked(buildPreview).mockResolvedValue({ windowTokens: 4096, fit: 20, total: 40 });
+    renderBanner();
+
+    expect((await screen.findByRole("alert")).textContent).toContain(TIMEOUT);
+    expect(screen.getByText("Categorizing stopped after 2 rows.", visibleText)).toBeTruthy();
+    const hint = "zeni-7 is larger than Ollama's window: Rebuild it in Settings.";
+    if (hinted) {
+      expect(await screen.findByText(hint, visibleText)).toBeTruthy();
+      expect(status()).toContain(hint);
+    } else {
+      await waitFor(() => expect(buildPreview).toHaveBeenCalled());
+      expect(screen.queryByText(hint, visibleText)).toBeNull();
+    }
+  });
+
+  test("shows no build hint when the builds can't be read", async () => {
+    vi.mocked(jobStatus).mockResolvedValue(finished({ error: TIMEOUT }));
+    vi.mocked(listBuilds).mockRejectedValue({ kind: "Ollama", message: "Ollama said: boom" });
+    vi.mocked(ollamaSettings).mockResolvedValue(settings);
+    vi.mocked(buildPreview).mockRejectedValue({ kind: "Ollama", message: "Ollama said: boom" });
+    renderBanner();
+
+    expect((await screen.findByRole("alert")).textContent).toContain(TIMEOUT);
+    await waitFor(() => expect(buildPreview).toHaveBeenCalled());
+    expect(screen.queryByText(/larger than Ollama's window/, visibleText)).toBeNull();
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+  });
+});
+
+test("a finished run without an error asks nothing about builds", async () => {
+  vi.mocked(jobStatus).mockResolvedValue(finished());
+  renderBanner();
+  await screen.findByText("Categorized 38. Couldn't categorize 3. Not reached 1.", visibleText);
+  expect(listBuilds).not.toHaveBeenCalled();
+  expect(buildPreview).not.toHaveBeenCalled();
 });
 
 test("Dismiss clears the summary once while busy, then moves focus to the heading", async () => {

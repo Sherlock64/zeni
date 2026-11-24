@@ -731,6 +731,41 @@ mod tests {
     }
 
     #[test]
+    fn a_request_timeout_stops_the_run_at_once_and_keeps_finished_rows() {
+        // (row that times out, rows sent, summary, rows stored)
+        let cases: [(i64, Vec<i64>, (u32, u32, u32), Vec<i64>); 3] = [
+            (4, vec![4], (0, 0, 4), vec![3]),
+            (6, vec![4, 5, 6], (2, 0, 2), vec![3, 4, 5]),
+            (7, vec![4, 5, 6, 7], (3, 0, 1), vec![3, 4, 5, 6]),
+        ];
+        for (hung, sent, counts, stored) in cases {
+            let fixture = fixture(&format!("timeout-{hung}"));
+            let fake = FakeCategorizer::new(move |row| {
+                if row.id == hung {
+                    Err(AppError::Ollama(ollama::CHAT_TIMEOUT.into()))
+                } else {
+                    Ok("Groceries".into())
+                }
+            });
+            let outcome = fixture.run(&fake, RunTarget::Uncategorized, &ctx());
+            assert_eq!(fake.sent(), sent, "a timeout is not retried (row {hung})");
+            assert_eq!(outcome.error.as_deref(), Some(ollama::CHAT_TIMEOUT));
+            assert!(!outcome.cancelled);
+            assert_eq!(summary(&outcome), counts);
+            let rows = fixture.model_rows();
+            assert_eq!(rows.iter().map(|row| row.0).collect::<Vec<_>>(), stored);
+            // Stored model answers stay unreviewed; the rest stay uncategorized for the next run.
+            assert!(rows.iter().filter(|row| row.0 != 3).all(|row| row.3 == 0));
+            assert_eq!(
+                block(rows(&fixture.pool(), RunTarget::Uncategorized))
+                    .unwrap()
+                    .len(),
+                4 - counts.0 as usize
+            );
+        }
+    }
+
+    #[test]
     fn one_ollama_error_is_retried() {
         let fixture = fixture("retry");
         let failed = AtomicBool::new(false);

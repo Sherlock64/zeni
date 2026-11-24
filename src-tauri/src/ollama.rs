@@ -1140,6 +1140,23 @@ mod tests {
     }
 
     #[test]
+    fn a_chat_ollama_never_answers_times_out_with_the_restart_hint() {
+        // Accepts the connection and never replies.
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let ollama = Ollama {
+            port: listener.local_addr().unwrap().port(),
+        };
+        match run(ollama.chat("phi4-mini", "Pick one.", "Fresh Mart", json!({}))) {
+            Err(AppError::Ollama(message)) => assert_eq!(message, CHAT_TIMEOUT),
+            other => panic!("expected a timeout, got {other:?}"),
+        }
+        assert_eq!(
+            CHAT_TIMEOUT,
+            "Ollama didn't answer within 2 minutes. Restart Ollama and try again."
+        );
+    }
+
+    #[test]
     fn lowest_values_are_accepted_and_corrupt_settings_fall_back_to_defaults() {
         let f = fixture("settings-edges");
         assert_eq!(
