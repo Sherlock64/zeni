@@ -1,4 +1,4 @@
-// Design-direction prototypes (#142): fixed fake data and shared helpers. Not served by server.js; open the files directly.
+// Board design prototype (#142, chosen.html): fixed fake data and helpers. Not served by server.js; open it through a static server.
 // URL params: theme=light|dark, light=green|yellow|red|off|stale, nh=0 (nothing needs you). Hash #p2 shows page 2.
 const P = new URLSearchParams(location.search);
 document.documentElement.dataset.theme = P.get("theme") ?? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
@@ -9,11 +9,6 @@ const ahead = (ms) => new Date(NOW + ms).toISOString();
 
 const STATES = ["intake", "shaping", "ready", "building", "verifying", "reviewing", "merged", "released", "needs-human"];
 const LABEL = { "needs-human": "needs human" };
-const GROUPS = [
-  { name: "Queue", states: ["intake", "shaping", "ready"] },
-  { name: "In flight", states: ["building", "verifying", "reviewing"] },
-  { name: "Done", states: ["merged", "released"] },
-];
 const ACTIVE = ["building", "verifying", "reviewing", "needs-human"];
 
 const LIGHTS = {
@@ -141,14 +136,14 @@ const byState = (s) => DATA.items.filter((i) => i.state === s).sort((a, b) => (b
 const epicOf = (it) => DATA.epics.find((e) => e.id === (it.epic ?? it.id));
 function link(text, href) { const a = el("a", null, text); a.href = href; return a; }
 
-// Shows page 1 or 2 from the hash; each direction calls this once with its two render functions.
+// Shows page 1 or 2 from the hash.
 function route(p1, p2) {
   const go = () => { const two = location.hash === "#p2"; document.body.dataset.page = two ? "2" : "1"; (two ? p2 : p1)(); window.scrollTo(0, 0); };
   addEventListener("hashchange", go);
   go();
 }
 
-// Page 2 markup, shared by every direction; each direction styles it.
+// Page 2 markup.
 function svgLine(series, max, target) {
   const W = 320, H = 120, n = series.length, x = (i, len) => (i / (len - 1)) * W, y = (v) => H - (v / max) * H;
   const pts = series.map((v, i) => `${x(i, target ? 8 : n).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
@@ -212,7 +207,7 @@ function page2() {
   );
 }
 
-// Page 1 pieces, shared; the directions arrange and style them.
+// Page 1 pieces.
 function card(it, withEpic) {
   const meta = el("div", "meta", el("span", "kind", it.kind), el("span", "num", `#${it.number}`), withEpic && it.epic ? el("span", "ep", epicOf(it).title) : null);
   return el("article", `card k-${it.kind}${it.state === "needs-human" ? " nhc" : ""}`, meta, el("div", "t", it.title),
@@ -238,12 +233,6 @@ function runsList(n = 10) {
     const f = el("i"); f.style.width = `${(100 * (r.tokens ?? 0)) / max}%`;
     return el("li", null, el("span", "muted num", `${i + 1}`), el("span", null, el("span", "session", r.session), " ", el("span", "muted small", r.model)), el("span", "num", kfmt(r.tokens)), el("span", "bar", f));
   }));
-}
-function nhList() {
-  if (!DATA.needsHuman.length) return el("p", "muted", "Nothing needs you.");
-  return el("ul", "plain", ...DATA.needsHuman.map((n) => el("li", "nhitem",
-    el("div", null, "Open session ", el("strong", "session", n.session), " in the Claude app"),
-    el("div", "q", n.question), link("Latest comment", n.href))));
 }
 function lastRun() {
   const r = DATA.lastEndedRun, f = DATA.factoryRun;
