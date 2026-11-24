@@ -5,6 +5,7 @@ import { DOORS, STATES } from "./state.js";
 
 const LABELS = JSON.stringify(STATES.map((s) => `state:${s}`));
 // shortcut: the last 50 comments per issue; an older "claimed by" is missed, raise it if ejects say "unknown".
+// shortcut: the last 100 label events per issue; raise it if histories start late.
 const ISSUES = `query($owner:String!,$name:String!,$cursor:String){repository(owner:$owner,name:$name){
   issues(first:50,after:$cursor,labels:${LABELS},states:[OPEN,CLOSED]){pageInfo{hasNextPage endCursor}
     nodes{number title url labels(first:30){nodes{name}} parent{number} subIssues{totalCount} comments(last:50){nodes{body url}}
