@@ -18,6 +18,8 @@ node tools/factory-board/server.js
 
 Env: `PORT` (default `4317`), `EVENTS` (the real file; default `$(git rev-parse --git-common-dir)/factory/events.jsonl`, beside the other local factory state, so every worktree sees the same file; `tools/factory-board/state/events.jsonl` outside git), `SIM_EVENTS` (the simulator's file), `SPEED` (simulator only; `2` runs twice as fast), `GH` (the `gh` binary; default `gh`), `COLLECT_MS` (collect interval; default `60000`). `simulate.js` refuses to run when its file is the real one.
 
+`/factory-start` starts the board this way from the main checkout (so it outlives any worktree) when nothing answers on port 4317, records its pid in `$(git rev-parse --git-common-dir)/factory/board.pid` with output in `board.log` beside it, and opens it in the dispatcher's browser pane; a running board is left alone. `/factory-shutdown` (now, or drain once the runs are idle) stops only the process in `board.pid`, and only if it is still the board.
+
 Self-checks: `node --test tools/factory-board/*.check.js`. `scripts/check.sh fast` runs them, so every gate does.
 
 ## How data flows
