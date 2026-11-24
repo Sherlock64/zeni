@@ -12,12 +12,16 @@ import type { BuildPreview } from "@/types/bindings/BuildPreview";
 import type { ModelBuild } from "@/types/bindings/ModelBuild";
 import type { BuildIssue, BuildIssuesDialogProps } from "@/types/ui";
 
+/** The active build holds more examples than Ollama's window fits, and the override is off. */
+export const tooLarge = (build: ModelBuild, preview: BuildPreview | undefined, allowOverWindow: boolean) =>
+  // Only the active build: the preview's window is the current base model's, not an older build's.
+  Boolean(build.active && preview && !allowOverWindow && build.exampleCount > preview.fit);
+
 /** What's wrong with a build: the active one too large for the window (unless the override is on), or out of date. */
 export function buildIssues(build: ModelBuild, preview: BuildPreview | undefined, allowOverWindow: boolean): BuildIssue[] {
   const issues: BuildIssue[] = [];
   // A build made before 7.2 may hold more examples than the window, which stalls categorizing.
-  // Only the active build: the preview's window is the current base model's, not an older build's.
-  if (build.active && preview && !allowOverWindow && build.exampleCount > preview.fit)
+  if (preview && tooLarge(build, preview, allowOverWindow))
     issues.push({
       title: "Larger than Ollama's window",
       detail: `It has ${build.exampleCount} examples; Ollama's ${preview.windowTokens.toLocaleString("en-US")}-token window fits ${preview.fit}. Categorizing with it may stall. Rebuild to fit.`,

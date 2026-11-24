@@ -5,6 +5,7 @@
 - Internal: the backend's shared types are split into one file per domain; nothing changes in the app.
 - Deleting a category now also refreshes the Review page and its count.
 - Settings now marks each model build's issues (larger than Ollama's window, out of date) with a warning pill that opens the details, and suggests a rebuild.
+- When Ollama doesn't answer within 2 minutes, categorizing stops at once with a hint to restart Ollama, and says when the active build is larger than Ollama's window.
 
 ## 7.2.0
 

@@ -192,6 +192,11 @@ async fn rows(pool: &SqlitePool, target: RunTarget) -> Result<Vec<PromptRow>, Ap
     .await?)
 }
 
+/// A hung Ollama: retrying would only wait another two minutes.
+fn timed_out(error: &AppError) -> bool {
+    matches!(error, AppError::Ollama(message) if message == ollama::CHAT_TIMEOUT)
+}
+
 /// The category id of a valid answer, retrying once; `None` when both answers are off the list.
 async fn answer<C: Categorizer>(
     categorizer: &C,
@@ -205,7 +210,7 @@ async fn answer<C: Categorizer>(
                     return Ok(Some(category.id));
                 }
             }
-            Err(error) if attempt == 1 => return Err(error),
+            Err(error) if attempt == 1 || timed_out(&error) => return Err(error),
             Err(_) => {}
         }
     }
@@ -294,8 +299,12 @@ async fn categorize_rows<C: Categorizer>(
                 }
             }
             Ok(None) => couldnt += 1,
-            Err(_) => {
-                error = Some(format!("Ollama stopped responding after {done} rows."));
+            Err(ollama_error) => {
+                error = Some(if timed_out(&ollama_error) {
+                    ollama::CHAT_TIMEOUT.into()
+                } else {
+                    format!("Ollama stopped responding after {done} rows.")
+                });
                 break;
             }
         }
@@ -733,7 +742,7 @@ mod tests {
     #[test]
     fn a_request_timeout_stops_the_run_at_once_and_keeps_finished_rows() {
         // (row that times out, rows sent, summary, rows stored)
-        let cases: [(i64, Vec<i64>, (u32, u32, u32), Vec<i64>); 3] = [
+        let cases = [
             (4, vec![4], (0, 0, 4), vec![3]),
             (6, vec![4, 5, 6], (2, 0, 2), vec![3, 4, 5]),
             (7, vec![4, 5, 6, 7], (3, 0, 1), vec![3, 4, 5, 6]),
@@ -752,10 +761,10 @@ mod tests {
             assert_eq!(outcome.error.as_deref(), Some(ollama::CHAT_TIMEOUT));
             assert!(!outcome.cancelled);
             assert_eq!(summary(&outcome), counts);
-            let rows = fixture.model_rows();
-            assert_eq!(rows.iter().map(|row| row.0).collect::<Vec<_>>(), stored);
+            let model = fixture.model_rows();
+            assert_eq!(model.iter().map(|row| row.0).collect::<Vec<_>>(), stored);
             // Stored model answers stay unreviewed; the rest stay uncategorized for the next run.
-            assert!(rows.iter().filter(|row| row.0 != 3).all(|row| row.3 == 0));
+            assert!(model.iter().filter(|row| row.0 != 3).all(|row| row.3 == 0));
             assert_eq!(
                 block(rows(&fixture.pool(), RunTarget::Uncategorized))
                     .unwrap()
