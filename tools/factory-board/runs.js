@@ -123,7 +123,9 @@ export function diffRuns(s, board, ts) {
   for (const r of Object.values(known)) {
     if (!FACTORY_RUN.test(r.id)) continue;
     // A run ends when shutdown turns the light off, or when factory start writes a new run file.
-    const ended_at = r.ended_at ?? (r.id === current?.id ? offAt : current?.started_at ?? null);
+    // An off light older than the run's start is the previous shutdown's, not this run's end.
+    const offEnds = offAt && Date.parse(offAt) > Date.parse(r.started_at);
+    const ended_at = r.ended_at ?? (r.id === current?.id ? (offEnds ? offAt : null) : current?.started_at ?? null);
     if (!ended_at) continue;
     const retros = board.digests.filter((f) => f.endsWith(`-${r.id}.html`)).sort().map((f) => ({ title: "Digest", href: `/digests/${f}` }));
     if (r.ended_at !== ended_at || JSON.stringify(r.retros) !== JSON.stringify(retros)) {
