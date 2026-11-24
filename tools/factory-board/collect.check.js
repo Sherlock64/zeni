@@ -50,6 +50,17 @@ test("a needs-human ticket without a claim or comments still shows", () => {
   assert.deepEqual(Object.values(b.needsHuman).map((n) => [n.session, n.question, n.href]), [["unknown", "Lonely", "https://github.com/o/r/issues/150"]]);
 });
 
+test("a claim comment without a valid session name is skipped, not a crash", () => {
+  const comments = { nodes: [
+    { body: "claimed by t150-build (run 1)", url: "u1" },
+    { body: "claimed by `t150-x` and @someone", url: "u2" },
+  ] };
+  const b = toBoard([issue(150, "Odd claim", "state:needs-human", { comments })], []);
+  assert.equal(b.needsHuman["nh-#150"].session, "t150-build");
+  const none = toBoard([issue(151, "Only odd", "state:needs-human", { comments: { nodes: [comments.nodes[1]] } })], []);
+  assert.equal(none.needsHuman["nh-#151"].session, "unknown");
+});
+
 test("a collect that finds no change appends nothing", () => {
   const s = fold(empty(), diff(empty(), toBoard(ISSUES, PRS), TS));
   assert.deepEqual(diff(s, toBoard(ISSUES, PRS), TS), []);

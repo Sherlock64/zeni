@@ -54,12 +54,13 @@ export function toBoard(issues, prs) {
     items[id] = { id, kind, title: n.title, state, epic: n.parent ? `#${n.parent.number}` : null, number: n.number };
     if (state === "needs-human") {
       const comments = n.comments.nodes;
-      const claim = comments.findLast((c) => /claimed by \S/.test(c.body));
+      // One regex for search and capture, so a claim without a valid name is skipped, not a crash.
+      const claim = comments.map((c) => c.body.match(/claimed by ([\w.-]+)/)).findLast(Boolean);
       const last = comments.at(-1);
       needsHuman[`nh-${id}`] = {
         id: `nh-${id}`,
         item: id,
-        session: claim?.body.match(/claimed by ([\w.-]+)/)[1] ?? "unknown",
+        session: claim?.[1] ?? "unknown",
         question: last?.body.split("\n").map((l) => l.trim()).find(Boolean)?.slice(0, 200) ?? n.title,
         href: last?.url ?? n.url,
       };
