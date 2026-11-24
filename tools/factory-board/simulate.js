@@ -133,6 +133,8 @@ async function cycle(n) {
       ...pacing(),
       sessions: [...runs.values()].map((r) => r.session),
     });
+    // Fake context %: grows with the run's tokens.
+    emit("sessions", { sessions: [...runs.values()].map((r) => ({ name: r.session, running: true, context_pct: Math.min(95, Math.round(r.tokens / 2000)) })) });
   };
   // Pace = weekly used / straight-line target (0 -> 97% across the week); slots follow the pace.
   const pacing = () => {
