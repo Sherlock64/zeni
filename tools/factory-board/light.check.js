@@ -22,9 +22,15 @@ test("weekly 81% with 1 d 9 h to reset: target 77.9, pace 1.04, 2 slots, green",
   assert.equal(l.resume_at, null);
 });
 
-test("first hour after the weekly reset: pace 0, 3 slots", () => {
-  const l = decide({ input: usage(10, 2 * H, 5, 167.5 * H), now });
+test("first day after the weekly reset: pace 0, 3 slots; 5-hour still applies", () => {
+  const l = decide({ input: usage(10, 2 * H, 4, 166 * H), now }); // 2 h in: pace would be 3.47
   assert.deepEqual([l.light, l.pace, l.slots], ["green", 0, 3]);
+  assert.equal(decide({ input: usage(92, 2 * H, 4, 166 * H), now }).light, "red");
+});
+
+test("25 hours after the weekly reset: pace is computed", () => {
+  const l = decide({ input: usage(10, 2 * H, 16, 143 * H), now }); // target 14.43
+  assert.deepEqual([l.light, l.pace, l.slots], ["green", 1.11, 1]);
 });
 
 test("slots step down with pace", () => {
