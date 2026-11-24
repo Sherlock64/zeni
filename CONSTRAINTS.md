@@ -30,7 +30,7 @@ Every rule the factory works under, paired with what enforces it. A rule a check
 |---|---|
 | Every PR has exactly one `door:` label | CI workflow `Door` (`.github/workflows/door.yml`) |
 | A release tag matches the app version and has a `CHANGELOG.md` section | `scripts/release-check.sh` in `Release` (self-test `scripts/release-check.test.sh`) |
-| CI runs every gate | `CI` runs both self-tests and `scripts/check.sh integration`; judgment (Pipeline) for new gates |
+| CI runs every gate | `CI` runs both self-tests, then by `scripts/check.sh scope`: on `full` (any app path, and every push to `main`) `scripts/check.sh integration` and the `.deb` build; on `light` (only docs, plans, `.claude/`, the factory board, `LICENSE` or root notes other than `CHANGELOG.md`) only the board and worktree self-tests; judgment (Pipeline) for new gates |
 | The door label fits the change | judgment (Spec) |
 | A PR stays inside its ticket's modules plus the hubs | judgment (Spec) |
 | One state label per ticket; the dispatcher claims | judgment (dispatcher) |

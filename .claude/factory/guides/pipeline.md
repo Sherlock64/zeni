@@ -4,7 +4,7 @@ Load when a ticket touches `.github/workflows/`, `scripts/release-check*`, `scri
 
 ## How the pipeline works
 
-- `.github/workflows/ci.yml` (`CI`) runs on pull requests to `main` and pushes to `main`: `scripts/release-check.test.sh`, the Tauri apt build deps, Rust stable, Node and pnpm, `pnpm install --frozen-lockfile`, `pnpm build` (Tauri's `generate_context!` needs `dist/`), then `ZENI_DEPS_APPROVED=1 ZENI_SUPPRESSIONS_APPROVED=1 scripts/check.sh integration`; on pull requests also `pnpm tauri build`. Checkout uses `fetch-depth: 0` because `check.sh` needs the merge base with `origin/main`. The overrides are set because the user approves dependencies and suppressions locally; every other gate must still fail CI.
+- `.github/workflows/ci.yml` (`CI`) runs on pull requests to `main` and pushes to `main`: `scripts/release-check.test.sh`, the Tauri apt build deps, Rust stable, Node and pnpm, `pnpm install --frozen-lockfile`, `pnpm build` (Tauri's `generate_context!` needs `dist/`), then `ZENI_DEPS_APPROVED=1 ZENI_SUPPRESSIONS_APPROVED=1 scripts/check.sh integration`; on pull requests also `pnpm tauri build`. Checkout uses `fetch-depth: 0` because `check.sh` needs the merge base with `origin/main`. A first `Scope` step runs `scripts/check.sh scope` on pull requests: on `light` every toolchain, integration and `.deb` step is skipped (`if:`) and only the self-tests run; pushes to `main` are always `full`. There is no `paths:` filter, so the required `CI` check always reports. The overrides are set because the user approves dependencies and suppressions locally; every other gate must still fail CI.
 - `.github/workflows/release.yml` (`Release`) runs on tags `v*.*.*`. Its first step, `scripts/release-check.sh "$GITHUB_REF_NAME" release-notes.md`, exits 1 (publish nothing) when the tag version differs from `src-tauri/Cargo.toml` or `CHANGELOG.md` has no `## <version>` section, and writes `release=false` for a tag that isn't `v<major>.<minor>.<patch>`. Every later step is gated on `steps.check.outputs.release == 'true'`; `gh release create` runs last, so a failed build publishes nothing. This job alone gets `contents: write`, and it uses no caches.
 - `scripts/release-check.test.sh` self-tests the gate; run it after every change to `release-check.sh`.
 - `src-tauri/deb/postrm` never deletes user data.
@@ -27,7 +27,7 @@ These are the user's limits. A change that breaks one is wrong even if it works;
 2. Read only the failed steps: `gh run view <run-id> --log-failed`. Add `--job <job-id>` when a run has several jobs.
 3. Reproduce locally with the same command from the repo root (`scripts/check.sh integration`, `scripts/release-check.test.sh`, `pnpm tauri build`) before you edit.
 4. Fix the cause where it is, once.
-5. Never weaken a gate to get green: no `continue-on-error`, no skipped step, no override beyond the two `check.sh` already documents.
+5. Never weaken a gate to get green: no `continue-on-error`, no skipped step beyond the `light` scope, no override beyond the two `check.sh` already documents.
 
 ## Checks
 
