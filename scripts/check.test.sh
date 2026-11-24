@@ -72,6 +72,9 @@ mkdir -p docs && echo a >docs/a.md && git add docs/a.md && git commit -qm "light
 mkdir -p src && git mv docs/a.md src/a.md
 scope_is full "rename from a light path to an app path"
 git reset -q --hard HEAD~1 && git update-ref refs/remotes/origin/main HEAD
+mkdir -p docs && git mv src-tauri/src/main.rs docs/main.rs
+scope_is full "rename from an app path to a light path"
+git reset -q --hard && git clean -qfd
 
 echo 'CREATE TABLE b (id INTEGER);' >src-tauri/migrations/0002_b.sql
 run fast; expect 0 "CHECK policy: pass" "new untracked migration is fine"
