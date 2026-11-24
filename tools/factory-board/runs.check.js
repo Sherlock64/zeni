@@ -84,19 +84,22 @@ test("the current factory run shows with its start; when it ends its digest is a
   let s = fold(empty(), diffRuns(empty(), await readRuns(factory, projects), TS));
   assert.deepEqual(view(s).factoryRun, { id: "fr-20261123-0800", started_at: "2026-11-23T08:00:00-06:00", ended_at: null, retros: [] });
   // Shutdown turns the light off: the run ends then; no digest yet.
-  fs.writeFileSync(path.join(factory, "light.json"), JSON.stringify({ light: "off", set_at: "2026-11-23T12:00:00Z" }));
+  fs.writeFileSync(path.join(factory, "light.json"), JSON.stringify({ light: "off", set_at: "2026-11-23T16:00:00Z" }));
   s = fold(s, diffRuns(s, await readRuns(factory, projects), TS));
   assert.equal(view(s).factoryRun, null);
-  assert.deepEqual([view(s).lastEndedRun.ended_at, view(s).lastEndedRun.retros], ["2026-11-23T12:00:00Z", []]);
+  assert.deepEqual([view(s).lastEndedRun.ended_at, view(s).lastEndedRun.retros], ["2026-11-23T16:00:00Z", []]);
   // The digest is written later: the end keeps its time and gains the link.
   fs.writeFileSync(path.join(factory, "digests", "2026-11-23-fr-20261123-0800.html"), "<html></html>");
   s = fold(s, diffRuns(s, await readRuns(factory, projects), "2026-11-23T13:00:00Z"));
   assert.deepEqual([view(s).lastEndedRun.ended_at, view(s).lastEndedRun.retros], [
-    "2026-11-23T12:00:00Z", [{ title: "Digest", href: "/digests/2026-11-23-fr-20261123-0800.html" }],
+    "2026-11-23T16:00:00Z", [{ title: "Digest", href: "/digests/2026-11-23-fr-20261123-0800.html" }],
   ]);
   assert.deepEqual(diffRuns(s, await readRuns(factory, projects), TS), []);
   // Factory start writes a new run file: the new run shows.
+  // The new run file lands while the previous shutdown's off light is still on disk: the new run stays open.
   fs.writeFileSync(path.join(factory, "run.json"), JSON.stringify({ id: "fr-20261124-0900", started_at: "2026-11-24T09:00:00Z" }));
+  s = fold(s, diffRuns(s, await readRuns(factory, projects), TS));
+  assert.deepEqual([view(s).factoryRun?.id, view(s).factoryRun?.ended_at], ["fr-20261124-0900", null]);
   fs.writeFileSync(path.join(factory, "light.json"), JSON.stringify({ light: "green", set_at: "2026-11-24T09:00:00Z" }));
   s = fold(s, diffRuns(s, await readRuns(factory, projects), TS));
   assert.equal(view(s).factoryRun.id, "fr-20261124-0900");
