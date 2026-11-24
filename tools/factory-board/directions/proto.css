@@ -48,11 +48,12 @@ ul.plain { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .nhitem { display: grid; gap: 2px; }
 
 /* page 2 */
-.page2 { display: grid; gap: 16px; }
-.p2grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
-.p2sec { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; min-width: 0; }
-.p2grid.flow .p2sec:nth-child(1), .p2grid.flow .p2sec:nth-child(3) { grid-column: span 2; }
-@media (max-width: 700px) { .p2grid.flow .p2sec:nth-child(n) { grid-column: auto; } }
+.page2 { display: grid; gap: 14px; }
+.p2row { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 14px; align-items: stretch; }
+.p2sec, .tile { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; min-width: 0; }
+.tile .big { font-size: 1.8rem; margin: 0; }
+.tile p { margin: 2px 0 0; }
+.band-title { font-size: .85rem; color: var(--ink); margin: 10px 0 -4px; border-bottom: 1px solid var(--line); padding-bottom: 6px; }
 .bars, .tis { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .bars li, .tis li { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; }
 .bars .track, .tis .segs { grid-column: 1 / -1; height: 8px; background: var(--track); border-radius: 4px; overflow: hidden; display: flex; }
@@ -69,7 +70,8 @@ ul.plain { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .streak i { width: 8px; height: 12px; border-radius: 2px; background: var(--track); }
 .streak i.on { background: var(--g3); }
 .door { margin-right: 10px; display: inline-block; }
-.chart svg { width: 100%; height: auto; display: block; overflow: visible; }
+.chart svg { width: 100%; height: 170px; display: block; overflow: visible; }
+.chart svg * { vector-effect: non-scaling-stroke; }
 .chart .series { fill: none; stroke: var(--ink); stroke-width: 2.5; }
 .chart .target { stroke: var(--g2); stroke-width: 1.5; stroke-dasharray: 5 4; }
 .chart .limit { stroke: var(--l-yellow-dot); stroke-width: 1; stroke-dasharray: 3 3; }

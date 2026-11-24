@@ -154,7 +154,7 @@ function svgLine(series, max, target) {
   const pts = series.map((v, i) => `${x(i, target ? 8 : n).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
   const tgt = target ? `<line class="target" x1="0" y1="${H}" x2="${W}" y2="${y(97)}"/>` : `<line class="limit" x1="0" y1="${y(70)}" x2="${W}" y2="${y(70)}"/><line class="limit hot" x1="0" y1="${y(90)}" x2="${W}" y2="${y(90)}"/>`;
   const s = el("div", "chart");
-  s.innerHTML = `<svg viewBox="-4 -4 ${W + 8} ${H + 8}" role="img" aria-label="${target ? "Weekly usage against the straight-line target" : "5-hour window use"}">${tgt}<polyline class="series" points="${pts}"/></svg>`;
+  s.innerHTML = `<svg preserveAspectRatio="none" viewBox="-4 -4 ${W + 8} ${H + 8}" role="img" aria-label="${target ? "Weekly usage against the straight-line target" : "5-hour window use"}">${tgt}<polyline class="series" points="${pts}"/></svg>`;
   return s;
 }
 function bars(rows, max, f = kfmt) {
@@ -170,7 +170,6 @@ function page2() {
     const bar = el("span", "segs", ...t.segs.map(([s, m]) => { const i = el("i", `seg s-${s}`); i.style.flexGrow = m; i.title = `${s} ${dur(m * MIN)}`; return i; }));
     return el("li", null, el("span", "k", `${t.ticket} ${t.title}`), el("span", "v num", `${LABEL[t.now] ?? t.now} ${dur(t.segs.at(-1)[1] * MIN)}`), bar, el("span", "small muted", `total ${dur(total * MIN)}`));
   }));
-  const cyc = el("ul", "plain", ...P2.cycle.map((c) => el("li", null, el("span", null, c.epic), " ", el("strong", "num", dur(c.ms)), c.open ? el("span", "tag", "open") : null)));
   const st = el("table", "stations");
   st.innerHTML = `<thead><tr><th>Station</th><th>done</th><th>back</th><th>eject</th><th>checkpoint</th><th>Streak</th></tr></thead>`;
   st.append(el("tbody", null, ...P2.stations.map(([n, d, b, e, c, s, lvl]) => {
@@ -182,26 +181,34 @@ function page2() {
     return tr;
   })));
   const D = P2.doors;
-  const doors = el("div", null,
-    el("p", null, `Since ${D.lastTag}: `, ...Object.entries(D.counts).map(([k, v]) => el("span", "door", `door:${k} `, el("strong", "num", v)))),
-    el("p", "big", "Next version ", el("strong", null, D.next)));
-  const ci = el("div", null, el("p", "big num", `${Math.round((100 * P2.ci.passed) / P2.ci.of)}%`), el("p", "muted", `${P2.ci.passed} of the last ${P2.ci.of} CI runs passed · median ${P2.ci.median}`));
   const tb = P2.tokensBy, mx = (r) => Math.max(...r.map((x) => x[1]));
   const wk = DATA.light.weekly;
+  const tile = (h, v, sub) => el("div", "tile", el("h2", null, h), el("div", "big num", v), el("p", "small muted", sub));
+  const sp = (n, node) => { node.style.gridColumn = `span ${n}`; return node; };
+  const doorRows = Object.entries(D.counts).map(([k, v]) => [`door:${k}`, v]);
   return el("div", "page2",
-    el("div", "p2grid flow",
-      section("Time in state", tis),
-      section("Cycle time per epic", cyc),
-      section("Station outcomes and streaks", st, el("p", "small muted", "A streak counts clean passes; 10 in a row moves a station up one trust level.")),
-      section("Doors since the last tag", doors),
-      section("CI", ci)),
-    el("div", "p2grid cost",
-      section("Weighted tokens per ticket", bars(tb.ticket, mx(tb.ticket))),
-      section("Per station", bars(tb.station, mx(tb.station))),
-      section("Per model", bars(tb.model, mx(tb.model))),
-      section("Cache-hit ratio", bars(P2.cache, 1, (v) => `${Math.round(v * 100)}%`)),
-      section("Weekly usage against target", svgLine(P2.weekly, 100, true), el("p", "small", el("strong", "num", `${wk.pct}%`), ` used · pace ${DATA.light.pace.toFixed(2)} · ${DATA.light.slots} slots`)),
-      section("5-hour window", svgLine(P2.fiveHour, 100, false), el("p", "small muted", "Lines at 70% (yellow) and 90% (red)."))),
+    el("div", "p2row", ...[
+      tile("Next version", D.next, `from ${D.counts["two-way"]} two-way, ${D.counts.none} none since ${D.lastTag}`),
+      tile("CI pass rate", `${Math.round((100 * P2.ci.passed) / P2.ci.of)}%`, `${P2.ci.passed} of the last ${P2.ci.of} runs · median ${P2.ci.median}`),
+      tile("Weekly pace", DATA.light.pace.toFixed(2), `${wk.pct}% used · ${DATA.light.slots} run slots`),
+      tile("Cache hits", `${Math.round(P2.cache.at(-1)[1] * 100)}%`, "of all input tokens, every station"),
+    ].map((t) => sp(3, t))),
+    el("h2", "band-title", "Flow"),
+    el("div", "p2row",
+      sp(7, section("Station outcomes and streaks", st, el("p", "small muted", "A streak counts clean passes; 10 in a row moves a station up one trust level."))),
+      sp(5, section("Time in state", tis))),
+    el("div", "p2row",
+      sp(6, section("Cycle time per epic", bars(P2.cycle.map((c) => [c.epic + (c.open ? " (open)" : ""), c.ms]), Math.max(...P2.cycle.map((c) => c.ms)), dur))),
+      sp(6, section(`Doors merged since ${D.lastTag}`, bars(doorRows, Math.max(1, ...doorRows.map((r) => r[1])), String)))),
+    el("h2", "band-title", "Cost and usage"),
+    el("div", "p2row",
+      sp(6, section("Weekly usage against target", svgLine(P2.weekly, 100, true), el("p", "small muted", "Dashed: the straight line to 97% at the reset."))),
+      sp(6, section("5-hour window", svgLine(P2.fiveHour, 100, false), el("p", "small muted", "Dotted: 70% (yellow) and 90% (red).")))),
+    el("div", "p2row",
+      sp(3, section("Weighted tokens per ticket", bars(tb.ticket, mx(tb.ticket)))),
+      sp(3, section("Per station", bars(tb.station, mx(tb.station)))),
+      sp(3, section("Per model", bars(tb.model, mx(tb.model)))),
+      sp(3, section("Cache hits per station", bars(P2.cache.slice(0, -1), 1, (v) => `${Math.round(v * 100)}%`)))),
   );
 }
 
