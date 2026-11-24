@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Factory board design</title>
+<link rel="stylesheet" href="proto.css">
+<style>
+/* The pick (#142): A's band; a rigid nine-column board shown as one kanban or as lanes per epic; desktop only. */
+body { min-width: 1200px; }
+/* the dark theme's panel grey in every state and theme; only the lamp and the word carry the light's colour */
+.band { background: #1d1d1b; border-bottom: 1px solid #34332f; color: #ecebe7; --muted: #a6a59e; --g3: #95948d;
+  --l-green: #5fd08f; --l-yellow: #f2c84b; --l-yellow-dot: #f2c84b; --l-red: #f27a72; --l-off: #a6a59e; }
+.band.lw-green { --lc: var(--l-green); --ldot: var(--l-green); } .band.lw-yellow { --lc: var(--l-yellow); --ldot: var(--l-yellow-dot); }
+.band.lw-red { --lc: var(--l-red); --ldot: var(--l-red); } .band.lw-off { --lc: var(--l-off); --ldot: var(--l-off); }
+.band-in { max-width: 1700px; margin: 0 auto; padding: 14px 24px; display: grid; grid-template-columns: auto 1fr auto; gap: 12px 28px; align-items: center; }
+.word { display: flex; align-items: center; gap: 10px; }
+.word .lamp { width: 22px; height: 22px; }
+.word strong { font-size: 1.7rem; text-transform: uppercase; letter-spacing: .04em; color: var(--lc); }
+.why { display: grid; gap: 2px; }
+.band .meters { display: grid; grid-template-columns: 200px 200px; gap: 16px; }
+.band .bar { background: #2a2926; }
+.top { max-width: 1700px; margin: 0 auto; padding: 12px 24px 0; display: flex; gap: 18px; align-items: center; }
+.top nav { margin-left: auto; display: flex; gap: 16px; align-items: center; }
+.switch { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.switch button { font: inherit; font-size: .85rem; border: 0; background: var(--panel); color: var(--ink); padding: 4px 12px; cursor: pointer; }
+.switch button[aria-pressed="true"] { background: var(--ink); color: var(--panel); }
+main { max-width: 1700px; margin: 0 auto; padding: 14px 24px 28px; display: grid; gap: 16px; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+
+/* board: always nine columns, in the spine's order */
+.board { display: grid; grid-template-columns: var(--lanecol, ) repeat(9, minmax(0, 1fr)); gap: 0 8px; }
+.board.lanes { --lanecol: 170px; gap: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.hcell { font-size: .75rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; display: flex; justify-content: space-between; padding: 8px; }
+.hcell.nh { color: var(--warn); }
+.kanban .hcell { background: var(--sub); border-radius: 8px 8px 0 0; }
+.kanban .hcell.nh, .kanban .cell.nh { background: var(--warn-bg); }
+.kanban .cell { background: var(--sub); border-radius: 0 0 8px 8px; min-height: 340px; }
+.cell { padding: 8px; display: grid; gap: 6px; align-content: start; min-width: 0; }
+.lanes .hcell, .lanes .lane-name { background: var(--sub); }
+.lanes > * { border-bottom: 1px solid var(--line); }
+.lanes .cell { border-left: 1px solid var(--line); min-height: 70px; }
+.lanes .cell.nh { background: var(--warn-bg); }
+.lane-name { padding: 8px 10px; }
+.lane-name strong { display: block; }
+.lane-name .bar { margin-top: 6px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font-size: .9rem; }
+.card.k-epic { font-weight: 600; }
+.card .meta { display: flex; gap: 6px; font-size: .72rem; color: var(--muted); }
+.card .kind { text-transform: uppercase; letter-spacing: .04em; }
+.card.nhc { border-color: var(--warn-line); box-shadow: inset 3px 0 var(--warn-line); }
+.card .q { margin-top: 4px; font-weight: 600; }
+.card .q + .session { margin-top: 2px; }
+.bottom { display: grid; grid-template-columns: 1fr 1.4fr 1fr; gap: 16px; align-items: stretch; }
+.epics, .runs { display: grid; gap: 8px; }
+.runs { list-style: none; margin: 0; padding: 0; }
+.runs li { display: grid; grid-template-columns: 1.4em 1fr auto; gap: 2px 8px; }
+.runs .bar { grid-column: 2 / -1; height: 4px; margin: 0; }
+.lastrun p { margin: 0 0 6px; }
+</style>
+</head>
+<body>
+<div class="band" id="band"></div>
+<div class="top" id="top"></div>
+<main id="main"></main>
+<script src="proto.js"></script>
+<script>
+let mode = localStorage.getItem("board.mode") ?? "kanban";
+function band() {
+  const v = lightView();
+  $("band").className = `band lw-${v.word}`;
+  $("band").replaceChildren(el("div", "band-in",
+    el("div", "word", el("span", `lamp${v.stale ? " stale" : ""}`), el("strong", null, v.label)),
+    el("div", "why", el("div", null, el("strong", null, v.reason), " — ", v.meaning, v.resume ? el("strong", "num", ` ${v.resume}`) : null),
+      el("div", "small", slotsText(v), " · ", sessionsLine()),
+      el("div", "small muted", `${v.age} · ${fmt(DATA.totalTokens)} weighted tokens · factory run ${DATA.factoryRun.id}`)),
+    meters()));
+  const two = location.hash === "#p2";
+  const sw = el("span", "switch", ...["kanban", "lanes"].map((m) => {
+    const b = el("button", null, m === "kanban" ? "Kanban" : "Lanes by epic");
+    b.setAttribute("aria-pressed", mode === m);
+    b.onclick = () => { mode = m; localStorage.setItem("board.mode", m); p1(); };
+    return b;
+  }));
+  $("top").replaceChildren(el("h1", null, "Zeni factory"), two ? "" : sw, el("nav", null, two ? link("← Board", "#") : link("Flow and cost →", "#p2")));
+}
+// A needs-human card carries its question and session, since the column is the only place it shows.
+function bcard(it, withEpic) {
+  const c = card(it, withEpic);
+  const n = DATA.needsHuman.find((x) => x.item === it.id);
+  if (n) c.append(el("div", "q", n.question), el("div", "session muted", "open ", el("strong", null, n.session)), link("Latest comment", n.href));
+  return c;
+}
+const head = (s) => el("div", `hcell${s === "needs-human" ? " nh" : ""}`, el("span", null, LABEL[s] ?? s), el("span", "num", DATA.items.filter((i) => i.state === s && (mode === "kanban" || i.kind !== "epic")).length));
+function kanban() {
+  return el("div", "board kanban", ...STATES.map(head), ...STATES.map((s) => el("div", `cell${s === "needs-human" ? " nh" : ""}`, ...byState(s).map((i) => bcard(i)))));
+}
+function lanes() {
+  const ls = [...DATA.epics.map((e) => ({ e, items: DATA.items.filter((i) => i.epic === e.id) })), { items: DATA.items.filter((i) => !i.epic && i.kind !== "epic") }];
+  const b = el("div", "board lanes", el("div", "hcell", "Epic"), ...STATES.map(head));
+  for (const l of ls) {
+    const i = el("i"); if (l.e) i.style.width = `${(100 * l.e.done) / l.e.total}%`;
+    b.append(el("div", "lane-name", el("strong", null, l.e?.title ?? "No epic"), el("span", "small muted", l.e ? `#${l.e.number} · ${l.e.done} / ${l.e.total} merged` : `${l.items.length} tickets`), l.e ? el("div", "bar", i) : null),
+      ...STATES.map((s) => el("div", `cell${s === "needs-human" ? " nh" : ""}`, ...l.items.filter((x) => x.state === s).map((x) => bcard(x)))));
+  }
+  return b;
+}
+function p1() {
+  band();
+  $("main").replaceChildren(mode === "lanes" ? lanes() : kanban(),
+    el("div", "bottom",
+      el("section", "panel", el("h2", null, "Epics"), epicsList()),
+      el("section", "panel", el("h2", null, "Top 10 token users"), runsList()),
+      el("section", "panel", el("h2", null, "Factory run"), lastRun())));
+}
+function p2() { band(); $("main").replaceChildren(page2()); }
+route(p1, p2);
+</script>
+</body>
+</html>
