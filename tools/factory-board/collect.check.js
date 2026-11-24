@@ -8,7 +8,7 @@ const TS = "2026-11-23T10:00:00Z";
 const labels = (...names) => ({ nodes: names.map((name) => ({ name })) });
 const issue = (number, title, label, extra = {}) => ({
   number, title, url: `https://github.com/o/r/issues/${number}`, labels: labels("enhancement", label),
-  parent: null, subIssues: { totalCount: 0 }, comments: { nodes: [] }, ...extra,
+  parent: null, subIssues: { totalCount: 0 }, comments: { nodes: [] }, timelineItems: { nodes: [] }, ...extra,
 });
 const pr = (number, title, label) => ({ number, title, labels: labels(label) });
 const fold = (s, events) => events.reduce((st, e) => apply(st, e), s);
@@ -83,4 +83,44 @@ test("a label change moves the card; an unlabelled closed issue, a merged PR and
 test("cards from other writers are left alone", () => {
   const s = fold(empty(), [{ v: 1, ts: TS, type: "item.upsert", id: "T9", kind: "ticket", title: "Other", state: "ready" }]);
   assert.deepEqual(diff(s, toBoard([], []), TS), []);
+});
+
+// Page 2, flow (#144): label history, doors since the last tag, CI.
+const labeled = (name, createdAt) => ({ createdAt, label: { name } });
+
+test("an issue's state-label history becomes one item.history event, and repeats append nothing", () => {
+  const timelineItems = { nodes: [labeled("state:building", "2026-11-24T10:00:00Z"), labeled("enhancement", "2026-11-24T09:00:00Z"), labeled("state:ready", "2026-11-24T09:30:00Z")] };
+  const board = toBoard([issue(160, "Hist", "state:building", { timelineItems })], []);
+  const events = diff(empty(), board, TS).filter((e) => e.type === "item.history");
+  assert.deepEqual(events.map((e) => [e.id, e.history]), [["#160", [{ state: "ready", at: "2026-11-24T09:30:00Z" }, { state: "building", at: "2026-11-24T10:00:00Z" }]]]);
+  assert.deepEqual(diff(fold(empty(), diff(empty(), board, TS)), board, TS), []);
+});
+
+const commit = (committedDate) => ({ committedDate });
+const DOORS = {
+  refs: { nodes: [{ name: "nightly", target: commit("2026-11-23T00:00:00Z") }, { name: "v7.2.0", target: { target: commit("2026-11-20T13:00:00Z") } }, { name: "v7.1.0", target: commit("2026-11-19T00:00:00Z") }] },
+  pullRequests: { nodes: [
+    { number: 190, title: "after, two-way", mergedAt: "2026-11-24T01:00:00Z", labels: labels("door:two-way") },
+    { number: 189, title: "after, unlabelled", mergedAt: "2026-11-22T01:00:00Z", labels: labels("enhancement") },
+    { number: 150, title: "before the tag", mergedAt: "2026-11-20T12:00:00Z", labels: labels("door:one-way") },
+  ] },
+};
+const CI = [
+  { conclusion: "success", startedAt: "2026-11-24T07:00:00Z", updatedAt: "2026-11-24T07:06:00Z" },
+  { conclusion: "failure", startedAt: "2026-11-24T06:00:00Z", updatedAt: "2026-11-24T06:01:00Z" },
+];
+
+test("doors merged since the last v-tag and the last CI runs become absolute events, and repeats append nothing", () => {
+  const board = toBoard([], [], DOORS, CI);
+  const events = diff(empty(), board, TS);
+  const doors = events.find((e) => e.type === "doors");
+  assert.equal(doors.tag, "v7.2.0");
+  assert.deepEqual(doors.prs, [{ number: 190, title: "after, two-way", door: "two-way" }, { number: 189, title: "after, unlabelled", door: null }]);
+  assert.deepEqual(events.find((e) => e.type === "ci").runs, [
+    { conclusion: "success", started_at: "2026-11-24T07:00:00Z", ended_at: "2026-11-24T07:06:00Z" },
+    { conclusion: "failure", started_at: "2026-11-24T06:00:00Z", ended_at: "2026-11-24T06:01:00Z" },
+  ]);
+  assert.deepEqual(diff(fold(empty(), events), board, TS), []);
+  // without a tag every fetched merge counts
+  assert.equal(toBoard([], [], { refs: { nodes: [] }, pullRequests: DOORS.pullRequests }).doors.tag, null);
 });

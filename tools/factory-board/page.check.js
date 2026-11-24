@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { STATES, boardModel, lightView, readMode, slotsLine } from "./page.js";
+import { STATES, boardModel, dur, lightView, page2Tiles, readMode, slotsLine } from "./page.js";
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 const MIN = 60e3;
@@ -122,4 +122,30 @@ test("WCAG 2.1 AA contrast in both themes and in the band", () => {
   }
   const band = vars(html, ".band");
   for (const k of ["band-ink", "band-muted", "l-green", "l-yellow", "l-red", "l-off"]) assert.ok(ratio(band[k], band["band-bg"]) >= 4.5, `band: --${k} is ${ratio(band[k], band["band-bg"]).toFixed(2)}`);
+});
+
+// Page 2, flow (#144).
+test("page-2 tiles: next version and CI pass rate, or say there is no data", () => {
+  const counts = { "one-way": 0, "two-way": 1, none: 2, docs: 6, unlabelled: 1 };
+  const [v, ci] = page2Tiles({ doors: { tag: "v7.2.1", next: "v7.3.0", counts }, ci: { passed: 27, of: 30, median_ms: 400e3 } });
+  assert.deepEqual([v.value, v.sub], ["v7.3.0", "from 1 two-way, 2 none since v7.2.1 · 1 unlabelled"]);
+  assert.deepEqual([ci.value, ci.sub], ["90%", "27 of the last 30 runs · median 6 m 40 s"]);
+  const none = { "one-way": 0, "two-way": 0, none: 0, docs: 0, unlabelled: 0 };
+  assert.deepEqual(page2Tiles({ doors: { tag: "v7.2.1", next: null, counts: { ...none, docs: 2 } }, ci: null }).map((x) => [x.value, x.sub]), [
+    ["no release", "only docs since v7.2.1"], ["–", "No completed CI runs yet."],
+  ]);
+  assert.deepEqual(page2Tiles({ doors: { tag: "v7.2.1", next: null, counts: none }, ci: null })[0].sub, "Nothing merged since v7.2.1.");
+  assert.deepEqual(page2Tiles({ doors: null, ci: null })[0].sub, "No tag or merge data yet.");
+});
+
+test("durations read in the two largest units", () => {
+  assert.deepEqual([dur(40e3), dur(400e3), dur(5400e3), dur(2 * 86400e3 + 4 * 3600e3)], ["40 s", "6 m 40 s", "1 h 30 m", "2 d 4 h"]);
+});
+
+test("page 2 opens from page 1 and back, sharing the status band", () => {
+  const html = fs.readFileSync(path.join(dir, "index.html"), "utf8");
+  assert.match(html, /href="#p2"/);
+  assert.match(html, /href="#"/);
+  assert.equal((html.match(/id="band"/g) ?? []).length, 1);
+  assert.match(html, /fetch\("\/api\/page2"\)/);
 });
