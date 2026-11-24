@@ -61,9 +61,10 @@ export function apply(s, e) {
       delete s.items[e.id];
       break;
     case "run.tokens": {
-      if (!Number.isSafeInteger(e.tokens) || e.tokens < 0) throw new Error("tokens must be a non-negative integer");
-      const { run, session, item = null, station = null, tokens } = e;
-      s.runs[str(run, "run")] = { run, session: str(session, "session"), item, station, tokens };
+      // null tokens: the run's transcript is missing, so its cost is unknown.
+      if (e.tokens !== null && (!Number.isSafeInteger(e.tokens) || e.tokens < 0)) throw new Error("tokens must be a non-negative integer or null");
+      const { run, session, item = null, station = null, tokens, model = null } = e;
+      s.runs[str(run, "run")] = { run, session: str(session, "session"), item, station, tokens, model };
       break;
     }
     case "light": {
@@ -109,11 +110,11 @@ export function apply(s, e) {
       delete s.needsHuman[e.id];
       break;
     case "factory_run.start":
-      s.factoryRuns[str(e.id, "id")] = { id: e.id, started_at: e.ts, ended_at: null, retros: [] };
+      s.factoryRuns[str(e.id, "id")] = { id: e.id, started_at: e.started_at ?? e.ts, ended_at: null, retros: [] };
       break;
     case "factory_run.end": {
       const r = (s.factoryRuns[str(e.id, "id")] ??= { id: e.id, started_at: null, retros: [] });
-      r.ended_at = e.ts;
+      r.ended_at = e.ended_at ?? e.ts;
       r.retros = (e.retros ?? []).map((x) => ({ title: str(x.title, "retro title"), href: str(x.href, "retro href") }));
       break;
     }
@@ -143,8 +144,9 @@ export function view(s) {
   return {
     items,
     epics,
-    totalTokens: runs.reduce((n, r) => n + r.tokens, 0),
-    topRuns: runs.sort((a, b) => b.tokens - a.tokens || a.run.localeCompare(b.run)).slice(0, 10),
+    totalTokens: runs.reduce((n, r) => n + (r.tokens ?? 0), 0),
+    runs: runs.toReversed(), // newest first
+    topRuns: runs.sort((a, b) => (b.tokens ?? -1) - (a.tokens ?? -1) || a.run.localeCompare(b.run)).slice(0, 10),
     light: s.light,
     sessions: s.sessions,
     needsHuman: Object.values(s.needsHuman),

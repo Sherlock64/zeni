@@ -127,7 +127,7 @@ const LABEL = { "needs-human": "needs human" };
 const ACTIVE = ["building", "verifying", "reviewing", "needs-human"]; // states that hold a run slot
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
-const fmt = (n) => n.toLocaleString("en-US");
+const fmt = (n) => n == null ? "unknown" : n.toLocaleString("en-US"); // null: the run's transcript is missing
 const reduced = matchMedia("(prefers-reduced-motion: reduce)");
 
 // Columns, built once; cards move between them.
@@ -188,15 +188,17 @@ function renderBoard(snap) {
 
 const rows = new Map();
 function renderTokens(snap) {
-  const max = Math.max(1, ...snap.topRuns.map((r) => r.tokens));
+  const max = Math.max(1, ...snap.topRuns.map((r) => r.tokens ?? 0));
   flip(() => $("tok").children, () => {
     const keep = new Set(snap.topRuns.map((r) => r.run));
     for (const [id, r] of rows) if (!keep.has(id)) { r.remove(); rows.delete(id); }
     const ordered = snap.topRuns.map((r, i) => {
       let li = rows.get(r.run);
       if (!li) { li = el("li"); rows.set(r.run, li); }
-      const bar = el("div", "bar"); const fill = el("i"); fill.style.width = `${(100 * r.tokens) / max}%`; bar.append(fill);
-      li.replaceChildren(el("span", "muted num", `${i + 1}`), el("span", "session", r.session), el("span", "num", fmt(r.tokens)), bar);
+      const bar = el("div", "bar"); const fill = el("i"); fill.style.width = `${(100 * (r.tokens ?? 0)) / max}%`; bar.append(fill);
+      const who = el("span"); who.append(el("span", "session", r.session));
+      if (r.model) who.append(" ", el("span", "muted", r.model));
+      li.replaceChildren(el("span", "muted num", `${i + 1}`), who, el("span", "num", fmt(r.tokens)), bar);
       return li;
     });
     $("tok").replaceChildren(...(ordered.length ? ordered : [el("li", "muted", "No runs yet.")]));
@@ -248,7 +250,7 @@ function safeHref(h) {
 function render(snap) {
   $("total").textContent = fmt(snap.totalTokens);
   $("ghnote").textContent = snap.github?.ok === false ? `GitHub unavailable (${snap.github.error}); showing the last state` : "";
-  $("frun").textContent = snap.factoryRun ? `Factory run ${snap.factoryRun.id} in progress` : "";
+  $("frun").textContent = snap.factoryRun ? `Factory run ${snap.factoryRun.id} in progress` + (snap.factoryRun.started_at ? `, started ${new Date(snap.factoryRun.started_at).toLocaleString()}` : "") : "";
   meter("u5", snap.light?.five_hour);
   meter("uw", snap.light?.weekly);
   light = snap.light;

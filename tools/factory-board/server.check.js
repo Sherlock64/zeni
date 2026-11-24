@@ -17,7 +17,7 @@ const line = (e) => JSON.stringify({ v: 1, ts: "2026-11-20T10:00:00Z", ...e }) +
 // Starts server.js and resolves with its port once it prints its URL.
 function start(t, env, args = []) {
   const child = spawn(process.execPath, [path.join(dir, "server.js"), ...args], {
-    env: { ...process.env, PORT: "0", SPEED: "20", GH: "/nonexistent/gh", ...env }, // never the real GitHub
+    env: { ...process.env, PORT: "0", SPEED: "20", GH: "/nonexistent/gh", FACTORY: "/nonexistent/factory", PROJECTS: "/nonexistent/projects", ...env }, // never the real GitHub or run log
     stdio: ["ignore", "pipe", "inherit"],
   });
   t.after(() => child.kill());
@@ -169,4 +169,20 @@ test("gh missing shows GitHub unavailable and the board keeps serving", async (t
   const snap = await until(port, (s) => s.github?.ok === false);
   assert.deepEqual(snap.items.map((i) => i.title), ["Known"]);
   assert.equal((await fetch(`http://127.0.0.1:${port}/`)).status, 200);
+});
+
+test("collects the run log and serves the ended run's digest, even with gh missing", async (t) => {
+  const { real } = tmpFiles(t);
+  const factory = path.join(path.dirname(real), "factory");
+  fs.mkdirSync(path.join(factory, "digests"), { recursive: true });
+  fs.writeFileSync(path.join(factory, "runs.tsv"), "2026-11-23T09:00:00Z\tno-such-session\t#140\tbuild\tdone\tx\n");
+  fs.writeFileSync(path.join(factory, "run.json"), JSON.stringify({ id: "fr-20261123-0800", started_at: "2026-11-23T08:00:00Z" }));
+  fs.writeFileSync(path.join(factory, "light.json"), JSON.stringify({ light: "off", set_at: "2026-11-23T12:00:00Z" }));
+  fs.writeFileSync(path.join(factory, "digests", "2026-11-23-fr-20261123-0800.html"), "<html>digest</html>");
+  const { port } = await start(t, { EVENTS: real, FACTORY: factory });
+  const snap = await until(port, (s) => s.lastEndedRun?.retros.length === 1);
+  assert.deepEqual(snap.runs.map((r) => [r.item, r.station, r.tokens]), [["#140", "build", null]]);
+  const res = await fetch(`http://127.0.0.1:${port}${snap.lastEndedRun.retros[0].href}`);
+  assert.deepEqual([res.status, await res.text()], [200, "<html>digest</html>"]);
+  assert.equal((await fetch(`http://127.0.0.1:${port}/digests/..%2Frun.json`)).status, 404);
 });

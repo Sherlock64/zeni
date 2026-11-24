@@ -16,7 +16,7 @@ Open <http://127.0.0.1:4317/>. `--simulate` starts the simulator beside the serv
 node tools/factory-board/server.js
 ```
 
-Env: `PORT` (default `4317`), `EVENTS` (the real file; default `$(git rev-parse --git-common-dir)/factory/events.jsonl`, beside the other local factory state, so every worktree sees the same file; `tools/factory-board/state/events.jsonl` outside git), `SIM_EVENTS` (the simulator's file), `SPEED` (simulator only; `2` runs twice as fast), `GH` (the `gh` binary; default `gh`), `COLLECT_MS` (collect interval; default `60000`). `simulate.js` refuses to run when its file is the real one.
+Env: `PORT` (default `4317`), `EVENTS` (the real file; default `$(git rev-parse --git-common-dir)/factory/events.jsonl`, beside the other local factory state, so every worktree sees the same file; `tools/factory-board/state/events.jsonl` outside git), `FACTORY` (the local factory folder the runs part reads; default the folder `EVENTS` defaults into), `PROJECTS` (Claude session transcripts; default `~/.claude/projects`), `SIM_EVENTS` (the simulator's file), `SPEED` (simulator only; `2` runs twice as fast), `GH` (the `gh` binary; default `gh`), `COLLECT_MS` (collect interval; default `60000`). `simulate.js` refuses to run when its file is the real one.
 
 `/factory-start` starts the board this way from the main checkout (so it outlives any worktree) when nothing answers on port 4317, records its pid in `$(git rev-parse --git-common-dir)/factory/board.pid` with output in `board.log` beside it, and opens it in the dispatcher's browser pane; a running board is left alone. `/factory-shutdown` (now, or drain once the runs are idle) stops only the process in `board.pid`, and only if it is still the board.
 
@@ -35,10 +35,11 @@ factory/events.jsonl ► server.js (127.0.0.1 only) ──► SSE /api/stream �
 
 - **Writers append** events to one JSONL file. The file is the contract: the future watchdog and runs append the same lines. Truncating the file starts over (the server notices it shrank).
 - **The collector** (`collect.js`, GitHub part) runs inside the server while it is open, without `--simulate`: once at start, then every `COLLECT_MS`. One `gh api graphql` pass reads every issue (open or closed) and every open PR carrying a `state:` label, then appends only the events that differ from the folded state, so a collect that finds no change appends nothing and a restart does not repeat the file. Cards are `#<number>`: an issue with sub-issues is an `epic`, an issue's sub-issue parent is its `epic`, an open PR is a `pr`. An issue or PR that loses its `state:` label, or a PR that merges or closes, gets `item.remove`. A `state:needs-human` issue also gets `needs_human.open` (`nh-#<number>`) with the session from its latest "claimed by <session>" comment (`unknown` if none), the first line of its latest comment as the question, and that comment's link; it clears when the label goes. When `gh` is missing or fails, nothing is appended, the board keeps its last state and shows "GitHub unavailable".
+- **The collector, runs part** (`runs.js`) runs in the same tick, even when `gh` fails, and also appends only changes. Each `runs.tsv` row becomes a `run.tokens` run (`<session_id>@<ended_at>`) with its ticket, station, the session's title and model from its transcript (`$PROJECTS/*/<session_id>.jsonl`), and its weighted tokens from `.claude/factory/tools/tally.py` (subagents included; re-tallied only when a transcript changes). A row whose transcript is missing shows with tokens `null` ("unknown"); a missing run log shows no runs. `run.json` gives the current factory run (`factory_run.start` with its `started_at`); it ends when `light.json` turns `off` (at its `set_at`) or a new `run.json` replaces it (at the new start), and a digest `digests/*-<run id>.html` shows as its link, served at `/digests/<file>`. It touches only `fr-YYYYMMDD-HHMM` runs.
 - **The server** folds events into state (`state.js`, `apply`), derives the view (`view`) and pushes the whole view to every open page over server-sent events. Malformed lines are skipped with a warning. It binds `127.0.0.1` only.
 - **The page** keeps one DOM node per card and per token row and moves them; a FLIP animation makes cards fly between columns and rows slide. `prefers-reduced-motion` turns animation off.
 - It answers only requests addressed to `127.0.0.1:<port>` or `localhost:<port>` (403 otherwise).
-- Routes: `/` the page, `/api/stream` (SSE), `/api/snapshot` (the current view as JSON, plus `github: {ok, error, checked_at}`, the collector's last result). Later pages (epic detail, run history, trust dial) get their own `/api/...` routes that compute from the same state when opened.
+- Routes: `/` the page, `/api/stream` (SSE), `/api/snapshot` (the current view as JSON, with every run newest first in `runs`, plus `github: {ok, error, checked_at}`, the collector's last result), `/digests/<file>.html` (a digest from the factory folder; not with `--simulate`). Later pages (epic detail, run history, trust dial) get their own `/api/...` routes that compute from the same state when opened.
 
 ## Message format (v1)
 
@@ -50,13 +51,13 @@ One JSON object per line. Every event has `v: 1`, `ts` (ISO 8601 time) and `type
 | `item.upsert` | `id`, `kind` (`epic` \| `ticket` \| `pr`), `title`, `state`, `number?`, `epic?` (parent epic `id`) | Create or replace a board card. |
 | `item.state` | `id`, `state` | The card moves to that column. |
 | `item.remove` | `id` | Drop a card (closed, merged into another). |
-| `run.tokens` | `run`, `session` (Claude session name), `tokens` (integer total so far), `item?`, `station?` | A run's token total. The newest run of an item is its current session. |
+| `run.tokens` | `run`, `session` (Claude session name), `tokens` (integer total so far, or `null` when unknown), `item?`, `station?`, `model?` | A run's token total. The newest run of an item is its current session. |
 | `light` | `light`, `reason`, `set_at`, `resume_at` (null unless red), `slots` (0-3), `pace`, `five_hour: {pct, resets_at?}`, `weekly: {pct, resets_at?}`, `sessions?` | The watchdog's whole state, the traffic light (below). Each one replaces the last. |
 | `sessions` | `sessions: [{name, running, context_pct}]` (`context_pct` 0-100 or null) | The watchdog's linked sessions with each one's context window %. Each one replaces the last; the board shows them beside the run slots. |
 | `needs_human.open` | `id`, `session`, `question`, `item?`, `href?` (link to the latest comment) | An eject: which Claude session to open, and the one-line question. |
 | `needs_human.clear` | `id` | The human answered. |
-| `factory_run.start` | `id` | A factory run began. |
-| `factory_run.end` | `id`, `retros: [{title, href}]` | It ended, with links to its retros (may be empty). |
+| `factory_run.start` | `id`, `started_at?` (default `ts`) | A factory run began. |
+| `factory_run.end` | `id`, `retros: [{title, href}]`, `ended_at?` (default `ts`) | It ended, with links to its retros or digest (may be empty). Repeating it with more retros keeps `ended_at`. |
 
 `state` is one of `intake`, `shaping`, `ready`, `building`, `verifying`, `reviewing`, `merged`, `released`, `needs-human`.
 
