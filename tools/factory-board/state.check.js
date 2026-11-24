@@ -37,6 +37,16 @@ test("needs_human.clear and reset empty the state", () => {
   assert.equal(view(fold([{ type: "run.tokens", run: "r", session: "s", tokens: 5 }, { type: "reset" }])).totalTokens, 0);
 });
 
+test("sessions event replaces the session list with context %", () => {
+  const v = view(fold([
+    { type: "sessions", sessions: [{ name: "old", running: true, context_pct: 10 }] },
+    { type: "sessions", sessions: [{ name: "t1-build", running: true, context_pct: 42 }, { name: "t2-verify", running: false, context_pct: null }] },
+  ]));
+  assert.deepEqual(v.sessions, [{ name: "t1-build", running: true, context_pct: 42 }, { name: "t2-verify", running: false, context_pct: null }]);
+  assert.throws(() => apply(empty(), { v: 1, type: "sessions", sessions: [{ name: "s", running: true, context_pct: 140 }] }), /pct/);
+  assert.throws(() => apply(empty(), { v: 1, type: "sessions", sessions: "s" }), /sessions/);
+});
+
 test("rejects malformed events", () => {
   assert.throws(() => apply(empty(), { v: 2, type: "reset" }), /version/);
   assert.throws(() => apply(empty(), { v: 1, type: "nope" }), /unknown event/);

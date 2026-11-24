@@ -16,7 +16,7 @@ const KINDS = ["epic", "ticket", "pr"];
 export const LIGHTS = ["green", "yellow", "red", "off"];
 
 export function empty() {
-  return { items: {}, runs: {}, light: null, needsHuman: {}, factoryRuns: {}, updatedAt: null };
+  return { items: {}, runs: {}, light: null, sessions: [], needsHuman: {}, factoryRuns: {}, updatedAt: null };
 }
 
 const str = (v, name) => {
@@ -86,6 +86,15 @@ export function apply(s, e) {
       };
       break;
     }
+    case "sessions":
+      // The watchdog's session list, each with its context window % (null when unavailable).
+      if (!Array.isArray(e.sessions)) throw new Error("sessions must be an array");
+      s.sessions = e.sessions.map((x) => ({
+        name: str(x?.name, "session name"),
+        running: x.running === true,
+        context_pct: x.context_pct == null ? null : pct(x.context_pct),
+      }));
+      break;
     case "needs_human.open":
       s.needsHuman[str(e.id, "id")] = {
         id: e.id,
@@ -137,6 +146,7 @@ export function view(s) {
     totalTokens: runs.reduce((n, r) => n + r.tokens, 0),
     topRuns: runs.sort((a, b) => b.tokens - a.tokens || a.run.localeCompare(b.run)).slice(0, 10),
     light: s.light,
+    sessions: s.sessions,
     needsHuman: Object.values(s.needsHuman),
     factoryRun: Object.values(s.factoryRuns).find((r) => !r.ended_at) ?? null,
     lastEndedRun: lastEnded ?? null,
