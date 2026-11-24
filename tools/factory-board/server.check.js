@@ -116,17 +116,24 @@ function fakeGh(t) {
   t.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
   const issues = { data: { repository: { issues: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [
     { number: 131, title: "Factory board", url: "u131", labels: { nodes: [{ name: "state:building" }] }, parent: null, subIssues: { totalCount: 1 }, comments: { nodes: [] } },
-    { number: 139, title: "GitHub part", url: "u139", labels: { nodes: [{ name: "state:ready" }] }, parent: { number: 131 }, subIssues: { totalCount: 0 }, comments: { nodes: [] } },
+    { number: 139, title: "GitHub part", url: "u139", labels: { nodes: [{ name: "state:ready" }] }, parent: { number: 131 }, subIssues: { totalCount: 0 }, comments: { nodes: [] },
+      timelineItems: { nodes: [{ createdAt: "2026-11-24T09:00:00Z", label: { name: "state:ready" } }] } },
   ] } } } };
   const prs = { data: { repository: { pullRequests: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [
     { number: 170, title: "t139 PR", labels: { nodes: [{ name: "state:reviewing" }] } },
   ] } } } };
+  const doors = { data: { repository: {
+    refs: { nodes: [{ name: "v7.2.0", target: { committedDate: "2026-11-20T00:00:00Z" } }] },
+    pullRequests: { nodes: [{ number: 175, title: "after the tag", mergedAt: "2026-11-21T00:00:00Z", labels: { nodes: [{ name: "door:two-way" }] } }] },
+  } } };
+  const ci = [{ conclusion: "success", startedAt: "2026-11-24T07:00:00Z", updatedAt: "2026-11-24T07:04:00Z" }];
   const gh = path.join(tmp, "gh");
   fs.writeFileSync(gh, `#!${process.execPath}
 const fs = require("node:fs");
 if (fs.existsSync(${JSON.stringify(path.join(tmp, "FAIL"))})) { console.error("gh: network down"); process.exit(1); }
+if (process.argv[2] === "run") { console.log(JSON.stringify(${JSON.stringify(ci)})); process.exit(0); }
 const q = process.argv.find((a) => a.startsWith("query="));
-console.log(JSON.stringify(q.includes("pullRequests") ? ${JSON.stringify(prs)} : ${JSON.stringify(issues)}));
+console.log(JSON.stringify(q.includes("refs(") ? ${JSON.stringify(doors)} : q.includes("pullRequests") ? ${JSON.stringify(prs)} : ${JSON.stringify(issues)}));
 `, { mode: 0o755 });
   return { gh, fail: () => fs.writeFileSync(path.join(tmp, "FAIL"), "") };
 }
@@ -188,4 +195,16 @@ test("collects the run log and serves the ended run's digest, even with gh missi
   const res = await fetch(`http://127.0.0.1:${port}${snap.lastEndedRun.retros[0].href}`);
   assert.deepEqual([res.status, await res.text()], [200, "<html>digest</html>"]);
   assert.equal((await fetch(`http://127.0.0.1:${port}/digests/..%2Frun.json`)).status, 404);
+});
+
+test("page 2 has its own route, computed from the folded state", async (t) => {
+  const { real } = tmpFiles(t);
+  const { gh } = fakeGh(t);
+  const { port } = await start(t, { EVENTS: real, GH: gh });
+  await until(port, (s) => s.items.length === 3);
+  const p = await (await fetch(`http://127.0.0.1:${port}/api/page2`)).json();
+  assert.deepEqual([p.doors.tag, p.doors.next], ["v7.2.0", "v7.3.0"]);
+  assert.deepEqual(p.ci, { passed: 1, of: 1, median_ms: 4 * 60e3 });
+  assert.deepEqual(p.timeInState.map((x) => [x.id, x.state]), [["#139", "ready"]]);
+  assert.ok(Array.isArray(p.stations));
 });

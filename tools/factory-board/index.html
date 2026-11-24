@@ -10,14 +10,14 @@
   --bg: #f5f5f3; --panel: #ffffff; --ink: #1c1c1a; --muted: #605f59; --line: #dcdbd6; --track: #ebeae6; --sub: #f0efeb;
   --link: #2858b8; --focus: #2858b8;
   --warn: #9a4a07; --warn-bg: #fff1e0; --warn-line: #c27a36;
-  --g3: #6f6e68;
+  --g1: #d6d5cf; --g2: #a9a8a1; --g3: #6f6e68;
   color-scheme: light;
 }
 [data-theme="dark"] {
   --bg: #131312; --panel: #1d1d1b; --ink: #ecebe7; --muted: #a6a59e; --line: #34332f; --track: #2a2926; --sub: #232321;
   --link: #8fb1f5; --focus: #8fb1f5;
   --warn: #f4b072; --warn-bg: #3a2914; --warn-line: #b8743a;
-  --g3: #95948d;
+  --g1: #3d3c38; --g2: #5f5e58; --g3: #95948d;
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
@@ -49,7 +49,8 @@ h2 { font-size: .75rem; text-transform: uppercase; letter-spacing: .06em; color:
 .meters { display: grid; grid-template-columns: 200px 200px; gap: 16px; }
 
 .top { max-width: 1700px; margin: 0 auto; padding: 12px 24px 0; display: flex; gap: 18px; align-items: center; }
-.top .switch { margin-left: auto; }
+.top nav { margin-left: auto; display: flex; gap: 16px; align-items: center; }
+body[data-page="2"] .p1only, body:not([data-page="2"]) .p2only { display: none; }
 .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--warn); }
 .dot.live { background: var(--g3); }
 .ghnote { color: var(--warn); font-weight: 600; }
@@ -91,6 +92,30 @@ main { max-width: 1700px; margin: 0 auto; padding: 14px 24px 28px; display: grid
 .runs .bar { grid-column: 2 / -1; height: 4px; margin: 0; }
 .lastrun p { margin: 0 0 6px; }
 .lastrun ul { margin: 0; padding-left: 18px; }
+/* page 2: one 12-column grid whose rows share a height */
+.page2 { gap: 14px; }
+.p2row { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 14px; align-items: stretch; }
+.p2row > * { grid-column: span var(--span, 12); }
+.p2sec, .tile { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; min-width: 0; }
+.tile .big { font-size: 1.8rem; font-weight: 700; margin: 0; }
+.tile p, .p2sec p { margin: 2px 0 0; }
+.band-title { font-size: .85rem; color: var(--ink); margin: 10px 0 -4px; border-bottom: 1px solid var(--line); padding-bottom: 6px; }
+.bars, .tis { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.bars li, .tis li { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; }
+.bars .track, .tis .segs { grid-column: 1 / -1; height: 8px; background: var(--track); border-radius: 4px; overflow: hidden; display: flex; }
+.bars .track > i { background: var(--g3); border-radius: 4px; }
+.seg { display: block; min-width: 3px; border-right: 2px solid var(--panel); }
+.s-intake, .s-shaping { background: var(--line); } .s-ready { background: var(--g1); } .s-building { background: var(--g2); } .s-verifying { background: var(--g3); }
+.s-reviewing { background: var(--ink); } .s-needs-human { background: var(--warn-line); }
+.stations { width: 100%; border-collapse: collapse; font-size: .85rem; }
+.stations th, .stations td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.stations thead th { color: var(--muted); font-weight: 600; font-size: .75rem; }
+.stations .bad { color: var(--warn); font-weight: 700; }
+.p2sec:has(.stations) { overflow-x: auto; }
+.p2sec.fit { contain: size; overflow-y: auto; min-height: 260px; } /* the row takes its neighbour's height; a long list scrolls */
+.streak { display: inline-flex; gap: 2px; vertical-align: middle; }
+.streak i { width: 8px; height: 12px; border-radius: 2px; background: var(--track); }
+.streak i.on { background: var(--g3); }
 @media (prefers-reduced-motion: reduce) { .bar > i, .lamp { transition: none; } }
 </style>
 </head>
@@ -113,11 +138,12 @@ main { max-width: 1700px; margin: 0 auto; padding: 14px 24px 28px; display: grid
   <h1>Zeni factory</h1>
   <span class="muted small"><span id="dot" class="dot"></span> <span id="conn">connecting</span></span>
   <span class="ghnote small" id="ghnote" role="status"></span>
-  <span class="switch" role="group" aria-label="Board view">
+  <span class="switch p1only" role="group" aria-label="Board view">
     <button type="button" data-mode="kanban">Kanban</button><button type="button" data-mode="lanes">Lanes by epic</button>
   </span>
+  <nav><a class="p1only" href="#p2">Flow and cost →</a><a class="p2only" href="#">← Board</a></nav>
 </div>
-<main>
+<main class="p1only">
   <section aria-label="Spine board" id="boardwrap"></section>
   <div class="bottom">
     <section class="panel" aria-labelledby="h-epics"><h2 id="h-epics">Epics</h2><div class="epics" id="epics"></div></section>
@@ -125,8 +151,20 @@ main { max-width: 1700px; margin: 0 auto; padding: 14px 24px 28px; display: grid
     <section class="panel" aria-labelledby="h-run"><h2 id="h-run">Factory run</h2><div class="lastrun" id="retros"></div></section>
   </div>
 </main>
+<main class="p2only page2" aria-label="Flow and cost">
+  <div class="p2row" id="tiles"></div>
+  <h2 class="band-title">Flow</h2>
+  <div class="p2row">
+    <section class="p2sec" style="--span: 7" aria-labelledby="h-st"><h2 id="h-st">Station outcomes and streaks</h2><div id="stations"></div></section>
+    <section class="p2sec fit" style="--span: 5" aria-labelledby="h-tis" tabindex="0"><h2 id="h-tis">Time in state</h2><div id="tis"></div></section>
+  </div>
+  <div class="p2row">
+    <section class="p2sec" style="--span: 6" aria-labelledby="h-cyc"><h2 id="h-cyc">Cycle time per epic</h2><div id="cycle"></div></section>
+    <section class="p2sec" style="--span: 6" aria-labelledby="h-doors"><h2 id="h-doors">Doors merged since the last tag</h2><div id="doors"></div></section>
+  </div>
+</main>
 <script type="module">
-import { ACTIVE, MODE_KEY, boardModel, lightView, readMode, safeHref, slotsLine } from "/page.js";
+import { ACTIVE, LABEL, MODE_KEY, boardModel, dur, lightView, page2Tiles, readMode, safeHref, slotsLine } from "/page.js";
 
 // Theme: ?theme=light|dark, else the system's, following its changes.
 const themeParam = new URLSearchParams(location.search).get("theme");
@@ -281,8 +319,59 @@ function render(s) {
   renderTokens();
 }
 
+// Page 2: its own address (#p2) on this page, so the band and the stream are shared; its data comes from /api/page2.
+const STATION = { intake: "Intake", "shape-slice": "Shape + slice", build: "Build", verify: "Verify", review: "Review", merge: "Merge", release: "Release", learn: "Learn" };
+const two = () => location.hash === "#p2";
+const empty = (text) => el("p", "muted", text);
+function bars(rows, max, f) {
+  return el("ul", "bars", ...rows.map(([k, v]) => {
+    const i = el("i"); i.style.width = `${(100 * v) / Math.max(1, max)}%`;
+    return el("li", null, el("span", "k", k), el("span", "v num", f(v)), el("span", "track", i));
+  }));
+}
+function renderPage2(p) {
+  $("tiles").replaceChildren(...page2Tiles(p).map((t) => {
+    const n = el("div", "tile", el("h2", null, t.title), el("div", "big num", t.value), el("p", "small muted", t.sub));
+    n.style.setProperty("--span", 3);
+    return n;
+  }));
+  const st = el("table", "stations");
+  const tr = (cells) => { const r = el("tr"); r.append(...cells); return r; };
+  st.append(el("thead", null, tr(["Station", "done", "back", "eject", "checkpoint", "Streak"].map((h) => el("th", null, h)))),
+    el("tbody", null, ...p.stations.map((x) => tr([
+      el("th", null, STATION[x.station] ?? x.station, x.level == null ? null : el("span", "muted small", ` level ${x.level}`)),
+      ...["done", "back", "eject", "checkpoint"].map((k) => el("td", `num${x[k] && (k === "back" || k === "eject") ? " bad" : ""}`, String(x[k]))),
+      el("td", null, el("span", "streak", ...Array.from({ length: 10 }, (_, i) => el("i", i < x.streak ? "on" : null))), el("span", "num small", ` ${x.streak} in a row`)),
+    ]))));
+  $("stations").replaceChildren(...(p.stations.length ? [st, el("p", "small muted", "A streak counts clean passes; 10 in a row moves a station up one trust level.")] : [empty("No runs in the run log yet.")]));
+  $("tis").replaceChildren(p.timeInState.length ? el("ul", "tis", ...p.timeInState.map((t) => {
+    const segs = el("span", "segs", ...t.segs.map((g) => { const i = el("i", `seg s-${g.state}`); i.style.flexGrow = g.ms; return i; }));
+    segs.setAttribute("role", "img");
+    segs.setAttribute("aria-label", t.segs.map((g) => `${LABEL[g.state] ?? g.state} ${dur(g.ms)}`).join(", "));
+    segs.title = segs.getAttribute("aria-label");
+    return el("li", null, el("span", "k", `${t.id} ${t.title}`), el("span", "v num", `${LABEL[t.state] ?? t.state} ${dur(t.current_ms)}`), segs,
+      el("span", "small muted", `total ${dur(t.segs.reduce((n, g) => n + g.ms, 0))}`));
+  })) : empty("No ticket in flight."));
+  $("cycle").replaceChildren(p.cycle.length ? bars(p.cycle.map((c) => [`${c.title} (open)`, c.ms]), Math.max(...p.cycle.map((c) => c.ms)), dur) : empty("No open epic."));
+  const d = p.doors;
+  setText("h-doors", d?.tag ? `Doors merged since ${d.tag}` : "Doors merged since the last tag");
+  const rows = d ? Object.entries(d.counts).filter(([k, v]) => k !== "unlabelled" || v).map(([k, v]) => [k === "unlabelled" ? "unlabelled" : `door:${k}`, v]) : [];
+  $("doors").replaceChildren(!d ? empty("No tag or merge data yet.") : !d.prs.length ? empty(`Nothing merged${d.tag ? ` since ${d.tag}` : ""}.`)
+    : bars(rows, Math.max(...rows.map((r) => r[1])), String));
+}
+let fetching = false;
+async function loadPage2() {
+  if (!two() || fetching) return;
+  fetching = true;
+  try { renderPage2(await (await fetch("/api/page2")).json()); } catch {} finally { fetching = false; } // the stream's reconnect note covers a down server
+}
+function route() { document.body.dataset.page = two() ? "2" : "1"; loadPage2(); }
+addEventListener("hashchange", route);
+route();
+setInterval(loadPage2, 60e3); // time in state counts up with no event
+
 const es = new EventSource("/api/stream");
-es.onmessage = (m) => render(JSON.parse(m.data));
+es.onmessage = (m) => { render(JSON.parse(m.data)); loadPage2(); };
 es.onopen = () => { $("conn").textContent = "live"; $("dot").classList.add("live"); };
 es.onerror = () => { $("conn").textContent = "reconnecting"; $("dot").classList.remove("live"); };
 </script>

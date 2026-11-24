@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { readRuns, diffRuns } from "./runs.js";
+import { readRuns, diffRuns, parseTrust } from "./runs.js";
 import { apply, empty, view } from "./state.js";
 
 const TS = "2026-11-23T10:00:00Z";
@@ -113,4 +113,29 @@ test("a replaced run file ends the old run at the new start; other writers' runs
   s = fold(s, diffRuns(s, await readRuns(factory, projects), TS));
   assert.equal(s.factoryRuns["fr-20261123-0800"].ended_at, "2026-11-24T09:00:00Z");
   assert.equal(s.factoryRuns["fr-25"].ended_at, null);
+});
+
+// Page 2, flow (#144): each run's outcome, and the trust dial from the spine.
+
+test("each run carries its outcome from the run log", async (t) => {
+  const { factory, projects } = setup(t);
+  const v = view(fold(empty(), diffRuns(empty(), await readRuns(factory, projects), TS)));
+  assert.deepEqual(v.runs.map((r) => [r.item, r.outcome]).sort(), [["#139", "back"], ["#140", "done"]]);
+});
+
+test("trust levels come from the spine's trust-dial table; an unreadable table gives none", async (t) => {
+  const { factory, projects } = setup(t);
+  const spine = path.join(factory, "spine.md");
+  fs.writeFileSync(spine, "## Trust dial\n\n| Station | Now | Ceiling |\n|---|---|---|\n| Intake | 1 | 3 |\n| Shape + slice | 0 | 1 |\n| Build | 2 | 3 |\n\nAfter.\n");
+  const board = await readRuns(factory, projects, spine);
+  assert.deepEqual(board.trust, { intake: 1, "shape-slice": 0, build: 2 });
+  const events = diffRuns(empty(), board, TS).filter((e) => e.type === "trust");
+  assert.deepEqual(events.map((e) => e.levels), [{ intake: 1, "shape-slice": 0, build: 2 }]);
+  assert.deepEqual(diffRuns(fold(empty(), diffRuns(empty(), board, TS)), board, TS), []);
+  assert.deepEqual(parseTrust("no table here"), {});
+  assert.deepEqual(parseTrust(null), {});
+  assert.deepEqual((await readRuns(factory, projects, path.join(factory, "missing.md"))).trust, {});
+  // the real spine parses
+  const real = parseTrust(fs.readFileSync(new URL("../../.claude/factory/spine.md", import.meta.url), "utf8"));
+  assert.ok(Number.isInteger(real.build) && Number.isInteger(real["shape-slice"]), JSON.stringify(real));
 });

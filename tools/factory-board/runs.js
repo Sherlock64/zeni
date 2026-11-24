@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { OUTCOMES } from "./state.js";
 
 const TALLY = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", ".claude", "factory", "tools", "tally.py");
 export const defaultProjects = () => path.join(os.homedir(), ".claude", "projects");
@@ -73,11 +74,28 @@ async function transcript(file) {
   return cache.get(file).info;
 }
 
-// What the board should show for the runs: runs by id, the run file, the light word and digest names.
-export async function readRuns(factory, projects = defaultProjects()) {
+export const defaultSpine = () => path.join(path.dirname(TALLY), "..", "spine.md");
+
+// {station: level} from the spine's trust-dial table ("| Station | Now | Ceiling |"); {} when it can't be read.
+export function parseTrust(md) {
+  const lines = (md ?? "").split("\n").map((l) => l.trim());
+  const head = lines.findIndex((l) => /^\|\s*Station\s*\|\s*Now\s*\|/.test(l));
+  if (head < 0) return {};
+  const levels = {};
+  for (const l of lines.slice(head + 2)) {
+    const m = l.match(/^\|([^|]+)\|\s*(\d)\s*\|/);
+    if (!m) break;
+    levels[m[1].trim().toLowerCase().replace(/\s*\+\s*/g, "-").replace(/\s+/g, "-")] = Number(m[2]);
+  }
+  return levels;
+}
+
+// What the board should show for the runs: runs by id, the run file, the light word, digest names,
+// and trust levels when a spine is given.
+export async function readRuns(factory, projects = defaultProjects(), spine = null) {
   const runs = {};
   for (const line of (read(path.join(factory, "runs.tsv")) ?? "").split("\n")) {
-    const [ended_at, sessionId, ticket, station] = line.split("\t");
+    const [ended_at, sessionId, ticket, station, outcome] = line.split("\t");
     if (!station || !sessionId) continue;
     const file = findTranscript(projects, sessionId);
     let info = { model: null, title: null, tokens: null };
@@ -90,7 +108,7 @@ export async function readRuns(factory, projects = defaultProjects()) {
     }
     // shortcut: rows that share a session each show its whole transcript, so the total counts it twice; split by ended_at if that misleads.
     const run = `${sessionId}@${ended_at}`;
-    runs[run] = { run, session: info.title ?? sessionId, item: ticket || null, station, tokens: info.tokens, model: info.model };
+    runs[run] = { run, session: info.title ?? sessionId, item: ticket || null, station, tokens: info.tokens, model: info.model, outcome: OUTCOMES.includes(outcome) ? outcome : null };
   }
   const current = readJson(path.join(factory, "run.json"));
   const light = readJson(path.join(factory, "light.json"));
@@ -103,6 +121,7 @@ export async function readRuns(factory, projects = defaultProjects()) {
     current: FACTORY_RUN.test(current?.id) && current.started_at ? { id: current.id, started_at: current.started_at } : null,
     offAt: light?.light === "off" ? light.set_at ?? null : null,
     digests,
+    trust: spine ? parseTrust(read(spine)) : undefined,
   };
 }
 
@@ -114,6 +133,7 @@ export function diffRuns(s, board, ts) {
     const cur = s.runs[r.run];
     if (!cur || Object.keys(r).some((k) => cur[k] !== r[k])) out.push(ev("run.tokens", r));
   }
+  if (board.trust && JSON.stringify(s.trust) !== JSON.stringify(board.trust)) out.push(ev("trust", { levels: board.trust }));
   const { current, offAt } = board;
   const known = { ...s.factoryRuns };
   if (current && !known[current.id]) {
