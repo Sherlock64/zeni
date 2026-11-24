@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Run-start worktree check (spine.md, "Run start"). Self-test: worktree-check.test.sh.
-# Usage: worktree-check.sh <ticket number> <station>
+# Usage: worktree-check.sh <ticket number, or 0 for a run without a ticket> <station>
 # Removes snapshots/t<m>/ of any other ticket, then fails (exit 1) on tracked or untracked changes,
 # or a HEAD that isn't the latest origin/main (Build, Shape and slice, Intake, Learn, Release; a
 # resumed run may also sit at its pushed ticket branch) or the ticket's branch (Verify, Review, Merge).
@@ -19,7 +19,8 @@ for d in snapshots/t*/; do
   [[ -d $d && $d != "snapshots/t$n/" ]] && rm -rf -- "$d" && echo "removed $d (another ticket's snapshots)"
 done
 
-[[ -z $(git status --porcelain) ]] || { echo "WORKTREE FAIL: uncommitted or untracked changes"; git status --short; exit 1; }
+st=$(git status --porcelain) || { echo "WORKTREE FAIL: git status failed"; exit 1; }
+[[ -z $st ]] || { echo "WORKTREE FAIL: uncommitted or untracked changes"; git status --short; exit 1; }
 
 head=$(git rev-parse HEAD)
 main=$(git rev-parse origin/main)

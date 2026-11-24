@@ -4,6 +4,7 @@ set -euo pipefail
 script=$(cd "$(dirname "$0")" && pwd)/worktree-check.sh
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
 g() { git -c user.name=t -c user.email=t@t -c init.defaultBranch=main "$@"; }
 g init -q --bare "$tmp/origin.git"
@@ -24,6 +25,7 @@ expect() { # expect <exit code> <grep pattern> <description>
 }
 
 run 7 build; expect 0 "WORKTREE OK" "clean build at origin/main"
+run 0 learn; expect 0 "WORKTREE OK" "run without a ticket"
 run; expect 2 "Usage" "no arguments"
 run 7 nope; expect 2 "Usage" "unknown station"
 
@@ -37,6 +39,10 @@ rm stray.txt
 echo x >>.gitignore
 run 7 build; expect 1 "WORKTREE FAIL: uncommitted or untracked changes" "tracked change"
 g checkout -q .gitignore
+
+mkdir "$tmp/bin" && real=$(command -v git)
+printf '#!/bin/sh\n[ "$1" = status ] && exit 128\nexec %s "$@"\n' "$real" >"$tmp/bin/git" && chmod +x "$tmp/bin/git"
+PATH="$tmp/bin:$PATH" run 7 build; expect 1 "WORKTREE FAIL: git status failed" "git status fails"
 
 g commit -q --allow-empty -m local
 run 7 build; expect 1 "WORKTREE FAIL: HEAD" "build not at origin/main"

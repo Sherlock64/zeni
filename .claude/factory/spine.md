@@ -29,7 +29,7 @@ Each ticket has exactly one `state:` label: `intake`, `shaping`, `ready`, `build
 Before any station step, from the worktree root:
 
 1. Verify, Review and Merge first put the worktree on the ticket's branch: `git fetch origin`, then `git switch --detach origin/t<n>-<words>` (the branch itself may be checked out in the Build worktree).
-2. Run `.claude/factory/tools/worktree-check.sh <n> <station>` (station as its guide's file name, `shape-slice` for Shape and slice). It removes another ticket's `snapshots/t<m>/` and fails on tracked or untracked changes, or on a `HEAD` that isn't the latest `origin/main` (Build and the other stations, or the ticket's pushed branch for a resumed run) or the ticket's branch (Verify, Review, Merge).
+2. Run `.claude/factory/tools/worktree-check.sh <n> <station>` (station as its guide's file name, `shape-slice` for Shape and slice; `<n>` is `0` for a run without a ticket, such as Learn, Release or Intake of a new request, which then checks only a clean tree at the latest `origin/main`). It removes another ticket's `snapshots/t<m>/` and fails on tracked or untracked changes, or on a `HEAD` that isn't the latest `origin/main` (Build and the other stations, or the ticket's pushed branch for a resumed run) or the ticket's branch (Verify, Review, Merge).
 3. On `WORKTREE FAIL`, change nothing: comment the failing line on the ticket, log a `checkpoint` row (Run log) and stop.
 
 ## Eject
