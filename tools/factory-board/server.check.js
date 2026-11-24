@@ -47,6 +47,9 @@ test("serves the page on 127.0.0.1 only", async (t) => {
   const res = await fetch(`http://127.0.0.1:${port}/`);
   assert.equal(res.status, 200);
   assert.match(await res.text(), /<html/i);
+  const js = await fetch(`http://127.0.0.1:${port}/page.js`);
+  assert.equal(js.status, 200);
+  assert.match(js.headers.get("content-type"), /^text\/javascript/);
   // Not reachable on IPv6 loopback, nor on any non-loopback address of this machine.
   const others = ["::1", ...Object.values(os.networkInterfaces()).flat().filter((a) => !a.internal).map((a) => a.address)];
   for (const addr of others) {
