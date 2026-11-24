@@ -58,6 +58,8 @@ Read `$(git rev-parse --git-common-dir)/factory/light.json` at every pivot: befo
 
 A light whose `set_at` is over 45 minutes old, or a missing file, counts as `yellow`. **Checkpoint** = commit and push the work in progress, comment on the ticket where you stopped. Only the dispatcher reads the slot count; only the watchdog writes the file.
 
+**Idle shutdown.** When the light is `yellow` or `red`, no run is in flight and nothing waits on the user, the factory shuts down instead of idling: the dispatcher proposes `/factory-shutdown` (now), and a fresh `/factory-start`, on the dispatcher model in `models.md`, starts it again after the window that held it back resets. Every watchdog wake also wakes the dispatcher, which re-reads its whole context; a fresh start costs one cold read.
+
 ## Blocking
 
 A finding blocks only with proof: a failing run or test, a broken `CLAUDE.md` rule, or a bug a user would hit. Small non-blocking fixes go in the same PR; the rest become requests (`state:intake`); nits are listed and never filed.
