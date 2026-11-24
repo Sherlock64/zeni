@@ -24,7 +24,7 @@ Self-checks: `node --test tools/factory-board/*.check.js`. `scripts/check.sh fas
 
 ## Board design (#142)
 
-`directions/chosen.html` is the picked design on fixed fake data (`proto.js`, `proto.css`), page 1 and page 2; epic #131 (Decisions: Design) describes it. The live board (`index.html`) is page 1 of it since #143; page 2 comes with #144 and #145. It is static, not served by `server.js`: run `python3 -m http.server 4318 --bind 127.0.0.1` in `directions/` and open `/chosen.html`. Params: `theme=light|dark`, `light=green|yellow|red|off|stale`, `nh=0`; `#p2` opens page 2.
+`directions/chosen.html` is the picked design on fixed fake data (`proto.js`, `proto.css`), page 1 and page 2; epic #131 (Decisions: Design) describes it. The live board (`index.html`) is page 1 of it since #143; page 2 comes with #144 and #145. The prototype is static, not served by `server.js`: run `python3 -m http.server 4318 --bind 127.0.0.1` in `directions/` and open `/chosen.html`. Params: `theme=light|dark`, `light=green|yellow|red|off|stale`, `nh=0`; `#p2` opens page 2.
 
 ## How data flows
 

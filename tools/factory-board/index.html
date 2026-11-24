@@ -56,6 +56,7 @@ h2 { font-size: .75rem; text-transform: uppercase; letter-spacing: .06em; color:
 .switch { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
 .switch button { font: inherit; font-size: .85rem; border: 0; background: var(--panel); color: var(--ink); padding: 4px 12px; cursor: pointer; }
 .switch button[aria-pressed="true"] { background: var(--ink); color: var(--panel); }
+.switch button:focus-visible { outline-offset: -2px; } /* .switch clips overflow, so the ring sits inside */
 main { max-width: 1700px; margin: 0 auto; padding: 14px 24px 28px; display: grid; gap: 16px; }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
 
