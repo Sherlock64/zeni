@@ -101,6 +101,7 @@ export function apply(s, e) {
         item: e.item ?? null,
         session: str(e.session, "session"),
         question: str(e.question, "question"),
+        href: e.href ?? null,
         opened_at: e.ts,
       };
       break;

@@ -17,7 +17,7 @@ const line = (e) => JSON.stringify({ v: 1, ts: "2026-11-20T10:00:00Z", ...e }) +
 // Starts server.js and resolves with its port once it prints its URL.
 function start(t, env, args = []) {
   const child = spawn(process.execPath, [path.join(dir, "server.js"), ...args], {
-    env: { ...process.env, PORT: "0", SPEED: "20", ...env },
+    env: { ...process.env, PORT: "0", SPEED: "20", GH: "/nonexistent/gh", ...env }, // never the real GitHub
     stdio: ["ignore", "pipe", "inherit"],
   });
   t.after(() => child.kill());
@@ -105,4 +105,68 @@ test("the simulator refuses to write the real events file", (t) => {
     env: { ...process.env, EVENTS: real, SIM_EVENTS: real }, stdio: "pipe", timeout: 3000,
   }));
   assert.equal(fs.readFileSync(real, "utf8"), "keep\n");
+});
+
+// A fake gh: answers the issues and PR queries from fixed pages; fails while the file FAIL exists.
+function fakeGh(t) {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "board-gh-"));
+  t.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
+  const issues = { data: { repository: { issues: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [
+    { number: 131, title: "Factory board", url: "u131", labels: { nodes: [{ name: "state:building" }] }, parent: null, subIssues: { totalCount: 1 }, comments: { nodes: [] } },
+    { number: 139, title: "GitHub part", url: "u139", labels: { nodes: [{ name: "state:ready" }] }, parent: { number: 131 }, subIssues: { totalCount: 0 }, comments: { nodes: [] } },
+  ] } } } };
+  const prs = { data: { repository: { pullRequests: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [
+    { number: 170, title: "t139 PR", labels: { nodes: [{ name: "state:reviewing" }] } },
+  ] } } } };
+  const gh = path.join(tmp, "gh");
+  fs.writeFileSync(gh, `#!${process.execPath}
+const fs = require("node:fs");
+if (fs.existsSync(${JSON.stringify(path.join(tmp, "FAIL"))})) { console.error("gh: network down"); process.exit(1); }
+const q = process.argv.find((a) => a.startsWith("query="));
+console.log(JSON.stringify(q.includes("pullRequests") ? ${JSON.stringify(prs)} : ${JSON.stringify(issues)}));
+`, { mode: 0o755 });
+  return { gh, fail: () => fs.writeFileSync(path.join(tmp, "FAIL"), "") };
+}
+
+async function until(port, ok) {
+  let snap;
+  for (let i = 0; i < 50; i++) {
+    snap = await snapshot(port);
+    if (ok(snap)) return snap;
+    await sleep(100);
+  }
+  assert.fail(`never reached: ${JSON.stringify(snap)}`);
+}
+
+test("collects state-labelled issues and PRs from gh into the events file", async (t) => {
+  const { real } = tmpFiles(t);
+  const { gh } = fakeGh(t);
+  const { port } = await start(t, { EVENTS: real, GH: gh });
+  const snap = await until(port, (s) => s.items.length === 3);
+  assert.deepEqual(snap.items.map((i) => `${i.id}:${i.kind}:${i.state}`).sort(), ["#131:epic:building", "#139:ticket:ready", "#170:pr:reviewing"]);
+  assert.equal(snap.github.ok, true);
+  assert.match(fs.readFileSync(real, "utf8"), /"item.upsert"/);
+});
+
+test("gh failing shows GitHub unavailable and keeps the last state", async (t) => {
+  const { real } = tmpFiles(t);
+  const { gh, fail } = fakeGh(t);
+  const { port } = await start(t, { EVENTS: real, GH: gh, COLLECT_MS: "200" });
+  await until(port, (s) => s.items.length === 3);
+  const size = fs.statSync(real).size;
+  fail();
+  const snap = await until(port, (s) => s.github.ok === false);
+  assert.match(snap.github.error, /network down/);
+  assert.equal(snap.items.length, 3);
+  await sleep(500); // more failing collects, and no change while it worked: nothing appended
+  assert.equal(fs.statSync(real).size, size);
+});
+
+test("gh missing shows GitHub unavailable and the board keeps serving", async (t) => {
+  const { real } = tmpFiles(t);
+  fs.writeFileSync(real, line({ type: "item.upsert", id: "#1", kind: "ticket", title: "Known", state: "ready" }));
+  const { port } = await start(t, { EVENTS: real });
+  const snap = await until(port, (s) => s.github?.ok === false);
+  assert.deepEqual(snap.items.map((i) => i.title), ["Known"]);
+  assert.equal((await fetch(`http://127.0.0.1:${port}/`)).status, 200);
 });

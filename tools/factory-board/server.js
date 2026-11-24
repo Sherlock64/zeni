@@ -1,6 +1,7 @@
 // Factory board server: tails the events file, folds it into a snapshot and
 // pushes every new snapshot to open pages over server-sent events.
-// Usage: node server.js [--simulate]   (env: PORT, EVENTS; SIM_EVENTS with --simulate)
+// Without --simulate it also runs the GitHub collector (collect.js) every COLLECT_MS.
+// Usage: node server.js [--simulate]   (env: PORT, EVENTS, GH, COLLECT_MS; SIM_EVENTS with --simulate)
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
@@ -8,6 +9,7 @@ import { fork } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { defaultEvents, simEvents } from "./paths.js";
 import { apply, empty, view } from "./state.js";
+import { diff, fetchGitHub } from "./collect.js";
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT ?? 4317);
@@ -19,6 +21,8 @@ let state = empty();
 let offset = 0;
 let partial = "";
 const clients = new Set();
+let github = { ok: null, error: null, checked_at: null }; // the collector's last result; not an event
+const snap = () => ({ ...view(state), github });
 
 function readNew() {
   let size;
@@ -53,8 +57,27 @@ function readNew() {
 }
 
 function broadcast() {
-  const msg = `data: ${JSON.stringify(view(state))}\n\n`;
+  const msg = `data: ${JSON.stringify(snap())}\n\n`;
   for (const res of clients) res.write(msg);
+}
+
+let collecting = false;
+async function collect() {
+  if (collecting) return; // a slow gh call must not overlap the next tick
+  collecting = true;
+  try {
+    const board = await fetchGitHub(process.env.GH ?? "gh", dir);
+    readNew(); // diff against the file as it is now
+    const events = diff(state, board, new Date().toISOString());
+    if (events.length) fs.appendFileSync(EVENTS, events.map((e) => JSON.stringify(e) + "\n").join(""));
+    github = { ok: true, error: null, checked_at: new Date().toISOString() };
+  } catch (err) {
+    github = { ok: false, error: err.message, checked_at: new Date().toISOString() };
+  } finally {
+    collecting = false;
+  }
+  readNew();
+  broadcast();
 }
 
 fs.mkdirSync(path.dirname(EVENTS), { recursive: true });
@@ -76,11 +99,11 @@ const server = http.createServer((req, res) => {
   }
   if (url.pathname === "/api/snapshot") {
     res.writeHead(200, { "content-type": "application/json" });
-    return res.end(JSON.stringify(view(state)));
+    return res.end(JSON.stringify(snap()));
   }
   if (url.pathname === "/api/stream") {
     res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store", connection: "keep-alive" });
-    res.write(`data: ${JSON.stringify(view(state))}\n\n`);
+    res.write(`data: ${JSON.stringify(snap())}\n\n`);
     clients.add(res);
     req.on("close", () => clients.delete(res));
     return;
@@ -91,7 +114,10 @@ const server = http.createServer((req, res) => {
 
 server.listen(PORT, "127.0.0.1", () => {
   console.log(`factory board: http://127.0.0.1:${server.address().port}/  (events: ${EVENTS})`);
-  if (SIMULATE) {
+  if (!SIMULATE) {
+    collect();
+    setInterval(collect, Number(process.env.COLLECT_MS ?? 60000));
+  } else {
     const sim = fork(path.join(dir, "simulate.js"), [], { env: { ...process.env, SIM_EVENTS: EVENTS } });
     process.on("exit", () => sim.kill());
     process.on("SIGINT", () => process.exit(0));
