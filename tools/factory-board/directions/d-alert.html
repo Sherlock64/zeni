@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Direction D: needs-human pinned alert</title>
+<link rel="stylesheet" href="proto.css">
+<style>
+/* D: what needs you is pinned on top; the rest is a calm grid of tiles and a compact board. */
+.alert { position: sticky; top: 0; z-index: 3; background: var(--warn-bg); border-bottom: 2px solid var(--warn-line); }
+.alert-in { max-width: 1500px; margin: 0 auto; padding: 12px 20px; display: grid; grid-template-columns: auto 1fr auto; gap: 4px 16px; align-items: center; }
+.alert .badge { background: var(--warn); color: var(--warn-bg); font-weight: 700; border-radius: 6px; padding: 4px 10px; font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; }
+.alert .q { font-size: 1.1rem; font-weight: 600; }
+.calm { max-width: 1500px; margin: 0 auto; padding: 8px 20px; color: var(--muted); font-size: .85rem; }
+main { max-width: 1500px; margin: 0 auto; padding: 12px 20px 24px; display: grid; gap: 14px; }
+.top { display: flex; align-items: baseline; gap: 16px; } .top nav { margin-left: auto; }
+.tiles { display: grid; grid-template-columns: 1.6fr 1fr 1fr 1fr; gap: 12px; }
+.tile { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; min-width: 0; }
+.tile .v { font-size: 1.6rem; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+.tile.light { background: var(--lbg); border-color: var(--lc); }
+.tile.light .v { color: var(--lc); text-transform: uppercase; letter-spacing: .03em; }
+.tile p { margin: 2px 0; }
+.board { display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)) auto; gap: 8px; }
+.col { background: var(--sub); border-radius: 8px; padding: 8px; }
+.col h2 { display: flex; justify-content: space-between; }
+.col.nhcol { background: var(--warn-bg); } .col.nhcol h2 { color: var(--warn); }
+.empties { display: grid; gap: 4px; align-content: start; font-size: .75rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; padding: 8px 4px; }
+.cards { display: grid; gap: 6px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font-size: .9rem; }
+.card.k-epic { font-weight: 600; }
+.card .meta { display: flex; gap: 6px; font-size: .7rem; color: var(--muted); }
+.card .kind { text-transform: uppercase; letter-spacing: .04em; }
+.card.nhc { border-color: var(--warn-line); }
+.row3 { display: grid; grid-template-columns: 1fr 1.3fr 1fr; gap: 14px; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+.epics, .runs { display: grid; gap: 8px; }
+.runs { list-style: none; margin: 0; padding: 0; }
+.runs li { display: grid; grid-template-columns: 1.4em 1fr auto; gap: 2px 8px; }
+.runs .bar { grid-column: 2 / -1; height: 4px; margin: 0; }
+.lastrun p { margin: 0 0 6px; }
+@media (max-width: 900px) {
+  .alert-in { grid-template-columns: 1fr; padding: 10px 14px; }
+  .calm, main { padding-left: 14px; padding-right: 14px; }
+  .tiles { grid-template-columns: 1fr 1fr; } .tile.light, .tile:nth-child(2) { grid-column: 1 / -1; }
+  .board { grid-template-columns: 1fr; }
+  .empties { grid-auto-flow: column; justify-content: start; gap: 12px; }
+  .row3 { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<div id="alert"></div>
+<main id="main"></main>
+<script src="proto.js"></script>
+<script>
+function alertBar() {
+  const n = DATA.needsHuman;
+  $("alert").replaceChildren(n.length ? el("div", "alert", ...n.map((x) => el("div", "alert-in",
+    el("span", "badge", "Needs you"),
+    el("div", null, el("div", "q", x.question), el("div", "small", "Open session ", el("strong", "session", x.session), " in the Claude app")),
+    link("Latest comment", x.href)))) : el("div", "calm", "Nothing needs you."));
+}
+function tiles() {
+  const v = lightView(), L = DATA.light;
+  return el("div", "tiles",
+    el("div", `tile light lw-${v.word}`, el("h2", null, "Traffic light"), el("div", "v", el("span", `lamp${v.stale ? " stale" : ""}`), v.label),
+      el("p", null, el("strong", null, v.reason), " — ", v.meaning, v.resume ? el("strong", "num", ` ${v.resume}`) : null), el("p", "small muted", v.age)),
+    el("div", "tile", el("h2", null, "Run slots"), el("div", "v num", `${v.running} / ${L.slots}`), el("p", "small", `weekly pace ${L.pace.toFixed(2)}`), el("p", "small", sessionsLine())),
+    el("div", "tile", el("h2", null, "5-hour"), el("div", "v num", `${L.five_hour.pct}%`), el("p", "small muted", `resets in ${dur(Date.parse(L.five_hour.resets_at) - NOW)}`)),
+    el("div", "tile", el("h2", null, "Weekly"), el("div", "v num", `${L.weekly.pct}%`), el("p", "small muted", `resets in ${dur(Date.parse(L.weekly.resets_at) - NOW)}`)));
+}
+function topBar() {
+  return el("div", "top", el("h1", null, "Zeni factory"), el("span", "muted small", `live · ${fmt(DATA.totalTokens)} weighted tokens`),
+    el("nav", null, location.hash === "#p2" ? link("← Board", "#") : link("Flow and cost →", "#p2")));
+}
+function p1() {
+  alertBar();
+  const full = STATES.filter((s) => byState(s).length), empty = STATES.filter((s) => !byState(s).length);
+  const board = el("div", "board", ...full.map((s) => el("div", `col${s === "needs-human" ? " nhcol" : ""}`, el("h2", null, el("span", null, LABEL[s] ?? s), el("span", "num", byState(s).length)), el("div", "cards", ...byState(s).map((i) => card(i))))),
+    el("div", "empties", ...empty.map((s) => el("span", null, `${LABEL[s] ?? s} 0`))));
+  board.style.setProperty("--n", full.length);
+  $("main").replaceChildren(topBar(), tiles(), board,
+    el("div", "row3",
+      el("section", "panel", el("h2", null, "Epics"), epicsList()),
+      el("section", "panel", el("h2", null, "Top 10 token users"), runsList()),
+      el("section", "panel", el("h2", null, "Factory run"), lastRun())));
+}
+function p2() { alertBar(); $("main").replaceChildren(topBar(), tiles(), page2()); }
+route(p1, p2);
+</script>
+</body>
+</html>

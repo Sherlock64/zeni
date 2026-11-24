@@ -22,6 +22,10 @@ Env: `PORT` (default `4317`), `EVENTS` (the real file; default `$(git rev-parse 
 
 Self-checks: `node --test tools/factory-board/*.check.js`. `scripts/check.sh fast` runs them, so every gate does.
 
+## Design directions (#142)
+
+`directions/` holds four whole-page prototypes on fixed fake data (`proto.js`), each with page 1 and a page 2 sketch: A status band, B board as the hero, C swimlanes by epic, D needs-you pinned alert. They are static files, not served by `server.js`; open `directions/index.html` through any local static server (for example `python3 -m http.server 4318 --bind 127.0.0.1` in that folder) to see all four at 1440 and 390 px, with theme, page, light and needs-you switches. #143 rebuilds the board in the chosen one.
+
 ## How data flows
 
 ```

@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Factory board: design directions</title>
+<style>
+body { margin: 0; font: 14px/1.45 system-ui, sans-serif; background: #e9e8e4; color: #1c1c1a; }
+header { position: sticky; top: 0; z-index: 2; background: #fff; border-bottom: 1px solid #ccc; padding: 10px 20px; display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: center; }
+h1 { font-size: 1.1rem; margin: 0; }
+fieldset { border: 0; padding: 0; margin: 0; display: flex; gap: 10px; align-items: center; }
+legend { float: left; font-weight: 600; margin-right: 6px; }
+section { padding: 20px; border-bottom: 1px solid #ccc; }
+h2 { margin: 0 0 4px; font-size: 1.05rem; }
+p { margin: 0 0 12px; max-width: 80ch; }
+.frames { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+.wide { width: 720px; height: 650px; overflow: hidden; border: 1px solid #aaa; background: #fff; }
+.wide iframe { width: 1440px; height: 1300px; border: 0; transform: scale(.5); transform-origin: 0 0; }
+.narrow iframe { width: 390px; height: 844px; border: 1px solid #aaa; background: #fff; }
+.cap { font-size: .8rem; color: #555; margin: 4px 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Factory board: four design directions (#142)</h1>
+  <fieldset><legend>Theme</legend><label><input type="radio" name="theme" value="light" checked> light</label><label><input type="radio" name="theme" value="dark"> dark</label></fieldset>
+  <fieldset><legend>Page</legend><label><input type="radio" name="page" value="" checked> 1 board</label><label><input type="radio" name="page" value="#p2"> 2 flow and cost</label></fieldset>
+  <fieldset><legend>Light</legend><label><input type="radio" name="light" value="green"> green</label><label><input type="radio" name="light" value="yellow" checked> yellow</label><label><input type="radio" name="light" value="red"> red</label><label><input type="radio" name="light" value="stale"> stale</label><label><input type="radio" name="light" value="off"> off</label></fieldset>
+  <fieldset><legend>Needs you</legend><label><input type="radio" name="nh" value="1" checked> one</label><label><input type="radio" name="nh" value="0"> none</label></fieldset>
+</header>
+<main id="list"></main>
+<script>
+const DIRS = [
+  ["a-band", "A. Status band", "One full-width band at the top, tinted by the light, holds the light, its meaning, slots, sessions and both usage meters. Everything under it is neutral: needs-you panel, the nine-column board, then epics, top runs and the factory run."],
+  ["b-board", "B. Board as the hero", "Status shrinks to a sticky one-line header with a light chip. The board fills the page, its columns grouped as Queue, In flight, Done and Needs you; an empty column collapses to a thin strip. Needs-you is a single line above the board."],
+  ["c-lanes", "C. Swimlanes by epic", "One row per epic, one column per state that has tickets (empty states are hidden and named underneath). The light, needs-you, factory run and top runs sit in a right rail. On a phone each epic becomes a list with a state per ticket."],
+  ["d-alert", "D. Needs-you pinned alert", "Whatever needs you is a sticky alert across the top, with the question large. Under it, four tiles (light, run slots, 5-hour, weekly), a compact board with empty states listed as text, then epics, top runs and the factory run."],
+];
+const val = (n) => document.querySelector(`input[name=${n}]:checked`).value;
+function draw() {
+  const q = `?theme=${val("theme")}&light=${val("light")}&nh=${val("nh")}${val("page")}`;
+  document.getElementById("list").replaceChildren(...DIRS.map(([f, t, d]) => {
+    const s = document.createElement("section");
+    s.innerHTML = `<h2>${t}</h2><p>${d} <a href="${f}.html${q}" target="_blank">Open full page</a></p>
+      <div class="frames"><div><div class="cap">1440 px wide, shown at half size</div><div class="wide"><iframe title="${t}, wide" src="${f}.html${q}"></iframe></div></div>
+      <div><div class="cap">390 px wide, real size</div><div class="narrow"><iframe title="${t}, narrow" src="${f}.html${q}"></iframe></div></div></div>`;
+    return s;
+  }));
+}
+document.querySelectorAll("input").forEach((i) => i.addEventListener("change", draw));
+draw();
+</script>
+</body>
+</html>

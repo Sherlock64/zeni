@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Direction A: status band</title>
+<link rel="stylesheet" href="proto.css">
+<style>
+/* A: one full-width band carries the light; everything under it is neutral. */
+.band { background: var(--lbg); border-bottom: 3px solid var(--lc); }
+.band-in { max-width: 1600px; margin: 0 auto; padding: 14px 20px; display: grid; grid-template-columns: auto 1fr auto; gap: 12px 28px; align-items: center; }
+.word { display: flex; align-items: center; gap: 10px; }
+.word .lamp { width: 22px; height: 22px; }
+.word strong { font-size: 1.7rem; text-transform: uppercase; letter-spacing: .04em; color: var(--lc); }
+.why { display: grid; gap: 2px; }
+.band .meters { display: grid; grid-template-columns: 180px 180px; gap: 12px; }
+.band .bar { background: color-mix(in srgb, var(--ink) 12%, transparent); }
+.top { max-width: 1600px; margin: 0 auto; padding: 10px 20px 0; display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: baseline; }
+.top nav { margin-left: auto; display: flex; gap: 14px; }
+main { max-width: 1600px; margin: 0 auto; padding: 14px 20px 24px; display: grid; gap: 14px; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+.nh { background: var(--warn-bg); border-color: var(--warn-line); }
+.nh h2 { color: var(--warn); }
+.board { display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 8px; }
+.col { background: var(--sub); border-radius: 8px; padding: 8px; min-height: 200px; }
+.col h2 { display: flex; justify-content: space-between; }
+.col.empty { min-height: 0; opacity: .7; }
+.cards { display: grid; gap: 6px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
+.card.k-epic { font-weight: 600; }
+.card.nhc { border-color: var(--warn-line); box-shadow: inset 3px 0 var(--warn-line); }
+.card .meta { display: flex; gap: 6px; font-size: .72rem; color: var(--muted); }
+.card .kind { text-transform: uppercase; letter-spacing: .04em; }
+.bottom { display: grid; grid-template-columns: 1fr 1.3fr 1fr; gap: 14px; }
+.epics, .runs { display: grid; gap: 8px; }
+.runs { list-style: none; margin: 0; padding: 0; }
+.runs li { display: grid; grid-template-columns: 1.4em 1fr auto; gap: 2px 8px; }
+.runs .bar { grid-column: 2 / -1; height: 4px; margin: 0; }
+.lastrun p { margin: 0 0 6px; }
+@media (max-width: 1100px) { .board { grid-template-columns: repeat(3, 1fr); } .bottom { grid-template-columns: 1fr; } }
+@media (max-width: 700px) {
+  .band-in { grid-template-columns: 1fr; padding: 12px 14px; gap: 8px; }
+  .band .meters { grid-template-columns: 1fr 1fr; }
+  .top, main { padding-left: 14px; padding-right: 14px; }
+  .board { grid-template-columns: 1fr; }
+  .col { min-height: 0; }
+  .col.empty { padding: 4px 8px; } .col.empty h2 { margin: 0; }
+}
+</style>
+</head>
+<body>
+<div class="band" id="band"></div>
+<div class="top">
+  <h1>Zeni factory</h1>
+  <span class="muted small">live · total <strong class="num" id="total"></strong> weighted tokens</span>
+  <nav><a href="#" class="only2">← Board</a><a href="#p2" class="only1">Flow and cost →</a></nav>
+</div>
+<main id="main"></main>
+<script src="proto.js"></script>
+<script>
+function band() {
+  const v = lightView();
+  $("band").className = `band lw-${v.word}`;
+  $("band").replaceChildren(el("div", "band-in",
+    el("div", "word", el("span", `lamp${v.stale ? " stale" : ""}`), el("strong", null, v.label)),
+    el("div", "why", el("div", null, el("strong", null, v.reason), " — ", v.meaning, v.resume ? el("strong", "num", ` ${v.resume}`) : null),
+      el("div", "small", slotsText(v), " · ", sessionsLine()), el("div", "small muted", v.age)),
+    meters()));
+  $("total").textContent = fmt(DATA.totalTokens);
+}
+function p1() {
+  band();
+  const board = el("div", "board", ...STATES.map((s) => {
+    const items = byState(s);
+    return el("div", `col${items.length ? "" : " empty"}`, el("h2", null, el("span", null, LABEL[s] ?? s), el("span", "num", items.length)), el("div", "cards", ...items.map((i) => card(i))));
+  }));
+  const nh = DATA.needsHuman.length ? el("section", "panel nh", el("h2", null, "Needs you"), nhList()) : null;
+  $("main").replaceChildren(nh ?? "", el("section", null, board),
+    el("div", "bottom",
+      el("section", "panel", el("h2", null, "Epics"), epicsList()),
+      el("section", "panel", el("h2", null, "Top 10 token users"), runsList()),
+      el("section", "panel", el("h2", null, "Factory run"), lastRun()),
+      nh ? "" : el("section", "panel", el("h2", null, "Needs you"), nhList())));
+}
+function p2() { band(); $("main").replaceChildren(page2()); }
+route(p1, p2);
+</script>
+</body>
+</html>

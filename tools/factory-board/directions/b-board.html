@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Direction B: board as the hero</title>
+<link rel="stylesheet" href="proto.css">
+<style>
+/* B: the board fills the page; status shrinks to one line; columns grouped, empty ones collapse to a strip. */
+header { position: sticky; top: 0; z-index: 2; background: var(--panel); border-bottom: 1px solid var(--line); }
+.hd { max-width: 1800px; margin: 0 auto; padding: 8px 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; }
+.chip { display: inline-flex; align-items: center; gap: 8px; padding: 4px 12px 4px 8px; border-radius: 99px; background: var(--lbg); color: var(--lc); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.hd .meters { display: flex; gap: 14px; } .hd .meter { width: 130px; font-size: .8rem; }
+.hd nav { margin-left: auto; }
+.status2 { max-width: 1800px; margin: 0 auto; padding: 0 16px 8px; font-size: .8rem; color: var(--muted); }
+main { max-width: 1800px; margin: 0 auto; padding: 14px 16px 24px; display: grid; gap: 14px; }
+.nhline { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; background: var(--warn-bg); border: 1px solid var(--warn-line); border-radius: 8px; padding: 8px 12px; }
+.nhline h2 { color: var(--warn); margin: 0; }
+.nhline .q { font-weight: 600; }
+.board { display: flex; gap: 14px; align-items: stretch; min-height: 62vh; }
+.group { display: flex; flex-direction: column; gap: 6px; flex: var(--n) 1 0; min-width: 0; }
+.group > h2 { padding-left: 2px; border-bottom: 2px solid var(--line); padding-bottom: 4px; }
+.cols { display: flex; gap: 8px; flex: 1; }
+.col { flex: 1 1 0; min-width: 0; background: var(--sub); border-radius: 8px; padding: 8px; }
+.col h3 { margin: 0 0 8px; font-size: .8rem; display: flex; justify-content: space-between; text-transform: capitalize; }
+.col.empty { flex: 0 0 34px; padding: 8px 0; display: flex; justify-content: center; }
+.col.empty h3 { writing-mode: vertical-rl; color: var(--muted); font-weight: 500; gap: 6px; margin: 0; }
+.group.nhg .col { background: var(--warn-bg); } .group.nhg > h2 { color: var(--warn); border-color: var(--warn-line); }
+.cards { display: grid; gap: 8px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; font-size: .95rem; }
+.card.k-epic { font-weight: 600; background: transparent; border-style: dashed; }
+.card .meta { display: flex; gap: 6px; font-size: .72rem; color: var(--muted); flex-wrap: wrap; }
+.card .kind { text-transform: uppercase; letter-spacing: .04em; }
+.card .ep { margin-left: auto; }
+.card.nhc { border-color: var(--warn-line); }
+.under { display: grid; grid-template-columns: 1fr 1.4fr 1fr; gap: 14px; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+.epics, .runs { display: grid; gap: 8px; }
+.runs { list-style: none; margin: 0; padding: 0; }
+.runs li { display: grid; grid-template-columns: 1.4em 1fr auto; gap: 2px 8px; }
+.runs .bar { grid-column: 2 / -1; height: 4px; margin: 0; }
+.lastrun p { margin: 0 0 6px; }
+@media (max-width: 900px) {
+  .hd .meters { order: 3; width: 100%; } .hd .meter { flex: 1; }
+  .board { flex-direction: column; min-height: 0; }
+  .cols { flex-direction: column; }
+  .col.empty { flex: none; padding: 4px 8px; justify-content: flex-start; }
+  .col.empty h3 { writing-mode: horizontal-tb; }
+  .under { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="hd" id="hd"></div>
+  <div class="status2" id="status2"></div>
+</header>
+<main id="main"></main>
+<script src="proto.js"></script>
+<script>
+function head() {
+  const v = lightView();
+  $("hd").replaceChildren(
+    el("h1", null, "Zeni factory"),
+    el("span", `chip lw-${v.word}`, el("span", `lamp${v.stale ? " stale" : ""}`), v.label),
+    el("span", "small", el("strong", null, v.reason), " · ", v.meaning, v.resume ? el("strong", "num", ` ${v.resume}`) : null),
+    meters(),
+    el("nav", null, location.hash === "#p2" ? link("← Board", "#") : link("Flow and cost →", "#p2")));
+  $("status2").replaceChildren(el("span", null, slotsText(v), " · ", sessionsLine(), ` · ${v.age} · ${fmt(DATA.totalTokens)} weighted tokens`));
+}
+function col(s) {
+  const items = byState(s);
+  return el("div", `col${items.length ? "" : " empty"}`, el("h3", null, el("span", null, LABEL[s] ?? s), el("span", "num", items.length)), items.length ? el("div", "cards", ...items.map((i) => card(i, true))) : null);
+}
+function group(name, states, cls = "") {
+  const g = el("section", `group ${cls}`, el("h2", null, name), el("div", "cols", ...states.map(col)));
+  g.style.setProperty("--n", states.filter((s) => byState(s).length).length || 0.3);
+  return g;
+}
+function p1() {
+  head();
+  const nh = DATA.needsHuman.map((n) => el("div", "nhline", el("h2", null, "Needs you"), el("span", null, "Open ", el("strong", "session", n.session)), el("span", "q", n.question), link("Latest comment", n.href)));
+  $("main").replaceChildren(...nh,
+    el("div", "board", ...GROUPS.map((g) => group(g.name, g.states)), group("Needs you", ["needs-human"], "nhg")),
+    el("div", "under",
+      el("section", "panel", el("h2", null, "Epics"), epicsList()),
+      el("section", "panel", el("h2", null, "Top 10 token users"), runsList()),
+      el("section", "panel", el("h2", null, "Factory run"), lastRun())));
+}
+function p2() { head(); $("main").replaceChildren(page2()); }
+route(p1, p2);
+</script>
+</body>
+</html>
