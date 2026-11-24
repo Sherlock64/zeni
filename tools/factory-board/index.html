@@ -5,141 +5,165 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Factory board</title>
 <style>
+/* The design picked in #142 (directions/chosen.html), desktop only. Colour is kept for the light, needs-human and failures. */
 :root {
-  --bg: #f6f6f4; --panel: #ffffff; --ink: #1b1b1a; --muted: #66655f; --line: #deddd8;
-  --accent: #2f6fdf; --warn: #b4540a; --warn-bg: #fff3e6; --ok: #1f7a4a; --track: #ebeae6;
-  --e0: #2f6fdf; --e1: #8a4fd8; --e2: #1f8a7a; --e3: #c2410c;
-  --l-green: #1f9a55; --l-yellow: #d9a300; --l-red: #d33b32; --l-off: #8a8984;
+  --bg: #f5f5f3; --panel: #ffffff; --ink: #1c1c1a; --muted: #605f59; --line: #dcdbd6; --track: #ebeae6; --sub: #f0efeb;
+  --link: #2858b8; --focus: #2858b8;
+  --warn: #9a4a07; --warn-bg: #fff1e0; --warn-line: #c27a36;
+  --g3: #6f6e68;
   color-scheme: light;
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #141414; --panel: #1e1e1d; --ink: #ececea; --muted: #a3a29c; --line: #34332f;
-    --accent: #6c9cf5; --warn: #f2a65a; --warn-bg: #3a2a18; --ok: #5cc28b; --track: #2c2b28;
-    --e0: #6c9cf5; --e1: #b48af0; --e2: #4fc2b0; --e3: #f08a5d;
-    --l-green: #3ccf7f; --l-yellow: #f3c53a; --l-red: #f0625a; --l-off: #6f6e69;
-    color-scheme: dark;
-  }
+[data-theme="dark"] {
+  --bg: #131312; --panel: #1d1d1b; --ink: #ecebe7; --muted: #a6a59e; --line: #34332f; --track: #2a2926; --sub: #232321;
+  --link: #8fb1f5; --focus: #8fb1f5;
+  --warn: #f4b072; --warn-bg: #3a2914; --warn-line: #b8743a;
+  --g3: #95948d;
+  color-scheme: dark;
 }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.4 system-ui, sans-serif; }
-main { padding: 16px; display: grid; gap: 14px; max-width: 1600px; margin: 0 auto; }
-header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; }
-h1 { font-size: 1.25rem; margin: 0; }
-h2 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 0 0 8px; }
+body { margin: 0; min-width: 1200px; background: var(--bg); color: var(--ink); font: 14px/1.45 system-ui, sans-serif; }
+a { color: var(--link); }
+a:focus-visible, button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+h1 { font-size: 1.15rem; margin: 0; }
+h2 { font-size: .75rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 8px; font-weight: 600; }
 .muted { color: var(--muted); }
+.small { font-size: .8rem; }
 .num { font-variant-numeric: tabular-nums; }
-.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
-.strip { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
-.meter { margin-bottom: 10px; }
-.meter:last-child { margin-bottom: 0; }
+.session { font-family: ui-monospace, monospace; font-size: .8rem; overflow-wrap: anywhere; }
 .meter .row { display: flex; justify-content: space-between; gap: 8px; }
-.bar { height: 8px; background: var(--track); border-radius: 4px; overflow: hidden; margin-top: 4px; }
-.bar > i { display: block; height: 100%; background: var(--accent); border-radius: 4px; transition: width .5s; }
-.bar.hot > i { background: var(--warn); }
-.lightrow { display: flex; align-items: center; gap: 14px; margin-bottom: 8px; }
-.lamp { flex: none; width: 56px; height: 56px; border-radius: 50%; background: var(--lamp); box-shadow: 0 0 18px 2px color-mix(in srgb, var(--lamp) 55%, transparent); transition: background .4s, box-shadow .4s; }
-.lamp.off { box-shadow: none; }
-.lamp.stale { outline: 3px dashed var(--ink); outline-offset: 3px; }
-.lword { font-size: 1.6rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
-.countdown { font-size: 1.3rem; font-weight: 700; margin-top: 4px; }
-.small { font-size: 0.8rem; }
-.stalenote { color: var(--warn); font-weight: 600; }
-.nh { border-color: var(--warn); background: var(--warn-bg); }
-#nh, .tokens ol, .retros ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
-.nh li { display: grid; gap: 2px; }
-.session { font-family: ui-monospace, monospace; font-weight: 600; }
-.board-wrap { overflow-x: auto; }
-.board { display: grid; grid-template-columns: repeat(9, minmax(150px, 1fr)); gap: 8px; min-width: 1400px; }
-.col { background: var(--track); border-radius: 8px; padding: 8px; min-height: 220px; }
-.col h2 { display: flex; justify-content: space-between; }
-.col.nhcol { background: var(--warn-bg); }
-.cards { display: grid; gap: 6px; align-content: start; }
-.card { position: relative; background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--epic, var(--line)); border-radius: 6px; padding: 6px 8px; }
-.card.epic { font-weight: 600; }
-.card .meta { display: flex; gap: 6px; font-size: 0.75rem; color: var(--muted); }
+.bar { height: 6px; background: var(--track); border-radius: 3px; overflow: hidden; margin-top: 3px; }
+.bar > i { display: block; height: 100%; background: var(--g3); border-radius: 3px; transition: width .5s; }
+
+/* status band: the dark theme's panel grey in every state and theme; only the lamp and the word carry the light's colour */
+.band { --band-bg: #1d1d1b; --band-ink: #ecebe7; --band-muted: #a6a59e;
+  --l-green: #5fd08f; --l-yellow: #f2c84b; --l-red: #f27a72; --l-off: #a6a59e;
+  background: var(--band-bg); border-bottom: 1px solid #34332f; color: var(--band-ink); --muted: var(--band-muted); --track: #2a2926; --g3: #95948d; }
+.band.lw-green { --lc: var(--l-green); } .band.lw-yellow { --lc: var(--l-yellow); }
+.band.lw-red { --lc: var(--l-red); } .band.lw-off { --lc: var(--l-off); }
+.band-in { max-width: 1700px; margin: 0 auto; padding: 14px 24px; display: grid; grid-template-columns: auto 1fr auto; gap: 12px 28px; align-items: center; }
+.word { display: flex; align-items: center; gap: 10px; }
+.lamp { display: inline-block; width: 22px; height: 22px; border-radius: 50%; background: var(--lc); flex: none; transition: background .4s; }
+.lamp.stale { background: transparent; border: 3px dashed var(--lc); }
+.word strong { font-size: 1.7rem; text-transform: uppercase; letter-spacing: .04em; color: var(--lc); }
+.why { display: grid; gap: 2px; }
+.meters { display: grid; grid-template-columns: 200px 200px; gap: 16px; }
+
+.top { max-width: 1700px; margin: 0 auto; padding: 12px 24px 0; display: flex; gap: 18px; align-items: center; }
+.top .switch { margin-left: auto; }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--warn); }
+.dot.live { background: var(--g3); }
+.ghnote { color: var(--warn); font-weight: 600; }
+.switch { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.switch button { font: inherit; font-size: .85rem; border: 0; background: var(--panel); color: var(--ink); padding: 4px 12px; cursor: pointer; }
+.switch button[aria-pressed="true"] { background: var(--ink); color: var(--panel); }
+main { max-width: 1700px; margin: 0 auto; padding: 14px 24px 28px; display: grid; gap: 16px; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+
+/* board: always nine columns, in the spine's order */
+.board { display: grid; grid-template-columns: var(--lanecol, ) repeat(9, minmax(0, 1fr)); gap: 0 8px; }
+.board.lanes { --lanecol: 170px; gap: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.hcell { font-size: .75rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; display: flex; justify-content: space-between; padding: 8px; }
+.hcell.nh { color: var(--warn); }
+.kanban .hcell { background: var(--sub); border-radius: 8px 8px 0 0; }
+.kanban .hcell.nh, .kanban .cell.nh { background: var(--warn-bg); }
+.kanban .cell { background: var(--sub); border-radius: 0 0 8px 8px; min-height: 340px; }
+.cell { padding: 8px; display: grid; gap: 6px; align-content: start; min-width: 0; }
+.lanes .hcell, .lanes .lane-name { background: var(--sub); }
+.lanes > * { border-bottom: 1px solid var(--line); }
+.lanes .cell { border-left: 1px solid var(--line); min-height: 70px; }
+.lanes .cell.nh { background: var(--warn-bg); }
+.lane-name { padding: 8px 10px; }
+.lane-name strong { display: block; }
+.lane-name .bar { margin-top: 6px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font-size: .9rem; position: relative; }
+.card.k-epic { font-weight: 600; }
+.card .meta { display: flex; gap: 6px; font-size: .72rem; color: var(--muted); }
 .card .kind { text-transform: uppercase; letter-spacing: .04em; }
-.card .run { font-family: ui-monospace, monospace; font-size: 0.72rem; color: var(--accent); overflow-wrap: anywhere; }
-.card.moved { box-shadow: 0 0 0 2px var(--accent); }
-.bottom { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
-.tokens li { display: grid; grid-template-columns: 1.5em 1fr auto; gap: 4px 8px; align-items: center; background: var(--panel); position: relative; }
-.tokens li .bar { grid-column: 2 / 4; margin: 0; height: 5px; }
-.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
-.dot.live { background: var(--ok); }
-a { color: var(--accent); }
-@media (prefers-reduced-motion: reduce) { .bar > i { transition: none; } }
+.card.nhc { border-color: var(--warn-line); box-shadow: inset 3px 0 var(--warn-line); }
+.card.moved { outline: 2px solid var(--ink); outline-offset: -1px; }
+.card .q { margin-top: 4px; font-weight: 600; }
+.card .q + .session { margin-top: 2px; }
+.bottom { display: grid; grid-template-columns: 1fr 1.4fr 1fr; gap: 16px; align-items: stretch; }
+.epics, .runs { display: grid; gap: 8px; }
+.runs { list-style: none; margin: 0; padding: 0; }
+.runs li { display: grid; grid-template-columns: 1.4em 1fr auto; gap: 2px 8px; }
+.runs .bar { grid-column: 2 / -1; height: 4px; margin: 0; }
+.lastrun p { margin: 0 0 6px; }
+.lastrun ul { margin: 0; padding-left: 18px; }
+@media (prefers-reduced-motion: reduce) { .bar > i, .lamp { transition: none; } }
 </style>
 </head>
 <body>
-<main>
-  <header>
-    <h1>Zeni factory</h1>
-    <span class="muted"><span id="dot" class="dot"></span> <span id="conn">connecting</span></span>
-    <span class="muted">Total tokens: <strong id="total" class="num">0</strong></span>
-    <span class="muted" id="frun"></span>
-    <strong id="ghnote" role="status"></strong>
-  </header>
-
-  <section class="strip">
-    <div class="panel" aria-labelledby="h-light">
-      <h2 id="h-light">Traffic light</h2>
-      <div class="lightrow">
-        <span id="lamp" class="lamp" aria-hidden="true"></span>
-        <div><div id="lword" class="lword" role="status">–</div><div id="lreason"></div></div>
-      </div>
-      <div id="lmeaning" class="muted"></div>
-      <div id="lcount" class="num countdown"></div>
-      <div id="lage" class="small muted"></div>
-      <div id="lslots" class="small muted"></div>
+<header class="band lw-off" id="band">
+  <div class="band-in">
+    <div class="word"><span id="lamp" class="lamp" aria-hidden="true"></span><strong id="lword" role="status">–</strong></div>
+    <div class="why">
+      <div><strong id="lreason"></strong><span id="lsep"></span><span id="lmeaning"></span> <strong id="lcount" class="num"></strong></div>
+      <div class="small" id="lslots"></div>
+      <div class="small muted"><span id="lage"></span> · <span id="total" class="num">0</span> weighted tokens<span id="frun"></span></div>
     </div>
-    <div class="panel" aria-labelledby="h-usage">
-      <h2 id="h-usage">Usage windows</h2>
+    <div class="meters">
       <div class="meter"><div class="row"><span>5-hour</span><span class="num" id="u5">–</span></div><div class="bar" id="u5bar"><i style="width:0"></i></div></div>
       <div class="meter"><div class="row"><span>Weekly</span><span class="num" id="uw">–</span></div><div class="bar" id="uwbar"><i style="width:0"></i></div></div>
     </div>
-    <div class="panel" aria-labelledby="h-epics">
-      <h2 id="h-epics">Epics</h2>
-      <div id="epics"></div>
-    </div>
-  </section>
-
-  <section class="panel" id="nhpanel" aria-labelledby="h-nh">
-    <h2 id="h-nh">Needs you</h2>
-    <ul id="nh" aria-live="polite"></ul>
-  </section>
-
-  <section class="board-wrap" aria-label="Spine board"><div class="board" id="board"></div></section>
-
-  <section class="bottom">
-    <div class="panel tokens" aria-labelledby="h-tok">
-      <h2 id="h-tok">Top 10 token users</h2>
-      <ol id="tok"></ol>
-    </div>
-    <div class="panel retros" aria-labelledby="h-retro">
-      <h2 id="h-retro">Last factory run</h2>
-      <div id="retros" class="muted">No run has ended yet.</div>
-    </div>
-  </section>
+  </div>
+</header>
+<div class="top">
+  <h1>Zeni factory</h1>
+  <span class="muted small"><span id="dot" class="dot"></span> <span id="conn">connecting</span></span>
+  <span class="ghnote small" id="ghnote" role="status"></span>
+  <span class="switch" role="group" aria-label="Board view">
+    <button type="button" data-mode="kanban">Kanban</button><button type="button" data-mode="lanes">Lanes by epic</button>
+  </span>
+</div>
+<main>
+  <section aria-label="Spine board" id="boardwrap"></section>
+  <div class="bottom">
+    <section class="panel" aria-labelledby="h-epics"><h2 id="h-epics">Epics</h2><div class="epics" id="epics"></div></section>
+    <section class="panel" aria-labelledby="h-tok"><h2 id="h-tok">Top 10 token users</h2><ol class="runs" id="tok"></ol></section>
+    <section class="panel" aria-labelledby="h-run"><h2 id="h-run">Factory run</h2><div class="lastrun" id="retros"></div></section>
+  </div>
 </main>
-<script>
-const STATES = ["intake", "shaping", "ready", "building", "verifying", "reviewing", "merged", "released", "needs-human"];
-const LABEL = { "needs-human": "needs human" };
-const ACTIVE = ["building", "verifying", "reviewing", "needs-human"]; // states that hold a run slot
+<script type="module">
+import { ACTIVE, MODE_KEY, boardModel, lightView, readMode, safeHref, slotsLine } from "/page.js";
+
+// Theme: ?theme=light|dark, else the system's, following its changes.
+const themeParam = new URLSearchParams(location.search).get("theme");
+const dark = matchMedia("(prefers-color-scheme: dark)");
+const setTheme = () => (document.documentElement.dataset.theme = themeParam ?? (dark.matches ? "dark" : "light"));
+setTheme();
+dark.addEventListener("change", setTheme);
+
 const $ = (id) => document.getElementById(id);
-const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
-const fmt = (n) => n == null ? "unknown" : n.toLocaleString("en-US"); // null: the run's transcript is missing
+function el(tag, cls, ...kids) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  for (const k of kids) if (k != null) e.append(k);
+  return e;
+}
+const link = (text, href) => { const a = el("a", null, text); a.href = href; return a; };
+const fmt = (n) => (n == null ? "unknown" : n.toLocaleString("en-US")); // null: the run's transcript is missing
+const kfmt = (n) => (n == null ? "unknown" : n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n));
+const ago = (iso) => {
+  const m = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60e3)), d = Math.floor(m / 1440), h = Math.floor((m % 1440) / 60), r = m % 60;
+  return d ? `${d} d ${h} h` : h ? `${h} h ${r} m` : `${r} m`;
+};
+const fill = (pct) => { const i = el("i"); i.style.width = `${pct}%`; return el("div", "bar", i); };
+const setText = (id, t) => { if ($(id).textContent !== t) $(id).textContent = t; };
 const reduced = matchMedia("(prefers-reduced-motion: reduce)");
 
-// Columns, built once; cards move between them.
-const cols = {};
-for (const s of STATES) {
-  const c = el("div", "col" + (s === "needs-human" ? " nhcol" : ""));
-  const h = el("h2"); h.append(el("span", null, LABEL[s] ?? s), el("span", "num", "0"));
-  const list = el("div", "cards");
-  c.append(h, list);
-  $("board").append(c);
-  cols[s] = { count: h.lastChild, list };
+let snap = null;
+let mode = readMode(localStorage);
+for (const b of document.querySelectorAll(".switch button")) {
+  b.onclick = () => {
+    mode = b.dataset.mode;
+    try { localStorage.setItem(MODE_KEY, mode); } catch {}
+    if (snap) renderBoard();
+    pressed();
+  };
 }
+const pressed = () => { for (const b of document.querySelectorAll(".switch button")) b.setAttribute("aria-pressed", String(b.dataset.mode === mode)); };
+pressed();
 
 // FLIP: measure, change the DOM, then play each moved element from its old place.
 function flip(elements, mutate) {
@@ -158,137 +182,102 @@ function flip(elements, mutate) {
   }
 }
 
+// One DOM node per card, kept across renders so it can fly to its new cell.
 const cards = new Map();
-function renderBoard(snap) {
-  const epicColor = Object.fromEntries(snap.epics.map((e, i) => [e.id, `var(--e${i % 4})`]));
-  // Epics first, then by number.
-  const items = snap.items.slice().sort((a, b) => (b.kind === "epic") - (a.kind === "epic") || (a.number ?? 0) - (b.number ?? 0));
+function cardNode(it) {
+  let c = cards.get(it.id);
+  if (!c) { c = el("article"); cards.set(it.id, c); }
+  const moved = c.dataset.state && c.dataset.state !== it.state;
+  c.dataset.state = it.state;
+  c.className = `card k-${it.kind}${it.state === "needs-human" ? " nhc" : ""}${moved ? " moved" : ""}`;
+  if (moved) setTimeout(() => c.classList.remove("moved"), 1500);
+  const parts = [el("div", "meta", el("span", "kind", it.kind), it.number != null ? el("span", "num", `#${it.number}`) : null), el("div", "t", it.title)];
+  if (it.ask) {
+    // The needs-human column is the only place a question shows.
+    parts.push(el("div", "q", it.ask.question), el("div", "session muted", "open ", el("strong", null, it.ask.session)));
+    if (it.ask.href) parts.push(link("Latest comment", it.ask.href));
+  } else if (it.session && it.kind === "ticket" && ACTIVE.includes(it.state)) parts.push(el("div", "session muted", it.session));
+  c.replaceChildren(...parts);
+  return c;
+}
+
+function renderBoard() {
+  const m = boardModel(snap, mode);
+  const nh = (s) => (s === "needs-human" ? " nh" : "");
+  const heads = m.heads.map((h) => el("div", `hcell${nh(h.state)}`, el("span", null, h.label), el("span", "num", String(h.count))));
+  const cells = (row) => row.cells.map((c) => el("div", `cell${nh(c.state)}`, ...c.items.map(cardNode)));
   flip(() => document.querySelectorAll(".card"), () => {
-    const seen = new Set();
-    for (const it of items) {
-      seen.add(it.id);
-      let c = cards.get(it.id);
-      if (!c) { c = el("article", "card"); cards.set(it.id, c); }
-      const moved = c.dataset.state && c.dataset.state !== it.state;
-      c.dataset.state = it.state;
-      c.className = "card" + (it.kind === "epic" ? " epic" : "") + (moved ? " moved" : "");
-      if (moved) setTimeout(() => c.classList.remove("moved"), 1500);
-      c.style.setProperty("--epic", epicColor[it.epic ?? it.id] ?? "var(--line)");
-      const meta = el("div", "meta");
-      meta.append(el("span", "kind", it.kind), el("span", "num", it.number != null ? `#${it.number}` : ""));
-      const parts = [meta, el("div", null, it.title)];
-      if (it.session && it.kind === "ticket" && ACTIVE.includes(it.state)) parts.push(el("div", "run", it.session));
-      c.replaceChildren(...parts);
-      cols[it.state].list.append(c); // append moves an existing node
-    }
-    for (const [id, c] of cards) if (!seen.has(id)) { c.remove(); cards.delete(id); }
-    for (const s of STATES) cols[s].count.textContent = cols[s].list.children.length;
+    const seen = new Set(m.rows.flatMap((r) => r.cells.flatMap((c) => c.items.map((i) => i.id))));
+    for (const id of cards.keys()) if (!seen.has(id)) cards.delete(id);
+    const board = mode === "lanes"
+      ? el("div", "board lanes", el("div", "hcell", "Epic"), ...heads, ...m.rows.flatMap((r) => [
+        el("div", "lane-name", el("strong", null, r.epic?.title ?? "No epic"),
+          el("span", "small muted", r.epic ? `${r.epic.id} · ${r.epic.done} / ${r.epic.total} merged` : `${r.cells.reduce((n, c) => n + c.items.length, 0)} items`),
+          r.epic ? fill(r.epic.total ? (100 * r.epic.done) / r.epic.total : 0) : null),
+        ...cells(r)]))
+      : el("div", "board kanban", ...heads, ...cells(m.rows[0]));
+    $("boardwrap").replaceChildren(board);
   });
 }
 
 const rows = new Map();
-function renderTokens(snap) {
+function renderTokens() {
   const max = Math.max(1, ...snap.topRuns.map((r) => r.tokens ?? 0));
   flip(() => $("tok").children, () => {
     const keep = new Set(snap.topRuns.map((r) => r.run));
-    for (const [id, r] of rows) if (!keep.has(id)) { r.remove(); rows.delete(id); }
+    for (const id of rows.keys()) if (!keep.has(id)) rows.delete(id);
     const ordered = snap.topRuns.map((r, i) => {
       let li = rows.get(r.run);
       if (!li) { li = el("li"); rows.set(r.run, li); }
-      const bar = el("div", "bar"); const fill = el("i"); fill.style.width = `${(100 * (r.tokens ?? 0)) / max}%`; bar.append(fill);
-      const who = el("span"); who.append(el("span", "session", r.session));
-      if (r.model) who.append(" ", el("span", "muted", r.model));
-      li.replaceChildren(el("span", "muted num", `${i + 1}`), who, el("span", "num", fmt(r.tokens)), bar);
+      li.replaceChildren(el("span", "muted num", `${i + 1}`), el("span", null, el("span", "session", r.session), r.model ? el("span", "muted small", ` ${r.model}`) : null),
+        el("span", "num", kfmt(r.tokens)), fill((100 * (r.tokens ?? 0)) / max));
+      li.title = fmt(r.tokens);
       return li;
     });
     $("tok").replaceChildren(...(ordered.length ? ordered : [el("li", "muted", "No runs yet.")]));
   });
 }
 
-const MEANING = {
-  green: "New runs may start.",
-  yellow: "Nothing new starts; each run finishes its station or checkpoints.",
-  red: "Everything checkpoints and stops.",
-  off: "Stopped until you run the start skill.",
-};
-const STALE_MS = 45 * 60 * 1000; // fail safe: an older light counts as yellow
-const setText = (id, t) => { if ($(id).textContent !== t) $(id).textContent = t; };
-const dur = (ms) => {
-  const s = Math.max(0, Math.round(ms / 1000)), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = String(s % 60).padStart(2, "0");
-  return h ? `${h}:${String(m).padStart(2, "0")}:${r}` : `${m}:${r}`;
-};
-let light = null;
-// Redrawn every second as well as on each event: a light goes stale with no event at all.
+// Redrawn every second as well as on each change: a light goes stale with no event at all.
 function drawLight() {
-  if (!light) { setText("lword", "no light"); setText("lmeaning", "The watchdog has not written a light yet."); return; }
-  const age = Date.now() - Date.parse(light.set_at);
-  const stale = !(age <= STALE_MS); // a bad set_at counts as stale too
-  const word = stale ? "yellow" : light.light;
-  $("lamp").style.setProperty("--lamp", `var(--l-${word})`);
-  $("lamp").className = "lamp" + (word === "off" ? " off" : "") + (stale ? " stale" : "");
-  setText("lword", stale ? "yellow (stale)" : word);
-  setText("lreason", stale ? `Last light: ${light.light}, ${light.reason}` : light.reason);
-  setText("lmeaning", MEANING[word]);
-  const showCount = (word === "red" || word === "off") && light.resume_at;
-  setText("lcount", showCount ? `resumes in ${dur(Date.parse(light.resume_at) - Date.now())}` : "");
-  $("lcount").title = showCount ? `at ${new Date(light.resume_at).toLocaleTimeString()}` : "";
-  setText("lage", stale ? `Not updated for ${Math.floor(age / 60000)} min: the watchdog may be down, so it counts as yellow.` : `Set ${dur(age)} ago`);
-  $("lage").className = stale ? "small stalenote" : "small muted";
+  const v = lightView(snap?.light ?? null, Date.now());
+  $("band").className = `band lw-${v.word}`;
+  $("lamp").className = "lamp" + (v.stale ? " stale" : "");
+  setText("lword", v.label);
+  setText("lreason", v.reason);
+  setText("lsep", v.reason ? " — " : "");
+  setText("lmeaning", v.meaning);
+  setText("lcount", v.resume);
+  $("lcount").title = v.resume ? `at ${new Date(snap.light.resume_at).toLocaleTimeString()}` : "";
+  setText("lage", v.age || "No light yet");
 }
 setInterval(drawLight, 1000);
 
 function meter(id, w) {
   $(id).textContent = w ? `${w.pct}%` : "–";
   $(id + "bar").firstChild.style.width = `${w?.pct ?? 0}%`;
-  $(id + "bar").classList.toggle("hot", (w?.pct ?? 0) >= 80);
 }
 
-function safeHref(h) {
-  try { return ["http:", "https:"].includes(new URL(h, location.href).protocol) ? h : null; } catch { return null; }
-}
-
-function render(snap) {
-  $("total").textContent = fmt(snap.totalTokens);
-  $("ghnote").textContent = snap.github?.ok === false ? `GitHub unavailable (${snap.github.error}); showing the last state` : "";
-  $("frun").textContent = snap.factoryRun ? `Factory run ${snap.factoryRun.id} in progress` + (snap.factoryRun.started_at ? `, started ${new Date(snap.factoryRun.started_at).toLocaleString()}` : "") : "";
-  meter("u5", snap.light?.five_hour);
-  meter("uw", snap.light?.weekly);
-  light = snap.light;
+function render(s) {
+  snap = s;
   drawLight();
-  const running = snap.items.filter((i) => i.kind === "ticket" && ACTIVE.includes(i.state)).length;
-  setText("lslots", light ? `${running} of ${light.slots} run slots in use (weekly pace ${light.pace.toFixed(2)})` + (snap.sessions.some((x) => x.running) ? ` · sessions: ${snap.sessions.filter((x) => x.running).map((x) => x.context_pct == null ? x.name : `${x.name} ${x.context_pct}%`).join(", ")}` : !snap.sessions.length && light.sessions.length ? ` · sessions: ${light.sessions.join(", ")}` : "") : "");
-  $("epics").replaceChildren(...snap.epics.map((e, i) => {
-    const m = el("div", "meter");
-    const row = el("div", "row"); row.append(el("span", null, e.title), el("span", "num muted", `${e.done} / ${e.total} merged`));
-    const bar = el("div", "bar"); const fill = el("i"); fill.style.width = `${e.total ? (100 * e.done) / e.total : 0}%`; fill.style.background = `var(--e${i % 4})`; bar.append(fill);
-    m.append(row, bar); return m;
-  }));
-  $("nhpanel").classList.toggle("nh", snap.needsHuman.length > 0);
-  $("nh").replaceChildren(...(snap.needsHuman.length ? snap.needsHuman.map((n) => {
-    const li = el("li");
-    const who = el("div"); who.append("Open session ", el("span", "session", n.session), " in the Claude app");
-    li.append(who, el("div", null, n.question));
-    const href = safeHref(n.href);
-    if (href) { const a = el("a", null, "Latest comment"); a.href = href; li.append(a); }
-    return li;
-  }) : [el("li", "muted", "Nothing needs you.")]));
-  const r = snap.lastEndedRun;
-  if (r) {
-    const box = el("div");
-    box.append(el("div", null, `Run ${r.id} ended ${new Date(r.ended_at).toLocaleTimeString()}`));
-    const ul = el("ul");
-    for (const x of r.retros) {
-      const li = el("li"); const href = safeHref(x.href);
-      if (href) { const a = el("a", null, x.title); a.href = href; li.append(a); } else li.append(x.title);
-      ul.append(li);
-    }
-    if (!r.retros.length) ul.append(el("li", "muted", "No retros."));
-    box.append(ul);
-    $("retros").replaceChildren(box);
-    $("retros").className = "";
-  } else { $("retros").textContent = "No run has ended yet."; $("retros").className = "muted"; }
-  renderBoard(snap);
-  renderTokens(snap);
+  setText("lslots", slotsLine(s));
+  setText("total", fmt(s.totalTokens));
+  setText("frun", s.factoryRun ? ` · factory run ${s.factoryRun.id}` : "");
+  setText("ghnote", s.github?.ok === false ? `GitHub unavailable (${s.github.error}); showing the last state` : "");
+  meter("u5", s.light?.five_hour);
+  meter("uw", s.light?.weekly);
+  $("epics").replaceChildren(...(s.epics.length ? s.epics.map((e) =>
+    el("div", "meter", el("div", "row", el("span", null, e.title), el("span", "num muted", `${e.done} / ${e.total} merged`)), fill(e.total ? (100 * e.done) / e.total : 0)))
+    : [el("p", "muted", "No epics yet.")]));
+  const f = s.factoryRun, r = s.lastEndedRun;
+  const last = r ? el("div", null, el("p", "muted", `Last run ${r.id} ended ${ago(r.ended_at)} ago`),
+    el("ul", null, ...(r.retros.length ? r.retros.map((x) => { const h = safeHref(x.href); return el("li", null, h ? link(x.title, h) : x.title); }) : [el("li", "muted", "No retros.")])))
+    : el("p", "muted", "No run has ended yet.");
+  $("retros").replaceChildren(
+    el("p", null, f ? `Factory run ${f.id} in progress` + (f.started_at ? `, started ${ago(f.started_at)} ago` : "") : "No factory run in progress."), last);
+  renderBoard();
+  renderTokens();
 }
 
 const es = new EventSource("/api/stream");

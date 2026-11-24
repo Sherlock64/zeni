@@ -109,6 +109,10 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
     return res.end(fs.readFileSync(path.join(dir, "index.html"))); // read per request so edits show on reload
   }
+  if (url.pathname === "/page.js") {
+    res.writeHead(200, { "content-type": "text/javascript; charset=utf-8", "cache-control": "no-store" });
+    return res.end(fs.readFileSync(path.join(dir, "page.js")));
+  }
   const digest = url.pathname.match(/^\/digests\/([\w.-]+\.html)$/); // a plain file name only, never a path
   if (digest && !SIMULATE) {
     const html = (() => {
