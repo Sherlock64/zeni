@@ -1,21 +1,24 @@
 // Factory board server: tails the events file, folds it into a snapshot and
 // pushes every new snapshot to open pages over server-sent events.
-// Without --simulate it also runs the GitHub collector (collect.js) every COLLECT_MS.
-// Usage: node server.js [--simulate]   (env: PORT, EVENTS, GH, COLLECT_MS; SIM_EVENTS with --simulate)
+// Without --simulate it also runs the collector (collect.js, runs.js) every COLLECT_MS.
+// Usage: node server.js [--simulate]   (env: PORT, EVENTS, FACTORY, PROJECTS, GH, COLLECT_MS; SIM_EVENTS with --simulate)
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import { fork } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { defaultEvents, simEvents } from "./paths.js";
+import { defaultEvents, factoryDir, simEvents } from "./paths.js";
 import { apply, empty, view } from "./state.js";
 import { diff, fetchGitHub } from "./collect.js";
+import { defaultProjects, diffRuns, readRuns } from "./runs.js";
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT ?? 4317);
 const SIMULATE = process.argv.includes("--simulate");
 // With --simulate the board shows the simulator's own file, so the real one is never touched.
 const EVENTS = path.resolve(SIMULATE ? process.env.SIM_EVENTS ?? simEvents(dir) : process.env.EVENTS ?? defaultEvents(dir));
+const FACTORY = path.resolve(process.env.FACTORY ?? factoryDir(dir));
+const PROJECTS = process.env.PROJECTS ?? defaultProjects();
 
 let state = empty();
 let offset = 0;
@@ -65,14 +68,23 @@ let collecting = false;
 async function collect() {
   if (collecting) return; // a slow gh call must not overlap the next tick
   collecting = true;
+  const append = (events) => {
+    if (events.length) fs.appendFileSync(EVENTS, events.map((e) => JSON.stringify(e) + "\n").join(""));
+  };
   try {
     const board = await fetchGitHub(process.env.GH ?? "gh", dir);
     readNew(); // diff against the file as it is now
-    const events = diff(state, board, new Date().toISOString());
-    if (events.length) fs.appendFileSync(EVENTS, events.map((e) => JSON.stringify(e) + "\n").join(""));
+    append(diff(state, board, new Date().toISOString()));
     github = { ok: true, error: null, checked_at: new Date().toISOString() };
   } catch (err) {
     github = { ok: false, error: err.message, checked_at: new Date().toISOString() };
+  }
+  try {
+    const runs = await readRuns(FACTORY, PROJECTS);
+    readNew();
+    append(diffRuns(state, runs, new Date().toISOString()));
+  } catch (err) {
+    console.warn(`runs collect failed: ${err.message}`);
   } finally {
     collecting = false;
   }
@@ -96,6 +108,20 @@ const server = http.createServer((req, res) => {
   if (url.pathname === "/" || url.pathname === "/index.html") {
     res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
     return res.end(fs.readFileSync(path.join(dir, "index.html"))); // read per request so edits show on reload
+  }
+  const digest = url.pathname.match(/^\/digests\/([\w.-]+\.html)$/); // a plain file name only, never a path
+  if (digest && !SIMULATE) {
+    const html = (() => {
+      try {
+        return fs.readFileSync(path.join(FACTORY, "digests", digest[1]));
+      } catch {
+        return null;
+      }
+    })();
+    if (html) {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+      return res.end(html);
+    }
   }
   if (url.pathname === "/api/snapshot") {
     res.writeHead(200, { "content-type": "application/json" });
