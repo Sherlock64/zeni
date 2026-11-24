@@ -49,6 +49,7 @@ One JSON object per line. Every event has `v: 1`, `ts` (ISO 8601 time) and `type
 | `item.remove` | `id` | Drop a card (closed, merged into another). |
 | `run.tokens` | `run`, `session` (Claude session name), `tokens` (integer total so far), `item?`, `station?` | A run's token total. The newest run of an item is its current session. |
 | `light` | `light`, `reason`, `set_at`, `resume_at` (null unless red), `slots` (0-3), `pace`, `five_hour: {pct, resets_at?}`, `weekly: {pct, resets_at?}`, `sessions?` | The watchdog's whole state, the traffic light (below). Each one replaces the last. |
+| `sessions` | `sessions: [{name, running, context_pct}]` (`context_pct` 0-100 or null) | The watchdog's linked sessions with each one's context window %. Each one replaces the last; the board shows them beside the run slots. |
 | `needs_human.open` | `id`, `session`, `question`, `item?` | An eject: which Claude session to open, and the one-line question. |
 | `needs_human.clear` | `id` | The human answered. |
 | `factory_run.start` | `id` | A factory run began. |
@@ -58,7 +59,16 @@ One JSON object per line. Every event has `v: 1`, `ts` (ISO 8601 time) and `type
 
 ### The traffic light
 
-The watchdog is stateless: each check it writes one `light` event, the word plus what the board shows beside it. Runs read only `light` at each pivot and decide for themselves what it means for them. The real watchdog may keep it as a small light file too; the event's fields are that file's content.
+`light.js` computes it. The watchdog (`.claude/factory/watchdog.md`) and factory start each make one call per reading, passing what only the Claude app knows on stdin:
+
+```bash
+node tools/factory-board/light.js --by watchdog <<'EOF'
+{"five_hour": {"pct": 41, "resets_at": "2026-11-24T05:10:00Z"}, "weekly": {"pct": 22, "resets_at": "2026-11-30T23:00:00Z"},
+ "sessions": [{"name": "t141-light-script", "running": true, "context_pct": 34}]}
+EOF
+```
+
+It reads the last light file, writes `$(git rev-parse --git-common-dir)/factory/light.json` atomically (temp file, then rename), appends one `light` and one `sessions` event, and prints `{"light", "reason", "wake_s"}` (seconds to the next watchdog wake: 1200 green, 600 yellow, the reset on red, clamped to 60-3600; `null` when off). Each window also records its own `light`, which holds until that window resets. Missing or malformed usage writes `yellow`, "usage unavailable". With `--by watchdog` an `off` light is left as it is; `--by start` turns it back on and ends a drain. `light.check.js` covers the worked examples in epic #131. Runs read only `light` at each pivot and decide for themselves what it means for them.
 
 | `light` | Set when | Meaning |
 |---|---|---|
@@ -69,9 +79,9 @@ The watchdog is stateless: each check it writes one `light` event, the word plus
 
 - Only the 5-hour window sets the light. It moves toward green only at a window reset, so it never flaps, and it leaves red only when both windows allow it. `reason` names the window that set it ("5-hour 82%").
 - The weekly window paces run slots instead: `pace` = weekly used ÷ the straight-line target (0% at the week's start to 97% at its reset). Pace up to 1.0 gives 3 slots, over 1.0 gives 2, over 1.1 gives 1, over 1.2 gives 0. At weekly 97%+ the light is red until the weekly reset.
-- Shutdown: "now" writes red, then off; "drain" writes yellow until no run is in flight, then off.
+- Shutdown: "now" writes off; "drain" writes yellow with `draining: true`, and the script keeps it no greener than yellow until no session other than `watchdog` is running, then writes off.
 - Fail safe: a light whose `set_at` is more than 45 minutes old counts as yellow. The board shows it as "yellow (stale)" with the last real word.
-- `sessions` lists the Claude session names the watchdog sees; the board shows them beside the run slots.
+- `sessions` in a `light` event lists the running sessions' names; the board shows the `sessions` event's list with context % when it has one.
 
 "Factory run" is not defined yet; it is only `factory_run.start` / `.end` with a retro list, so it is easy to change once the spine settles it. Retro links must be `http(s)` or relative; anything else shows as plain text.
 

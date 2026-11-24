@@ -252,7 +252,7 @@ function render(snap) {
   light = snap.light;
   drawLight();
   const running = snap.items.filter((i) => i.kind === "ticket" && ACTIVE.includes(i.state)).length;
-  setText("lslots", light ? `${running} of ${light.slots} run slots in use (weekly pace ${light.pace.toFixed(2)})` + (light.sessions.length ? ` · sessions: ${light.sessions.join(", ")}` : "") : "");
+  setText("lslots", light ? `${running} of ${light.slots} run slots in use (weekly pace ${light.pace.toFixed(2)})` + (snap.sessions.length ? ` · sessions: ${snap.sessions.map((x) => x.context_pct == null ? x.name : `${x.name} ${x.context_pct}%`).join(", ")}` : light.sessions.length ? ` · sessions: ${light.sessions.join(", ")}` : "") : "");
   $("epics").replaceChildren(...snap.epics.map((e, i) => {
     const m = el("div", "meter");
     const row = el("div", "row"); row.append(el("span", null, e.title), el("span", "num muted", `${e.done} / ${e.total} merged`));
