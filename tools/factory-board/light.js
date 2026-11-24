@@ -46,8 +46,9 @@ export function decide({ input, last = null, now = Date.now(), by = "watchdog" }
 
   const elapsed = WEEK - (Date.parse(week.resets_at) - now);
   const target = (97 * elapsed) / WEEK;
-  const pace = elapsed < H ? 0 : Math.round((100 * week.pct) / target) / 100;
-  const slots = pace <= 1.0 ? 3 : pace <= 1.1 ? 2 : pace <= 1.2 ? 1 : 0;
+  const raw = elapsed < H ? 0 : week.pct / target; // slots from the unrounded pace, so 1.004 is over 1.0
+  const pace = Math.round(100 * raw) / 100;
+  const slots = raw <= 1.0 ? 3 : raw <= 1.1 ? 2 : raw <= 1.2 ? 1 : 0;
 
   const fiveNow = five.pct >= 90 ? "red" : five.pct >= 70 ? "yellow" : "green";
   five.light = held(fiveNow, last?.five_hour, now);

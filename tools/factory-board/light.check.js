@@ -30,6 +30,8 @@ test("first hour after the weekly reset: pace 0, 3 slots", () => {
 test("slots step down with pace", () => {
   const slots = (week) => decide({ input: usage(10, 2 * H, week, 84 * H), now }).slots; // target 48.5
   assert.deepEqual([slots(48), slots(50), slots(54), slots(59)], [3, 2, 1, 0]);
+  // just over a threshold rounds to it but still loses the slot
+  assert.deepEqual([slots(48.7), slots(53.37), slots(58.22)], [2, 1, 0]);
 });
 
 test("5-hour sets green, yellow, red; red resumes at its reset", () => {
