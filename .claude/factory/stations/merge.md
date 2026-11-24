@@ -13,7 +13,7 @@
 ## Merging
 
 - `gh pr merge <n> --merge`. Keep the merge commit; release notes and the board read PR numbers from it.
-- Delete the branch and remove the ticket's worktree.
+- Delete the branch, then archive each finished run session of the ticket (`list_sessions` with `linked: true`, then `archive_session`), so the app has no old folders to hand out. Archiving removes a clean worktree. It keeps one with uncommitted changes: list `git worktree list` paths under `.claude/worktrees/t<n>-*`, and for each left, name it and its `git status --short` in your run comment for the user to remove; never `--force`.
 - List other open PRs that now conflict with `main` in your run comment; the dispatcher sends them back to their builders.
 
 ## Eject when

@@ -124,6 +124,7 @@ fast() {
   step "cargo clippy --locked --all-targets -- -D warnings" bash -c 'cd src-tauri && cargo clippy --locked --all-targets -- -D warnings'
   local board=(tools/factory-board/*.check.js)
   [[ -e ${board[0]} ]] && step "factory board self-checks" node --test "${board[@]}"
+  step "worktree check self-test" .claude/factory/tools/worktree-check.test.sh
   return 0
 }
 
