@@ -88,6 +88,7 @@ export function slotsLine(snap) {
 
 // Page 2 (#144). Durations in their two largest units: "2 d 4 h", "6 m 40 s".
 export const dur = (ms) => {
+  if (ms == null) return "—"; // no time yet
   const s = Math.max(0, Math.round(ms / 1000)), d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
   return d ? `${d} d ${h} h` : h ? `${h} h ${m} m` : m ? `${m} m ${r} s` : `${r} s`;
 };

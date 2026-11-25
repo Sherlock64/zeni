@@ -368,8 +368,9 @@ function renderPage2(p) {
     segs.setAttribute("role", "img");
     segs.setAttribute("aria-label", t.segs.map((g) => `${LABEL[g.state] ?? g.state} ${dur(g.ms)}`).join(", "));
     segs.title = segs.getAttribute("aria-label");
-    return el("li", null, el("span", "k", `${t.id} ${t.title}`), el("span", "v num", `${LABEL[t.state] ?? t.state} ${dur(t.current_ms)}`), segs,
-      el("span", "small muted", `total ${dur(t.segs.reduce((n, g) => n + g.ms, 0))}`));
+    const head = [el("span", "k", `${t.id} ${t.title}`), el("span", "v num", `${LABEL[t.state] ?? t.state} ${dur(t.current_ms)}`)];
+    // No history yet: no bar, no total.
+    return t.segs.length ? el("li", null, ...head, segs, el("span", "small muted", `total ${dur(t.segs.reduce((n, g) => n + g.ms, 0))}`)) : el("li", null, ...head);
   })) : empty("No ticket in flight."));
   $("cycle").replaceChildren(p.cycle.length ? bars(p.cycle.map((c) => [`${c.title} (open)`, c.ms]), Math.max(...p.cycle.map((c) => c.ms)), dur) : empty("No open epic."));
   const d = p.doors;
