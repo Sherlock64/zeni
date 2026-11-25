@@ -11,6 +11,7 @@
   --link: #2858b8; --focus: #2858b8;
   --warn: #9a4a07; --warn-bg: #fff1e0; --warn-line: #c27a36;
   --g1: #d6d5cf; --g2: #a9a8a1; --g3: #6f6e68;
+  --chart-yellow: #8a6400; --chart-red: #c0322a;
   color-scheme: light;
 }
 [data-theme="dark"] {
@@ -18,6 +19,7 @@
   --link: #8fb1f5; --focus: #8fb1f5;
   --warn: #f4b072; --warn-bg: #3a2914; --warn-line: #b8743a;
   --g1: #3d3c38; --g2: #5f5e58; --g3: #95948d;
+  --chart-yellow: #f2c84b; --chart-red: #f27a72;
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
@@ -116,6 +118,12 @@ main { max-width: 1700px; margin: 0 auto; padding: 14px 24px 28px; display: grid
 .streak { display: inline-flex; gap: 2px; vertical-align: middle; }
 .streak i { width: 8px; height: 12px; border-radius: 2px; background: var(--track); }
 .streak i.on { background: var(--g3); }
+.chart svg { width: 100%; height: 170px; display: block; overflow: visible; }
+.chart svg * { vector-effect: non-scaling-stroke; }
+.chart .series { fill: none; stroke: var(--ink); stroke-width: 2.5; }
+.chart .target { stroke: var(--g3); stroke-width: 1.5; stroke-dasharray: 5 4; }
+.chart .limit { stroke: var(--chart-yellow); stroke-width: 1; stroke-dasharray: 3 3; }
+.chart .limit.hot { stroke: var(--chart-red); }
 @media (prefers-reduced-motion: reduce) { .bar > i, .lamp { transition: none; } }
 </style>
 </head>
@@ -162,9 +170,20 @@ main { max-width: 1700px; margin: 0 auto; padding: 14px 24px 28px; display: grid
     <section class="p2sec" style="--span: 6" aria-labelledby="h-cyc"><h2 id="h-cyc">Cycle time per epic</h2><div id="cycle"></div></section>
     <section class="p2sec" style="--span: 6" aria-labelledby="h-doors"><h2 id="h-doors">Doors merged since the last tag</h2><div id="doors"></div></section>
   </div>
+  <h2 class="band-title">Cost and usage</h2>
+  <div class="p2row">
+    <section class="p2sec" style="--span: 6" aria-labelledby="h-wk"><h2 id="h-wk">Weekly usage against target</h2><div id="weekly"></div></section>
+    <section class="p2sec" style="--span: 6" aria-labelledby="h-5h"><h2 id="h-5h">5-hour window</h2><div id="five"></div></section>
+  </div>
+  <div class="p2row">
+    <section class="p2sec" style="--span: 3" aria-labelledby="h-tt"><h2 id="h-tt">Weighted tokens per ticket</h2><div id="tok-ticket"></div></section>
+    <section class="p2sec" style="--span: 3" aria-labelledby="h-ts"><h2 id="h-ts">Per station</h2><div id="tok-station"></div></section>
+    <section class="p2sec" style="--span: 3" aria-labelledby="h-tm"><h2 id="h-tm">Per model</h2><div id="tok-model"></div></section>
+    <section class="p2sec" style="--span: 3" aria-labelledby="h-ch"><h2 id="h-ch">Cache hits per station</h2><div id="cache"></div></section>
+  </div>
 </main>
 <script type="module">
-import { ACTIVE, LABEL, MODE_KEY, boardModel, dur, lightView, page2Tiles, readMode, safeHref, slotsLine } from "/page.js";
+import { ACTIVE, LABEL, MODE_KEY, boardModel, dur, lightView, page2Tiles, readMode, usageChart, safeHref, slotsLine } from "/page.js";
 
 // Theme: ?theme=light|dark, else the system's, following its changes.
 const themeParam = new URLSearchParams(location.search).get("theme");
@@ -358,6 +377,24 @@ function renderPage2(p) {
   const rows = d ? Object.entries(d.counts).filter(([k, v]) => k !== "unlabelled" || v).map(([k, v]) => [k === "unlabelled" ? "unlabelled" : `door:${k}`, v]) : [];
   $("doors").replaceChildren(!d ? empty("No tag or merge data yet.") : !d.prs.length ? empty(`Nothing merged${d.tag ? ` since ${d.tag}` : ""}.`)
     : bars(rows, Math.max(...rows.map((r) => r[1])), String));
+  const left = (w) => `resets in ${dur(Date.parse(w.end) - Date.now())}`;
+  $("weekly").replaceChildren(...(p.weekly ? [chart(p.weekly, "weekly", `Weekly usage ${p.weekly.pct}% against the straight-line target`),
+    el("p", "small muted", `Dashed: the straight line to 97% at the reset · ${p.weekly.pct}% used, pace ${p.weekly.pace.toFixed(2)} · ${left(p.weekly)}`)] : [empty("No weekly usage reading yet.")]));
+  $("five").replaceChildren(...(p.fiveHour ? [chart(p.fiveHour, "five", `5-hour window use ${p.fiveHour.pct}%, with the 70% and 90% lines`),
+    el("p", "small muted", `Dotted: 70% (yellow) and 90% (red) · ${p.fiveHour.pct}% used · ${left(p.fiveHour)}`)] : [empty("No 5-hour usage reading yet.")]));
+  const tok = (rows, label) => rows.length ? bars(rows.map((r) => [label(r), r.tokens]), rows[0].tokens, kfmt) : empty("No run tokens yet.");
+  $("tok-ticket").replaceChildren(tok(p.tokens.ticket, (r) => (r.title ? `${r.key} ${r.title}` : r.key)));
+  $("tok-station").replaceChildren(tok(p.tokens.station, (r) => STATION[r.key] ?? r.key));
+  $("tok-model").replaceChildren(tok(p.tokens.model, (r) => r.key));
+  $("cache").replaceChildren(p.cache?.stations.length ? bars(p.cache.stations.map((x) => [STATION[x.station] ?? x.station, x.ratio]), 1, (v) => `${Math.round(v * 100)}%`) : empty("No cache counts yet."));
+}
+// Readings across the window; geometry from usageChart, numbers only, so innerHTML is safe.
+function chart(win, kind, label) {
+  const c = usageChart(win, kind), box = el("div", "chart");
+  const lines = c.lines.map((l) => `<line class="${l.cls}" x1="${l.x1}" y1="${l.y1}" x2="${l.x2}" y2="${l.y2}"/>`).join("");
+  box.innerHTML = `<svg preserveAspectRatio="none" viewBox="-4 -4 ${c.W + 8} ${c.H + 8}" role="img">${lines}${c.points ? `<polyline class="series" points="${c.points}"/>` : ""}</svg>`;
+  box.firstChild.setAttribute("aria-label", label);
+  return box;
 }
 let fetching = false;
 async function loadPage2() {

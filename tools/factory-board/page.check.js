@@ -115,7 +115,7 @@ test("WCAG 2.1 AA contrast in both themes and in the band", () => {
   const light = vars(html, ":root");
   const themes = { light, dark: { ...light, ...vars(html, '[data-theme="dark"]') } };
   const text = [["ink", "bg"], ["ink", "panel"], ["ink", "sub"], ["muted", "bg"], ["muted", "panel"], ["muted", "sub"], ["link", "panel"], ["link", "bg"], ["warn", "warn-bg"], ["ink", "warn-bg"], ["muted", "warn-bg"], ["warn", "sub"]];
-  const ui = [["focus", "bg"], ["focus", "panel"], ["warn-line", "panel"], ["g3", "track"]];
+  const ui = [["focus", "bg"], ["focus", "panel"], ["warn-line", "panel"], ["g3", "track"], ["g3", "panel"], ["chart-yellow", "panel"], ["chart-red", "panel"]];
   for (const [name, t] of Object.entries(themes)) {
     for (const [a, b] of text) assert.ok(ratio(t[a], t[b]) >= 4.5, `${name}: --${a} on --${b} is ${ratio(t[a], t[b]).toFixed(2)}`);
     for (const [a, b] of ui) assert.ok(ratio(t[a], t[b]) >= 3, `${name}: --${a} on --${b} is ${ratio(t[a], t[b]).toFixed(2)}`);
@@ -131,7 +131,7 @@ test("page-2 tiles: next version and CI pass rate, or say there is no data", () 
   assert.deepEqual([v.value, v.sub], ["v7.3.0", "from 1 two-way, 2 none since v7.2.1 · 1 unlabelled"]);
   assert.deepEqual([ci.value, ci.sub], ["90%", "27 of the last 30 runs · median 6 m 40 s"]);
   const none = { "one-way": 0, "two-way": 0, none: 0, docs: 0, unlabelled: 0 };
-  assert.deepEqual(page2Tiles({ doors: { tag: "v7.2.1", next: null, counts: { ...none, docs: 2 } }, ci: null }).map((x) => [x.value, x.sub]), [
+  assert.deepEqual(page2Tiles({ doors: { tag: "v7.2.1", next: null, counts: { ...none, docs: 2 } }, ci: null }).slice(0, 2).map((x) => [x.value, x.sub]), [
     ["no release", "only docs since v7.2.1"], ["–", "No completed CI runs yet."],
   ]);
   assert.deepEqual(page2Tiles({ doors: { tag: "v7.2.1", next: null, counts: none }, ci: null })[0].sub, "Nothing merged since v7.2.1.");

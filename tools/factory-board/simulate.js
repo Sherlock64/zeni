@@ -44,6 +44,9 @@ const EPICS = [
 ];
 const NEXT = { intake: "shaping", shaping: "ready", ready: "building", building: "verifying", verifying: "reviewing", reviewing: "merged" };
 const STATION = { building: "build", verifying: "verify", reviewing: "review" };
+// Fake model per station and cache counts per weighted token, so page 2's cost cards have data.
+const MODEL = { build: "claude-opus-5-5", verify: "claude-sonnet-5-5", review: "claude-opus-5-5" };
+const counts = (r) => ({ model: MODEL[r.station], input: Math.round(r.tokens * 0.05), cache_write: Math.round(r.tokens * 0.2), cache_read: Math.round(r.tokens * (r.station === "build" ? 4 : 2.5)) });
 const COST = { building: [3000, 14000], verifying: [1000, 5000], reviewing: [2000, 7000] };
 const RANK = { green: 0, yellow: 1, red: 2, off: 3 };
 // A run leaves its station only after burning this many tokens, so stations take a few ticks.
@@ -77,7 +80,7 @@ async function cycle(n) {
     if (STATION[state]) {
       const r = { run: `r${t.num}-${STATION[state]}-${n}`, session: `t${t.num}-${STATION[state]}-${t.slug}`, station: STATION[state], tokens: 0 };
       runs.set(t.id, r);
-      emit("run.tokens", { run: r.run, session: r.session, item: t.id, station: r.station, tokens: 0 });
+      emit("run.tokens", { run: r.run, session: r.session, item: t.id, station: r.station, tokens: 0, ...counts(r) });
     } else runs.delete(t.id);
     if (state === "reviewing") emit("item.upsert", { id: `P${t.num}`, kind: "pr", number: t.num + 100, title: `PR: ${t.title}`, state, epic: t.epic });
     if (state === "merged") emit("item.remove", { id: `P${t.num}` }); // the merged ticket stands for its PR
@@ -163,7 +166,7 @@ async function cycle(n) {
         r.tokens += add;
         five += add / burn;
         weekly += add / 150000;
-        emit("run.tokens", { run: r.run, session: r.session, item: id, station: r.station, tokens: r.tokens });
+        emit("run.tokens", { run: r.run, session: r.session, item: id, station: r.station, tokens: r.tokens, ...counts(r) });
       }
     }
     if (!drain && tickets.filter((t) => t.state === "merged").length >= 5) drain = true;

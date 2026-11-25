@@ -109,5 +109,23 @@ export function page2Tiles(p) {
   const rate = ci
     ? { title: "CI pass rate", value: `${Math.round((100 * ci.passed) / ci.of)}%`, sub: `${ci.passed} of the last ${ci.of} runs · median ${dur(ci.median_ms)}` }
     : { title: "CI pass rate", value: "–", sub: "No completed CI runs yet." };
-  return [version, rate];
+  const w = p.weekly, c = p.cache;
+  const pace = w
+    ? { title: "Weekly pace", value: w.pace.toFixed(2), sub: `${w.pct}% used · ${w.slots} run slots` }
+    : { title: "Weekly pace", value: "–", sub: "No weekly usage reading yet." };
+  const cache = c
+    ? { title: "Cache hits", value: `${Math.round(c.overall * 100)}%`, sub: "of all input tokens, every run in the log" }
+    : { title: "Cache hits", value: "–", sub: "No cache counts yet." };
+  return [version, rate, pace, cache];
+}
+
+// One usage window as SVG geometry (320 x 120, 0-100% up the side): the readings across the window, then
+// the weekly straight-line target (0% at the start, 97% at the reset) or the 5-hour 70% and 90% lines.
+export function usageChart(win, kind) {
+  const W = 320, H = 120, t0 = Date.parse(win.start), span = Date.parse(win.end) - t0;
+  const y = (pct) => Math.round((H - (pct / 100) * H) * 10) / 10;
+  const points = win.points.map((p) => `${(((Date.parse(p.at) - t0) / span) * W).toFixed(1)},${y(p.pct).toFixed(1)}`).join(" ");
+  const flat = (cls, pct) => ({ cls, x1: 0, y1: y(pct), x2: W, y2: y(pct) });
+  const lines = kind === "weekly" ? [{ cls: "target", x1: 0, y1: H, x2: W, y2: y(97) }] : [flat("limit", 70), flat("limit hot", 90)];
+  return { W, H, points, lines };
 }
