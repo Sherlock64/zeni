@@ -42,7 +42,10 @@ const tally = (file) =>
   new Promise((resolve, reject) => {
     execFile("python3", ["-I", TALLY, file], { timeout: 60000, maxBuffer: 64 << 20 }, (err, stdout) => {
       if (err) reject(err);
-      else resolve(JSON.parse(stdout).total.weighted);
+      else {
+        const t = JSON.parse(stdout).total;
+        resolve({ tokens: t.weighted, input: t.input_tokens, cache_write: t.cache_creation_input_tokens, cache_read: t.cache_read_input_tokens });
+      }
     });
   });
 
@@ -70,7 +73,7 @@ async function transcript(file) {
     subs = fs.readdirSync(sub).map((f) => path.join(sub, f));
   } catch {}
   const key = [file, ...subs].map((f) => `${f}:${fs.statSync(f).mtimeMs}:${fs.statSync(f).size}`).join("|");
-  if (cache.get(file)?.key !== key) cache.set(file, { key, info: { ...scan(file), tokens: await tally(file) } });
+  if (cache.get(file)?.key !== key) cache.set(file, { key, info: { ...scan(file), ...(await tally(file)) } });
   return cache.get(file).info;
 }
 
@@ -98,7 +101,7 @@ export async function readRuns(factory, projects = defaultProjects(), spine = nu
     const [ended_at, sessionId, ticket, station, outcome] = line.split("\t");
     if (!station || !sessionId) continue;
     const file = findTranscript(projects, sessionId);
-    let info = { model: null, title: null, tokens: null };
+    let info = { model: null, title: null, tokens: null, input: null, cache_write: null, cache_read: null };
     if (file) {
       try {
         info = await transcript(file);
@@ -108,7 +111,7 @@ export async function readRuns(factory, projects = defaultProjects(), spine = nu
     }
     // shortcut: rows that share a session each show its whole transcript, so the total counts it twice; split by ended_at if that misleads.
     const run = `${sessionId}@${ended_at}`;
-    runs[run] = { run, session: info.title ?? sessionId, item: ticket || null, station, tokens: info.tokens, model: info.model, outcome: OUTCOMES.includes(outcome) ? outcome : null };
+    runs[run] = { run, session: info.title ?? sessionId, item: ticket || null, station, tokens: info.tokens, input: info.input, cache_write: info.cache_write, cache_read: info.cache_read, model: info.model, outcome: OUTCOMES.includes(outcome) ? outcome : null };
   }
   const current = readJson(path.join(factory, "run.json"));
   const light = readJson(path.join(factory, "light.json"));

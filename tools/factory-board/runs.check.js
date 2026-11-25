@@ -47,6 +47,8 @@ test("each run-log row is a run with its ticket, station, session, model and wei
     [run.session, run.station, run.tokens, run.model],
     ["#140 Build: runs collector", "build", 7500, "claude-opus-5-5"],
   );
+  // Cache counts reach the board with the run: 1000 + 500 input, 2000 writes, 10000 reads.
+  assert.deepEqual([run.input, run.cache_write, run.cache_read], [1500, 2000, 10000]);
   assert.equal(v.items.length, 0); // runs never make cards; the GitHub part does
 });
 
@@ -54,7 +56,7 @@ test("a row whose transcript is missing shows the run with tokens unknown", asyn
   const { factory, projects } = setup(t);
   const v = view(fold(empty(), diffRuns(empty(), await readRuns(factory, projects), TS)));
   const run = v.runs.find((r) => r.item === "#139");
-  assert.deepEqual([run.session, run.station, run.tokens, run.model], ["build-139", "verify", null, null]);
+  assert.deepEqual([run.session, run.station, run.tokens, run.model, run.input, run.cache_write, run.cache_read], ["build-139", "verify", null, null, null, null, null]);
   assert.equal(v.totalTokens, 7500);
   assert.deepEqual(v.topRuns.map((r) => r.item), ["#140", "#139"]); // unknown sorts last
 });

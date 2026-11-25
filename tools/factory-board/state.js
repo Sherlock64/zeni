@@ -20,7 +20,7 @@ export const DOORS = ["one-way", "two-way", "none", "docs"];
 const STATIONS = ["intake", "shape-slice", "build", "verify", "review", "merge", "release", "learn"];
 
 export function empty() {
-  return { items: {}, runs: {}, light: null, sessions: [], needsHuman: {}, factoryRuns: {}, history: {}, doors: null, ci: null, trust: null, updatedAt: null };
+  return { items: {}, runs: {}, light: null, sessions: [], needsHuman: {}, factoryRuns: {}, history: {}, lightHistory: [], doors: null, ci: null, trust: null, updatedAt: null };
 }
 
 const str = (v, name) => {
@@ -68,8 +68,9 @@ export function apply(s, e) {
       // null tokens: the run's transcript is missing, so its cost is unknown.
       if (e.tokens !== null && (!Number.isSafeInteger(e.tokens) || e.tokens < 0)) throw new Error("tokens must be a non-negative integer or null");
       if (e.outcome != null && !OUTCOMES.includes(e.outcome)) throw new Error(`bad outcome ${e.outcome}`);
-      const { run, session, item = null, station = null, tokens, model = null, outcome = null } = e;
-      s.runs[str(run, "run")] = { run, session: str(session, "session"), item, station, tokens, model, outcome };
+      for (const k of ["input", "cache_write", "cache_read"]) if (e[k] != null && (!Number.isSafeInteger(e[k]) || e[k] < 0)) throw new Error(`${k} must be a non-negative integer or null`);
+      const { run, session, item = null, station = null, tokens, model = null, outcome = null, input = null, cache_write = null, cache_read = null } = e;
+      s.runs[str(run, "run")] = { run, session: str(session, "session"), item, station, tokens, model, outcome, input, cache_write, cache_read };
       break;
     }
     case "item.history":
@@ -120,6 +121,10 @@ export function apply(s, e) {
         weekly: win(e.weekly, "weekly"),
         sessions: Array.isArray(e.sessions) ? e.sessions.map((x) => str(x, "session")) : [],
       };
+      // Every reading, for the usage charts; a repeated reading replaces its point.
+      const point = { at: s.light.set_at, five: s.light.five_hour.pct, weekly: s.light.weekly.pct };
+      if (s.lightHistory.at(-1)?.at === point.at) s.lightHistory[s.lightHistory.length - 1] = point;
+      else s.lightHistory.push(point);
       break;
     }
     case "sessions":
@@ -254,5 +259,52 @@ export function page2(s, now) {
     ? { passed: last.filter((r) => r.conclusion === "success").length, of: last.length, median_ms: ms.length % 2 ? ms[mid] : Math.round((ms[mid - 1] + ms[mid]) / 2) }
     : null;
 
-  return { doors, ci, stations, timeInState, cycle };
+  return { doors, ci, stations, timeInState, cycle, tokens: tokensBy(s), cache: cacheHits(s, rank), ...usage(s) };
+}
+
+// Weighted tokens summed by a run's field, largest first; runs with unknown tokens add nothing.
+function sumBy(runs, key) {
+  const m = new Map();
+  for (const r of runs) if (r.tokens != null) m.set(key(r), (m.get(key(r)) ?? 0) + r.tokens);
+  return [...m].map(([k, tokens]) => ({ key: k, tokens })).sort((a, b) => b.tokens - a.tokens || String(a.key).localeCompare(String(b.key)));
+}
+function tokensBy(s) {
+  const runs = Object.values(s.runs);
+  return {
+    ticket: sumBy(runs.filter((r) => r.item), (r) => r.item).slice(0, 10).map((x) => ({ key: x.key, title: s.items[x.key]?.title ?? null, tokens: x.tokens })),
+    station: sumBy(runs.filter((r) => r.station), (r) => r.station),
+    model: sumBy(runs, (r) => r.model ?? "unknown"),
+  };
+}
+
+// Cache reads / (input + writes + reads), per station and overall; null when no run has counts.
+function cacheHits(s, rank) {
+  const runs = Object.values(s.runs).filter((r) => r.input != null && r.cache_write != null && r.cache_read != null);
+  const ratio = (rs) => {
+    const all = rs.reduce((n, r) => n + r.input + r.cache_write + r.cache_read, 0);
+    return all ? rs.reduce((n, r) => n + r.cache_read, 0) / all : null;
+  };
+  const overall = ratio(runs);
+  if (overall == null) return null;
+  const stations = [...new Set(runs.map((r) => r.station).filter(Boolean))]
+    .map((station) => ({ station, ratio: ratio(runs.filter((r) => r.station === station)) }))
+    .filter((x) => x.ratio != null)
+    .sort((a, b) => rank(a.station) - rank(b.station));
+  return { overall, stations };
+}
+
+// The current weekly and 5-hour windows, each from its reset time back one window length.
+function usage(s) {
+  const l = s.light;
+  const win = (w, len, field) => {
+    if (!w?.resets_at || Number.isNaN(Date.parse(w.resets_at))) return null;
+    const end = Date.parse(w.resets_at), start = end - len;
+    const points = s.lightHistory
+      .filter((p) => Date.parse(p.at) >= start && Date.parse(p.at) <= end)
+      .sort((a, b) => Date.parse(a.at) - Date.parse(b.at))
+      .map((p) => ({ at: p.at, pct: p[field] }));
+    return { start: new Date(start).toISOString(), end: new Date(end).toISOString(), pct: w.pct, points };
+  };
+  const weekly = win(l?.weekly, 7 * 86400e3, "weekly");
+  return { weekly: weekly && { ...weekly, pace: l.pace, slots: l.slots }, fiveHour: win(l?.five_hour, 5 * 3600e3, "five") };
 }

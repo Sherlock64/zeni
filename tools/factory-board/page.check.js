@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { STATES, boardModel, dur, lightView, page2Tiles, readMode, slotsLine } from "./page.js";
+import { STATES, boardModel, dur, lightView, page2Tiles, usageChart, readMode, slotsLine } from "./page.js";
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 const MIN = 60e3;
@@ -115,7 +115,7 @@ test("WCAG 2.1 AA contrast in both themes and in the band", () => {
   const light = vars(html, ":root");
   const themes = { light, dark: { ...light, ...vars(html, '[data-theme="dark"]') } };
   const text = [["ink", "bg"], ["ink", "panel"], ["ink", "sub"], ["muted", "bg"], ["muted", "panel"], ["muted", "sub"], ["link", "panel"], ["link", "bg"], ["warn", "warn-bg"], ["ink", "warn-bg"], ["muted", "warn-bg"], ["warn", "sub"]];
-  const ui = [["focus", "bg"], ["focus", "panel"], ["warn-line", "panel"], ["g3", "track"]];
+  const ui = [["focus", "bg"], ["focus", "panel"], ["warn-line", "panel"], ["g3", "track"], ["g3", "panel"], ["chart-yellow", "panel"], ["chart-red", "panel"]];
   for (const [name, t] of Object.entries(themes)) {
     for (const [a, b] of text) assert.ok(ratio(t[a], t[b]) >= 4.5, `${name}: --${a} on --${b} is ${ratio(t[a], t[b]).toFixed(2)}`);
     for (const [a, b] of ui) assert.ok(ratio(t[a], t[b]) >= 3, `${name}: --${a} on --${b} is ${ratio(t[a], t[b]).toFixed(2)}`);
@@ -131,7 +131,7 @@ test("page-2 tiles: next version and CI pass rate, or say there is no data", () 
   assert.deepEqual([v.value, v.sub], ["v7.3.0", "from 1 two-way, 2 none since v7.2.1 · 1 unlabelled"]);
   assert.deepEqual([ci.value, ci.sub], ["90%", "27 of the last 30 runs · median 6 m 40 s"]);
   const none = { "one-way": 0, "two-way": 0, none: 0, docs: 0, unlabelled: 0 };
-  assert.deepEqual(page2Tiles({ doors: { tag: "v7.2.1", next: null, counts: { ...none, docs: 2 } }, ci: null }).map((x) => [x.value, x.sub]), [
+  assert.deepEqual(page2Tiles({ doors: { tag: "v7.2.1", next: null, counts: { ...none, docs: 2 } }, ci: null }).slice(0, 2).map((x) => [x.value, x.sub]), [
     ["no release", "only docs since v7.2.1"], ["–", "No completed CI runs yet."],
   ]);
   assert.deepEqual(page2Tiles({ doors: { tag: "v7.2.1", next: null, counts: none }, ci: null })[0].sub, "Nothing merged since v7.2.1.");
@@ -148,4 +148,23 @@ test("page 2 opens from page 1 and back, sharing the status band", () => {
   assert.match(html, /href="#"/);
   assert.equal((html.match(/id="band"/g) ?? []).length, 1);
   assert.match(html, /fetch\("\/api\/page2"\)/);
+});
+
+// Page 2, cost and usage (#145).
+test("page-2 tiles: weekly pace and cache hits, or say there is no data", () => {
+  const [, , pace, cache] = page2Tiles({ doors: null, ci: null, weekly: { pct: 34, pace: 1.34, slots: 0 }, cache: { overall: 0.876 } });
+  assert.deepEqual([pace.title, pace.value, pace.sub], ["Weekly pace", "1.34", "34% used · 0 run slots"]);
+  assert.deepEqual([cache.title, cache.value, cache.sub], ["Cache hits", "88%", "of all input tokens, every run in the log"]);
+  assert.deepEqual(page2Tiles({ doors: null, ci: null, weekly: null, cache: null }).slice(2).map((x) => [x.value, x.sub]), [
+    ["–", "No weekly usage reading yet."], ["–", "No cache counts yet."],
+  ]);
+});
+
+test("usage chart: points across the window; weekly target to 97% at the reset; 5-hour lines at 70% and 90%", () => {
+  const win = { start: "2026-11-24T00:00:00Z", end: "2026-11-24T10:00:00Z", points: [{ at: "2026-11-24T00:00:00Z", pct: 0 }, { at: "2026-11-24T05:00:00Z", pct: 50 }] };
+  const wk = usageChart(win, "weekly");
+  assert.equal(wk.points, "0.0,120.0 160.0,60.0");
+  assert.deepEqual(wk.lines, [{ cls: "target", x1: 0, y1: 120, x2: 320, y2: 3.6 }]);
+  assert.deepEqual(usageChart(win, "five").lines.map((l) => [l.cls, l.y1, l.y2]), [["limit", 36, 36], ["limit hot", 12, 12]]);
+  assert.equal(usageChart({ ...win, points: [] }, "five").points, "");
 });
