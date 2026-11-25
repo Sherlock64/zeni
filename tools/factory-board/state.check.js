@@ -141,9 +141,15 @@ test("next version from the largest door since the last tag; unlabelled and docs
 test("CI pass rate and median duration over the last 30 completed runs", () => {
   const r = (conclusion, min) => ({ conclusion, started_at: at(0), ended_at: new Date(Date.parse(at(0)) + min * 60e3).toISOString() });
   const runs = [r("success", 4), r("failure", 1), r("success", 6), r("cancelled", 10), ...Array.from({ length: 30 }, () => r("success", 2))];
-  assert.deepEqual(page2(fold([{ type: "ci", runs: runs.slice(0, 4) }]), 0).ci, { passed: 2, of: 4, median_ms: 5 * 60e3 });
+  // cancelled and skipped runs are left out of the pass count, the run count and the median
+  assert.deepEqual(page2(fold([{ type: "ci", runs: [...runs.slice(0, 4), r("skipped", 0)] }]), 0).ci, { passed: 2, of: 3, median_ms: 4 * 60e3 });
   assert.equal(page2(fold([{ type: "ci", runs }]), 0).ci.of, 30);
   assert.equal(page2(fold([{ type: "ci", runs: [] }]), 0).ci, null);
+  assert.equal(page2(fold([{ type: "ci", runs: [r("cancelled", 3)] }]), 0).ci, null);
+  // a run with an unparseable timestamp counts for the rate but not the median
+  const bad = [r("success", 4), { ...r("failure", 1), started_at: "nope" }, { ...r("success", 6), ended_at: "" }];
+  assert.deepEqual(page2(fold([{ type: "ci", runs: bad }]), 0).ci, { passed: 2, of: 3, median_ms: 4 * 60e3 });
+  assert.equal(page2(fold([{ type: "ci", runs: [bad[1]] }]), 0).ci.median_ms, null);
 });
 
 test("no data: every page-2 section is empty or null, never zeros", () => {
