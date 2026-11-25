@@ -214,13 +214,14 @@ function bump(tag, prs) {
 export function page2(s, now) {
   const tickets = Object.values(s.items).filter((i) => i.kind === "ticket");
   const timeInState = tickets
-    .filter((t) => !DONE.includes(t.state) && s.history[t.id]?.length)
+    .filter((t) => !DONE.includes(t.state))
     .map((t) => {
-      const h = s.history[t.id];
+      const h = s.history[t.id] ?? [];
       const segs = h.map((x, i) => ({ state: x.state, ms: Math.max(0, (i + 1 < h.length ? Date.parse(h[i + 1].at) : now) - Date.parse(x.at)) }));
-      return { id: t.id, number: t.number, title: t.title, state: t.state, segs, current_ms: segs.at(-1).ms };
+      return { id: t.id, number: t.number, title: t.title, state: t.state, segs, current_ms: segs.at(-1)?.ms ?? null };
     })
-    .sort((a, b) => b.current_ms - a.current_ms);
+    // No history yet (null) sorts after every ticket with one.
+    .sort((a, b) => (b.current_ms ?? -1) - (a.current_ms ?? -1));
 
   // Reaching any state past ready counts as reaching ready: the dispatcher's claim can skip it.
   const cycle = Object.values(s.items)
