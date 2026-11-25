@@ -99,7 +99,7 @@ export function toBoard(issues, prs, doorsRaw = null, ciRaw = null) {
     const state = stateOf(n);
     if (state) items[`#${n.number}`] = { id: `#${n.number}`, kind: "pr", title: n.title, state, epic: null, number: n.number };
   }
-  const ci = ciRaw?.map((r) => ({ conclusion: r.conclusion, started_at: r.startedAt, ended_at: r.updatedAt })) ?? null;
+  const ci = ciRaw?.filter((r) => r.conclusion).map((r) => ({ conclusion: r.conclusion, started_at: r.startedAt, ended_at: r.updatedAt })) ?? null;
   return { items, needsHuman, history, doors: doorsRaw ? toDoors(doorsRaw) : null, ci };
 }
 

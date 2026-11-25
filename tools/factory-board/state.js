@@ -253,12 +253,12 @@ export function page2(s, now) {
     doors = { tag: s.doors.tag, next: bump(s.doors.tag, s.doors.prs), counts, prs: s.doors.prs };
   }
 
-  const last = (s.ci ?? []).slice(0, 30); // newest first, as gh lists them
-  const ms = last.map((r) => Date.parse(r.ended_at) - Date.parse(r.started_at)).sort((a, b) => a - b);
+  // only runs that passed or failed count; newest first, as gh lists them
+  const last = (s.ci ?? []).filter((r) => r.conclusion !== "cancelled" && r.conclusion !== "skipped").slice(0, 30);
+  const ms = last.map((r) => Date.parse(r.ended_at) - Date.parse(r.started_at)).filter(Number.isFinite).sort((a, b) => a - b);
   const mid = ms.length >> 1;
-  const ci = last.length
-    ? { passed: last.filter((r) => r.conclusion === "success").length, of: last.length, median_ms: ms.length % 2 ? ms[mid] : Math.round((ms[mid - 1] + ms[mid]) / 2) }
-    : null;
+  const median = !ms.length ? null : ms.length % 2 ? ms[mid] : Math.round((ms[mid - 1] + ms[mid]) / 2);
+  const ci = last.length ? { passed: last.filter((r) => r.conclusion === "success").length, of: last.length, median_ms: median } : null;
 
   return { doors, ci, stations, timeInState, cycle, tokens: tokensBy(s), cache: cacheHits(s, rank), ...usage(s) };
 }
