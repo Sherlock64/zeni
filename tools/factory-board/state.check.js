@@ -131,7 +131,10 @@ test("CI pass rate and median duration over the last 30 completed runs", () => {
 });
 
 test("no data: every page-2 section is empty or null, never zeros", () => {
-  assert.deepEqual(page2(empty(), 0), { doors: null, ci: null, stations: [], timeInState: [], cycle: [] });
+  assert.deepEqual(page2(empty(), 0), {
+    doors: null, ci: null, stations: [], timeInState: [], cycle: [],
+    tokens: { ticket: [], station: [], model: [] }, cache: null, weekly: null, fiveHour: null,
+  });
 });
 
 test("rejects malformed page-2 events", () => {
@@ -140,4 +143,66 @@ test("rejects malformed page-2 events", () => {
   assert.throws(() => apply(empty(), { v: 1, type: "ci", runs: "x" }), /runs/);
   assert.throws(() => apply(empty(), { v: 1, type: "trust", levels: { build: 9 } }), /level/);
   assert.throws(() => apply(empty(), { v: 1, type: "run.tokens", run: "r", session: "s", tokens: 1, outcome: "won" }), /outcome/);
+});
+
+// Page 2, cost and usage (#145).
+test("weighted tokens per ticket (top 10), per station and per model (all), over every run", () => {
+  const run = (n, item, station, model, tokens) => ({ type: "run.tokens", run: `r${n}`, session: "s", item, station, model, tokens });
+  const s = fold([
+    { type: "item.upsert", id: "#1", kind: "ticket", title: "One", state: "merged" },
+    run(1, "#1", "build", "opus", 300), run(2, "#1", "review", "sonnet", 100), run(3, "#2", "build", "opus", 50),
+    run(4, null, "intake", null, 20), run(5, "#3", "verify", "haiku", null), // unknown tokens add nothing
+    ...Array.from({ length: 11 }, (_, i) => run(10 + i, `#${100 + i}`, "build", "opus", i + 1)),
+  ]);
+  const t = page2(s, 0).tokens;
+  assert.equal(t.ticket.length, 10);
+  assert.deepEqual(t.ticket.slice(0, 3), [{ key: "#1", title: "One", tokens: 400 }, { key: "#2", title: null, tokens: 50 }, { key: "#110", title: null, tokens: 11 }]);
+  assert.deepEqual(t.station, [{ key: "build", tokens: 416 }, { key: "review", tokens: 100 }, { key: "intake", tokens: 20 }]);
+  assert.deepEqual(t.model, [{ key: "opus", tokens: 416 }, { key: "sonnet", tokens: 100 }, { key: "unknown", tokens: 20 }]);
+});
+
+test("cache-hit ratio per station and overall: reads / (input + writes + reads); runs without counts are left out", () => {
+  const run = (n, station, input, cache_write, cache_read) => ({ type: "run.tokens", run: `r${n}`, session: "s", station, tokens: 1, input, cache_write, cache_read });
+  const s = fold([
+    run(1, "build", 10000, 20000, 270000), // 90%
+    run(2, "review", 50, 50, 0), run(3, "review", 0, 0, 100), // 50%
+    run(4, "verify", null, null, null),
+  ]);
+  const c = page2(s, 0).cache;
+  assert.deepEqual(c.stations, [{ station: "build", ratio: 0.9 }, { station: "review", ratio: 0.5 }]);
+  assert.equal(c.overall, 270100 / 300200);
+  assert.equal(page2(fold([run(1, "build", null, null, null)]), 0).cache, null);
+});
+
+test("weekly usage over the current window from light events, against the straight-line target, with pace", () => {
+  const DAY = 24 * H;
+  const reset = at(4 * 24), start = at(-3 * 24);
+  const light = (set_at, weekly, five, resets5 = at(2)) => ({
+    type: "light", light: "green", reason: "r", set_at, slots: 2, pace: 1.04,
+    five_hour: { pct: five, resets_at: resets5 }, weekly: { pct: weekly, resets_at: reset },
+  });
+  const s = fold([
+    light(at(-4 * 24), 90, 5), // the last weekly window: left out
+    light(at(-2 * 24), 20, 10, at(-1)), // an earlier 5-hour window: left out of the 5-hour chart
+    light(at(-1), 40, 30), light(at(-1), 41, 31), // same reading repeated: replaces, never doubles
+    light(at(0), 42, 50),
+  ]);
+  const p = page2(s, Date.parse(at(0)));
+  assert.deepEqual(p.weekly, {
+    start, end: reset, pct: 42, pace: 1.04, slots: 2,
+    points: [{ at: at(-2 * 24), pct: 20 }, { at: at(-1), pct: 41 }, { at: at(0), pct: 42 }],
+  });
+  assert.equal(Date.parse(p.weekly.end) - Date.parse(p.weekly.start), 7 * DAY);
+  assert.deepEqual(p.fiveHour, { start: at(-3), end: at(2), pct: 50, points: [{ at: at(-1), pct: 31 }, { at: at(0), pct: 50 }] });
+  assert.equal(fold([light(at(0), 1, 1), { type: "reset" }]).lightHistory.length, 0);
+});
+
+test("a window without a reset time has no chart", () => {
+  const s = fold([{ type: "light", light: "yellow", reason: "usage unavailable", set_at: at(0), slots: 0, pace: 0, five_hour: { pct: 0 }, weekly: { pct: 0 } }]);
+  const p = page2(s, Date.parse(at(0)));
+  assert.deepEqual([p.weekly, p.fiveHour], [null, null]);
+});
+
+test("rejects malformed cache counts", () => {
+  assert.throws(() => apply(empty(), { v: 1, type: "run.tokens", run: "r", session: "s", tokens: 1, cache_read: -1 }), /cache_read/);
 });

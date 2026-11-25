@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { STATES, boardModel, dur, lightView, page2Tiles, readMode, slotsLine } from "./page.js";
+import { STATES, boardModel, dur, lightView, page2Tiles, usageChart, readMode, slotsLine } from "./page.js";
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 const MIN = 60e3;
@@ -148,4 +148,23 @@ test("page 2 opens from page 1 and back, sharing the status band", () => {
   assert.match(html, /href="#"/);
   assert.equal((html.match(/id="band"/g) ?? []).length, 1);
   assert.match(html, /fetch\("\/api\/page2"\)/);
+});
+
+// Page 2, cost and usage (#145).
+test("page-2 tiles: weekly pace and cache hits, or say there is no data", () => {
+  const [, , pace, cache] = page2Tiles({ doors: null, ci: null, weekly: { pct: 34, pace: 1.34, slots: 0 }, cache: { overall: 0.876 } });
+  assert.deepEqual([pace.title, pace.value, pace.sub], ["Weekly pace", "1.34", "34% used · 0 run slots"]);
+  assert.deepEqual([cache.title, cache.value, cache.sub], ["Cache hits", "88%", "of all input tokens, every run in the log"]);
+  assert.deepEqual(page2Tiles({ doors: null, ci: null, weekly: null, cache: null }).slice(2).map((x) => [x.value, x.sub]), [
+    ["–", "No weekly usage reading yet."], ["–", "No cache counts yet."],
+  ]);
+});
+
+test("usage chart: points across the window; weekly target to 97% at the reset; 5-hour lines at 70% and 90%", () => {
+  const win = { start: "2026-11-24T00:00:00Z", end: "2026-11-24T10:00:00Z", points: [{ at: "2026-11-24T00:00:00Z", pct: 0 }, { at: "2026-11-24T05:00:00Z", pct: 50 }] };
+  const wk = usageChart(win, "weekly");
+  assert.equal(wk.points, "0.0,120.0 160.0,60.0");
+  assert.deepEqual(wk.lines, [{ cls: "target", x1: 0, y1: 120, x2: 320, y2: 3.6 }]);
+  assert.deepEqual(usageChart(win, "five").lines.map((l) => [l.cls, l.y1, l.y2]), [["limit", 36, 36], ["limit hot", 12, 12]]);
+  assert.equal(usageChart({ ...win, points: [] }, "five").points, "");
 });

@@ -207,4 +207,6 @@ test("page 2 has its own route, computed from the folded state", async (t) => {
   assert.deepEqual(p.ci, { passed: 1, of: 1, median_ms: 4 * 60e3 });
   assert.deepEqual(p.timeInState.map((x) => [x.id, x.state]), [["#139", "ready"]]);
   assert.ok(Array.isArray(p.stations));
+  assert.deepEqual(Object.keys(p.tokens), ["ticket", "station", "model"]);
+  assert.ok("cache" in p && "weekly" in p && "fiveHour" in p);
 });
