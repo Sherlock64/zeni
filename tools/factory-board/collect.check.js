@@ -121,6 +121,10 @@ test("doors merged since the last v-tag and the last CI runs become absolute eve
     { conclusion: "failure", started_at: "2026-11-24T06:00:00Z", ended_at: "2026-11-24T06:01:00Z" },
   ]);
   assert.deepEqual(diff(fold(empty(), events), board, TS), []);
+  // a run with an empty conclusion is skipped, so it is not re-appended on every collect
+  const withEmpty = toBoard([], [], null, [...CI, { conclusion: "", startedAt: "2026-11-24T05:00:00Z", updatedAt: "2026-11-24T05:01:00Z" }]);
+  assert.equal(withEmpty.ci.length, 2);
+  assert.deepEqual(diff(fold(empty(), events), withEmpty, TS), []);
   // without a tag every fetched merge counts
   assert.equal(toBoard([], [], { refs: { nodes: [] }, pullRequests: DOORS.pullRequests }).doors.tag, null);
 });
