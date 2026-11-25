@@ -22,6 +22,7 @@ Each ticket has exactly one `state:` label: `intake`, `shaping`, `ready`, `build
 - **Ready** means every "blocked by" ticket is closed and nobody claimed it. The ready set is the frontier.
 - **Claim**: the dispatcher sets `state:building` and comments `claimed by <session name>` before it starts the run, so runs never claim for themselves. It never starts two tickets that name the same module.
 - **Only the dispatcher starts runs.** A run that finishes sets the next state and ends; it never starts the next station's session, so every report comes back to the dispatcher.
+- **Waiting on the user** is always `state:needs-human`, with the question or ask as the first line of the ticket's latest comment, so it shows in the board's Needs you. A merge ask (`Merge PR #n? ...`, `stations/merge.md`) is one.
 - **Private work** (security findings, anything a public issue would teach an attacker) keeps the same states in the local list `$(git rev-parse --git-common-dir)/factory/private.md`. Its branches, commits and PRs use neutral wording.
 
 ## Run start
@@ -95,7 +96,7 @@ Every PR carries exactly one door label, with one line of reasoning in its body:
 | Release | 0 | 0 |
 | Learn | 1 | 2 |
 
-A station moves up one level after 10 clean passes in a row and down one on any escape (a defect it should have caught). The dispatcher proposes each move; the user confirms it.
+Every run reads its station's level from the "Now" column above, never from memory. A station moves up one level after 10 clean passes in a row and down one on any escape (a defect it should have caught). The dispatcher proposes each move; the user confirms it.
 
 ## Run log
 

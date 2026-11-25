@@ -2,7 +2,7 @@
 
 **Outcome:** a verdict on the PR from a small panel picked by risk, where only proven problems block.
 
-**Done when:** no proven blocker is left, each non-blocking finding is fixed in this PR, sent to Intake, or listed as a nit, and one review comment on the PR holds the result. Then the ticket waits for Merge.
+**Done when:** no proven blocker is left, each non-blocking finding is fixed in this PR, sent to Intake, or listed as a nit, CI is green on the PR's latest commit, the PR is out of draft, and one review comment on the PR holds the result and names the reviewed commit. The ticket stays `state:reviewing` for Merge (`stations/merge.md`), which asks the user or merges.
 
 ## The panel
 
@@ -36,6 +36,14 @@ A seat with no proof writes no `BLOCK`. Every line cites a `file:line` it read. 
 - Also check: the `door:` label fits its one-line reason, the `CHANGELOG.md` bullet says what changed for a user, and the diff stays inside the ticket's modules plus the hubs (`stations/build.md`).
 - Small non-blocking fixes that cost less than filing them go back to the builder with the blockers. The rest become requests (`state:intake`). Nits are listed in the comment and never filed.
 - Blockers or fixes in this PR: set `state:building` with the list. The next review re-runs only the seats that had findings, plus Spec.
+
+## Passing
+
+A pass needs green CI on the commit you reviewed:
+
+1. Note the PR's latest commit: `gh pr view <n> --json headRefOid`.
+2. Wait for CI on it: `gh pr checks <n> --watch` (in the background).
+3. Red: set `state:building` with the failing check. Green: `gh pr ready <n>`, then post the review comment, its first line `Review PASS on <sha>.` with the full commit. A commit pushed while you reviewed means you reviewed the wrong one: review again.
 
 ## Privacy
 
