@@ -79,6 +79,22 @@ test("time in state: tickets not yet merged, longest current state first, curren
   assert.equal(p.timeInState[0].current_ms, 3 * H);
 });
 
+test("time in state: an unmerged ticket with no history shows its state and no time, after those with history (#194)", () => {
+  const s = fold([
+    { type: "item.upsert", id: "#1", kind: "ticket", title: "A", state: "verifying" },
+    { type: "item.upsert", id: "#4", kind: "ticket", title: "New", state: "ready" },
+    { type: "item.history", id: "#1", history: [{ state: "verifying", at: at(0) }] },
+  ]);
+  const p = page2(s, Date.parse(at(2)));
+  assert.deepEqual(p.timeInState.map((t) => [t.id, t.state, t.current_ms]), [["#1", "verifying", 2 * H], ["#4", "ready", null]]);
+  assert.deepEqual(p.timeInState[1].segs, []);
+});
+
+test("time in state: empty only when no ticket is unmerged (#194)", () => {
+  const s = fold([{ type: "item.upsert", id: "#3", kind: "ticket", title: "Done", state: "merged" }]);
+  assert.deepEqual(page2(s, Date.parse(at(2))).timeInState, []);
+});
+
 test("cycle time: open epics only, from the first ticket reaching ready, marked open", () => {
   const s = fold([
     { type: "item.upsert", id: "#10", kind: "epic", title: "Open epic", state: "building" },

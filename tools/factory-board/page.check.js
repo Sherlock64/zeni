@@ -140,6 +140,7 @@ test("page-2 tiles: next version and CI pass rate, or say there is no data", () 
 
 test("durations read in the two largest units", () => {
   assert.deepEqual([dur(40e3), dur(400e3), dur(5400e3), dur(2 * 86400e3 + 4 * 3600e3)], ["40 s", "6 m 40 s", "1 h 30 m", "2 d 4 h"]);
+  assert.equal(dur(null), "—"); // no time yet (#194)
 });
 
 test("page 2 opens from page 1 and back, sharing the status band", () => {
