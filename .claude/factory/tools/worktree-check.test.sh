@@ -53,9 +53,10 @@ run 7 build; expect 1 "WORKTREE FAIL: HEAD" "build not at origin/main"
 
 g switch -q -c t7-thing && g push -q origin t7-thing
 run 7 build; expect 0 "WORKTREE OK" "resumed build at its pushed ticket branch"
-run 7 verify; expect 0 "WORKTREE OK" "verify at the ticket branch"
+run 7 review; expect 0 "WORKTREE OK" "review at the ticket branch"
 g switch -q --detach origin/main
 run 7 review; expect 1 "WORKTREE FAIL: HEAD" "review not at the ticket branch"
-run 8 verify; expect 1 "WORKTREE FAIL: no single origin/t8-* branch" "later station without a ticket branch"
+run 8 merge; expect 1 "WORKTREE FAIL: no single origin/t8-* branch" "later station without a ticket branch"
+run 7 verify; expect 2 "Usage" "Verify is no station"
 
 echo "worktree-check.test.sh: $pass passed"

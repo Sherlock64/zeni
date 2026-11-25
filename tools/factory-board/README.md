@@ -67,7 +67,7 @@ One JSON object per line. Every event has `v: 1`, `ts` (ISO 8601 time) and `type
 | `factory_run.start` | `id`, `started_at?` (default `ts`) | A factory run began. |
 | `factory_run.end` | `id`, `retros: [{title, href}]`, `ended_at?` (default `ts`) | It ended, with links to its retros or digest (may be empty). Repeating it with more retros keeps `ended_at`. |
 
-`state` is one of `intake`, `shaping`, `ready`, `building`, `verifying`, `reviewing`, `merged`, `released`, `needs-human`.
+`state` is one of `intake`, `shaping`, `ready`, `building`, `reviewing`, `merged`, `released`, `needs-human`.
 
 ### The traffic light
 

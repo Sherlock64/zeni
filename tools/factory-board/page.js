@@ -1,7 +1,7 @@
 // The board page's logic, without the DOM: index.html renders what these return; page.check.js tests them.
-export const STATES = ["intake", "shaping", "ready", "building", "verifying", "reviewing", "merged", "released", "needs-human"];
+export const STATES = ["intake", "shaping", "ready", "building", "reviewing", "merged", "released", "needs-human"];
 export const LABEL = { "needs-human": "needs human" };
-export const ACTIVE = ["building", "verifying", "reviewing", "needs-human"]; // states that hold a run slot
+export const ACTIVE = ["building", "reviewing", "needs-human"]; // states that hold a run slot
 export const MODE_KEY = "board.mode";
 const MIN = 60e3;
 const STALE_MS = 45 * MIN; // fail safe: an older light counts as yellow
