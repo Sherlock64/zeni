@@ -17,6 +17,8 @@ All must pass, at every trust level. Check them in order and stop at the first t
 
 A failed rule, at any level: set `state:needs-human` and comment, first line `Merge rule <k> failed: <what you saw>.`, then the fix (a rebase, a new Review, the label). Rule 6 alone is not a failure to fix: comment the merge ask below instead.
 
+For rule 4, the dispatcher sends the ticket to Build to rebase (`state:building`); the new head goes through Verify and Review again, and rule 2 catches a stale pass.
+
 ## Asking or merging
 
 Read Merge's level from the "Now" column of the trust-dial table in `spine.md`, never from memory.
@@ -33,8 +35,7 @@ Read Merge's level from the "Now" column of the trust-dial table in `spine.md`, 
 
 ## Eject when
 
-- CI fails on `main` after the merge;
-- a rebase conflict needs a decision neither ticket settles.
+- CI fails on `main` after the merge.
 
 ## Pointers
 
