@@ -20,7 +20,6 @@ gh label create state:intake --color C5DEF5 --description "Raw request, waiting 
 gh label create state:shaping --color BFD4F2 --description "Decisions or tickets still being settled"
 gh label create state:ready --color 0E8A16 --description "Unblocked and unclaimed: on the frontier"
 gh label create state:building --color 1D76DB --description "Claimed; a run is building it"
-gh label create state:verifying --color 5319E7 --description "A fresh verifier is driving the real app"
 gh label create state:reviewing --color D4C5F9 --description "The review panel is on the PR"
 gh label create state:merged --color 6F42C1 --description "On main, not yet released"
 gh label create state:released --color 0B5D1E --description "Shipped in a release"
@@ -39,7 +38,7 @@ gh label create door:docs --color CFD3D7 --description "Docs, plans or factory f
 | Epic | One feature, named, not numbered ("Accounts and debts"). Its issue body is the spec. |
 | Ticket | One thin slice of an epic (or a standalone fix) with acceptance criteria. One ticket = one branch = one PR. |
 | Run | One session doing one station's work on one ticket, then ending. |
-| Station | A step a ticket passes through: Intake, Shape and slice, Build, Verify, Review, Merge, Release, Learn. |
+| Station | A step a ticket passes through: Intake, Shape and slice, Build, Review, Merge, Release, Learn. Build runs a fresh verifier when the change touches the app or has runtime criteria. |
 | Door | The PR label that sets the next release's version: `one-way` major, `two-way` minor, `none` patch, `docs` no release. |
 | Traffic light | `green`, `yellow`, `red` or `off`, set from your usage limits. Runs stop or slow down on their own when it changes. |
 | Eject | A run stopping to hand you a decision. The ticket gets `state:needs-human` and a comment with the options and its pick. |
@@ -55,20 +54,20 @@ gh label create door:docs --color CFD3D7 --description "Docs, plans or factory f
    - an epic from the roadmap, to shape it into tickets: `/factory Accounts and debts`
 4. **Answer what needs you.** Tickets labelled `state:needs-human` carry a comment with what happened, the options and the run's pick. Reply on the issue (or tell `/factory`), and the next `/factory` picks the answered ones up first. Some stations also wait for your yes before they move on (see the trust dial below).
 5. **Merge.** Reviewed PRs wait for your yes before they merge.
-6. **Release: `/factory release`.** It reads the door labels merged since the last tag, proposes the version (largest door wins; only `door:docs` means nothing to release), prepares the release PR and tags only after your yes. Pushing the tag builds the `.deb` and publishes the GitHub Release.
-7. **Switch it off: `/factory-shutdown`.** `now` stops every run at its next safe point; `drain` lets in-flight runs finish their current station first.
-8. **See how it went: `/factory-digest`.** A local HTML page of the factory run: what shipped, what waits on you, how each station did, and at most three proposed changes to the factory itself.
+6. **Release.** Any merge with a door other than `door:docs` starts it (or say `/factory release`). It reads the door labels merged since the last tag, picks the version (largest door wins; only `door:docs` means nothing to release), prepares the release PR and asks you once, `Release v<x>?`; that yes merges the release PR and pushes the tag, which builds the `.deb` and publishes the GitHub Release.
+7. **Switch it off: `/factory-shutdown`.** `now` stops every run at its next safe point; `drain` lets in-flight runs finish their current station first. Then it writes the digest and runs Learn (skipped while a usage window is red).
+8. **See how it went: the digest.** A local HTML page of the factory run: what shipped, what waits on you, how each station did, and at most three proposed changes to the factory itself, which Learn files with its own. `/factory-digest` writes one at any time.
 
 ## How much it does without asking
 
-Each station has a trust level, from 0 (it only proposes; nothing happens without your yes) to 3 (it moves on and you audit about one in five). New factories start cautious: Shape and slice, Merge and Release always wait for you; Build and Verify move on and you review afterwards. A station earns one level after 10 clean passes in a row and loses one when it lets a defect through; the factory proposes each change and you confirm it. The current table is in [`spine.md`](.claude/factory/spine.md#trust-dial).
+Each station has a trust level, from 0 (it only proposes; nothing happens without your yes) to 3 (it moves on and you audit about one in five). New factories start cautious: Shape and slice, Merge and Release always wait for you; Build moves on and you review afterwards. A station earns one level after 10 clean passes in a row and loses one when it lets a defect through; the factory proposes each change and you confirm it. The current table is in [`spine.md`](.claude/factory/spine.md#trust-dial).
 
 ## Good to know
 
 - **Where state lives.** Public state is GitHub: issues, labels, comments and PRs. Local state (the light, the run log, digests and private security items) is in `.git/factory/` of your checkout, never committed.
 - **Security findings stay private.** Anything a public issue would teach an attacker goes to the local private list, and its branch, commits and PR use neutral wording.
 - **Models.** Which model and effort each role uses is in [`.claude/factory/models.md`](.claude/factory/models.md). Change one row at a time so its effect shows.
-- **Verify is partly manual for now.** Until tauri-driver is set up, the verifier drives what it can through the snapshot harness and lists the rest as manual checks in the PR comment, so read that comment before you merge.
+- **Verifying is partly manual for now.** Until tauri-driver is set up, the verifier drives what it can through the snapshot harness and leaves each runtime criterion it couldn't drive `open` in its PR comment; a merge with one open waits for your yes. A PR that changes UI shows its snapshots (fake data only) from the `evidence` branch.
 - **One real app at a time.** The dev build uses port 1420, so only one run can drive the real app at once; others wait their turn.
 - **The factory board** is a local live page of all this: `node tools/factory-board/server.js`, then <http://127.0.0.1:4317/>. How to run, simulate and self-check it: [`tools/factory-board/README.md`](tools/factory-board/README.md).
 - **The roadmap** of epics is [`plans/ROADMAP.md`](plans/ROADMAP.md).

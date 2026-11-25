@@ -12,25 +12,25 @@ The GitHub issue number ties them together: it is in the branch, the PR's `Close
 | Epic | One feature, named without a version ("Accounts and debts"). Its body is the spec | parent issue |
 | Ticket | One thin end-to-end slice: behaviour, acceptance criteria, the modules it touches, "blocked by" links. No file paths or code | sub-issue of its epic, or standalone |
 | Run | One session doing one station on one ticket, then ending | a session, one worktree, one ticket comment |
-| PR | One ticket's change to `main`, on branch `t<issue>-<words>`, with one `door:` label | GitHub |
-| Release | A tag on `main` the user cuts; its version follows the largest door since the last tag | tag, GitHub Release, `CHANGELOG.md` |
+| PR | One ticket's change to `main`, on branch `t<issue>-<words>`, with one `door:` label. The one other branch is `evidence`, never merged: UI snapshots under `t<issue>/` (`guides/ui.md`) | GitHub |
+| Release | A tag on `main`; its version follows the largest door since the last tag. Any non-docs merge starts it; the user's one yes cuts it (`stations/release.md`) | release issue, tag, GitHub Release, `CHANGELOG.md` |
 
 ## States
 
-Each ticket has exactly one `state:` label: `intake`, `shaping`, `ready`, `building`, `verifying`, `reviewing`, `merged`, `released`, `needs-human`. A run changes the label when its station's done check passes, and nothing important lives only in a session.
+Each ticket has exactly one `state:` label: `intake`, `shaping`, `ready`, `building`, `reviewing`, `merged`, `released`, `needs-human`. A run changes the label when its station's done check passes, and nothing important lives only in a session.
 
 - **Ready** means every "blocked by" ticket is closed and nobody claimed it. The ready set is the frontier.
 - **Claim**: the dispatcher sets `state:building` and comments `claimed by <session name>` before it starts the run, so runs never claim for themselves. It never starts two tickets that name the same module.
 - **Only the dispatcher starts runs.** A run that finishes sets the next state and ends; it never starts the next station's session, so every report comes back to the dispatcher.
-- **Waiting on the user** is always `state:needs-human`, with the question or ask as the first line of the ticket's latest comment, so it shows in the board's Needs you. A merge ask (`Merge PR #n? ...`, `stations/merge.md`) is one.
+- **Waiting on the user** is always `state:needs-human`, with the question or ask as the first line of the ticket's latest comment, so it shows in the board's Needs you. A merge ask (`Merge PR #n? ...`, `stations/merge.md`) is one, and so is a release ask (`Release v<x>? ...`, `stations/release.md`).
 - **Private work** (security findings, anything a public issue would teach an attacker) keeps the same states in the local list `$(git rev-parse --git-common-dir)/factory/private.md`. Its branches, commits and PRs use neutral wording.
 
 ## Run start
 
 Before any station step, from the worktree root:
 
-1. Verify, Review and Merge first put the worktree on the ticket's branch: `git fetch origin`, then `git switch --detach origin/t<n>-<words>` (the branch itself may be checked out in the Build worktree).
-2. Run `.claude/factory/tools/worktree-check.sh <n> <station>` (station as its guide's file name, `shape-slice` for Shape and slice; `<n>` is `0` for a run without a ticket, such as Learn, Release or Intake of a new request, which then checks only a clean tree at the latest `origin/main`). It removes another ticket's `snapshots/t<m>/` and fails on tracked or untracked changes, or on a `HEAD` that isn't the latest `origin/main` (Build and the other stations, or the ticket's pushed branch for a resumed run) or the ticket's branch (Verify, Review, Merge).
+1. Review and Merge first put the worktree on the ticket's branch: `git fetch origin`, then `git switch --detach origin/t<n>-<words>` (the branch itself may be checked out in the Build worktree).
+2. Run `.claude/factory/tools/worktree-check.sh <n> <station>` (station as its guide's file name, `shape-slice` for Shape and slice; `<n>` is `0` for a run without a ticket, such as Learn, Release or Intake of a new request, which then checks only a clean tree at the latest `origin/main`). It removes another ticket's `snapshots/t<m>/` and fails on tracked or untracked changes, or on a `HEAD` that isn't the latest `origin/main` (Build and the other stations, or the ticket's pushed branch for a resumed run) or the ticket's branch (Review, Merge). A worktree folder not named `t<n>-*` (the app may hand out an old ticket's folder) prints a `WORKTREE NOTE`, not a failure.
 3. On `WORKTREE FAIL`, change nothing: comment the failing line on the ticket, log a `checkpoint` row (Run log) and stop.
 
 ## Eject
@@ -90,7 +90,6 @@ Every PR carries exactly one door label, with one line of reasoning in its body:
 | Intake | 1 | 3 |
 | Shape + slice | 0 | 1 |
 | Build | 2 | 3 |
-| Verify | 2 | 3 |
 | Review | 1 | 3 |
 | Merge | 0 | 2 |
 | Release | 0 | 0 |
@@ -100,4 +99,4 @@ Every run reads its station's level from the "Now" column above, never from memo
 
 ## Run log
 
-Every run ends with one comment on its ticket: station, outcome, evidence, what's next. Its final report starts with the outcome, then any question for the user, in the first 400 characters (only those reach the dispatcher); detail comes after. It also appends one tab-separated row to `$(git rev-parse --git-common-dir)/factory/runs.tsv`: `ended_at`, `session_id`, `ticket` (`#n`, or `SB-n` for private work), `station`, `outcome` (`done`, `back`, `eject`, `checkpoint`), `note`. Learn and the digest add cost from the transcripts later. Models and effort per role: `models.md`.
+Every run ends with one comment on its ticket: station, outcome, evidence, what's next. Its final report starts with the outcome, then any question for the user, in the first 400 characters (only those reach the dispatcher); detail comes after. It also appends one row to `$(git rev-parse --git-common-dir)/factory/runs.tsv`, only ever through `python3 -I .claude/factory/tools/runlog.py append <ticket> <station> <outcome> <note>`: `ticket` is `#n`, `SB-n` for private work, or `-` for none; `station` its guide's file name; `outcome` `done`, `back`, `eject` or `checkpoint`. The script stamps `ended_at` in UTC and the session id, and refuses anything else. Learn and the digest add cost from the transcripts later. Models and effort per role: `models.md`; every run is started on its row's model and effort, never a default.

@@ -10,16 +10,20 @@ Local state: `F=$(git rev-parse --git-common-dir)/factory/`. Ask "now or drain?"
 
 ## Now
 
-1. Write `$F/light.json` with `"light": "off"`, `"set_by": "shutdown"`, `"reason": "shutdown now"`. Every run checkpoints and stops at its next pivot.
+1. From the repo root: `node tools/factory-board/light.js --by shutdown --mode now`. It writes `off` and keeps the held 5-hour and weekly windows. Every run checkpoints and stops at its next pivot.
 2. Wait for in-flight runs once: `SendMessage` each live linked run with `notify_when_idle: true` and no message, then end your turn. When they're idle, list each ticket and the last comment it left (where it stopped).
 3. Stop the watchdog session (`stop_session`) once the runs are idle.
-4. Archive finished runs, then stop the board (both below).
+4. Digest and Learn, archive finished runs, then stop the board (all below).
 
 ## Drain
 
-1. Write `$F/light.json` with `"light": "yellow"`, `"set_by": "shutdown"`, `"draining": true`, `"reason": "draining"`. Runs finish their station or checkpoint; the watchdog keeps it no greener than yellow.
+1. From the repo root: `node tools/factory-board/light.js --by shutdown --mode drain`. It sets `draining`, yellow (a held red stays red), and keeps the held windows. Runs finish their station or checkpoint; the watchdog keeps it no greener than yellow.
 2. The watchdog writes `off` once no run is in flight, then stops itself. Tell the user that, and that `/factory-start` switches it back on.
-3. Wait for in-flight runs once, as in Now step 2. When they're idle, archive finished runs and stop the board (both below).
+3. Wait for in-flight runs once, as in Now step 2. When they're idle: digest and Learn, archive finished runs, stop the board (all below).
+
+## Digest and Learn
+
+If either window you noted is `red`, skip both and say so: the next Learn (weekly, or the next shutdown) covers these rows. Otherwise, in this session: run the `factory-digest` skill, then the Learn station (`.claude/factory/stations/learn.md`), which reads that digest and files at most three changes counting the digest's.
 
 ## Archive finished runs
 
@@ -37,6 +41,4 @@ rm -f "$P"
 
 ## Then
 
-Offer the `factory-digest` skill for this factory run.
-
-Close by naming the reset time to restart at: the `resets_at` of the window you noted whose light wasn't `green`, in the user's local time, or "any time" if both were `green`. Say to restart with `/factory-start` in a new session on the dispatcher model (`.claude/factory/models.md`), not in this one.
+Close with the digest's path, what Learn filed, and the reset time to restart at: the `resets_at` of the window you noted whose light wasn't `green`, in the user's local time, or "any time" if both were `green`. Say to restart with `/factory-start` in a new session on the dispatcher model (`.claude/factory/models.md`), not in this one.

@@ -22,7 +22,7 @@ One session with the user: settle the decisions, write the epic, cut it into tic
 
 ## Publishing
 
-Show the epic and the ticket list as one page (title, criteria count, modules, blocked by, door) and get one yes. Then create the epic, the tickets, and link each as a sub-issue of the epic. Creating labels is the user's call. Then log the run and end; the dispatcher starts the Build runs.
+Show the epic and the ticket list as one page (title, criteria count, modules, blocked by, door) and get one yes to that page. Yeses to your questions settle answers; they are not the publishing yes. Then create the epic, the tickets, and link each as a sub-issue of the epic. Creating labels is the user's call. The run comment quotes the user's publishing yes word for word. A shape PR (a design or an ADR) carries only the deliverable the user chose, never the other directions or drafts; the Spec seat blocks it otherwise. Then log the run and end; the dispatcher starts the Build runs.
 
 ## Eject when
 

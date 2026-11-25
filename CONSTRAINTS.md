@@ -14,11 +14,11 @@ Every rule the factory works under, paired with what enforces it. A rule a check
 | Colours come from theme tokens | policy: no Tailwind palette colour or `#rrggbb` in `src/**/*.tsx` outside `src/components/ui/` | none |
 | No stray debug output in the UI | policy: no `console.log` in `src/` | none |
 | UI queries go stale only through `invalidate(change)` in `src/lib/query-keys.ts` | policy: no `invalidateQueries(` in `src/` outside `src/lib/` | none |
-| Formatted, lint-clean, type-checks | `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `pnpm exec tsc`; the factory board's self-checks, `node --test tools/factory-board/*.check.js`; the run-start worktree check's self-test, `.claude/factory/tools/worktree-check.test.sh` | none |
-| Tests pass | `cargo test`, `pnpm test` (filtered in `task`, full in `integration`) | none |
+| Formatted, lint-clean, type-checks | `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `pnpm exec tsc`; the factory board's self-checks, `node --test tools/factory-board/*.check.js`; the run-start worktree check's self-test, `.claude/factory/tools/worktree-check.test.sh`; the run log's self-test, `.claude/factory/tools/runlog.test.sh` | none |
+| Tests pass | `cargo test`, `pnpm test` (filtered in `task`, full in `integration`); `integration` also runs CI's script self-tests, `scripts/check.test.sh` and `scripts/release-check.test.sh` | none |
 | ts-rs bindings are committed and fresh | `integration`: `cargo test` must not change `src/types/bindings/` | none |
 | Raw imported data is never modified | database triggers abort every `UPDATE` on `raw_transactions` and the file-read columns of `imports` (tested in `db.rs`, `imports.rs`); judgment (Security) for `DELETE` beyond revert | none |
-| Types live in type modules, apart from logic | judgment (Standards) | — |
+| Types live in type modules, apart from logic | policy: no top-level `type X =`, `interface X` or inline `}: {` parameter type in `src/` outside `src/types/` (`src/components/ui/`, `src/hooks/use-mobile.ts` and tests exempt), and no top-level `pub struct`, `pub enum` or `pub type` in `src-tauri/src/` outside `types/` (`keyring.rs` allowlisted) | none |
 | Encrypt only account and routing numbers, only through `crypto.rs` | judgment (Security) | — |
 | Never log or expose a key, password, recovery code or account number; such types don't derive `Debug` | judgment (Security) | — |
 | Prefer mature, well-documented libraries | judgment (Spec, on any approved dependency) | — |
@@ -30,13 +30,15 @@ Every rule the factory works under, paired with what enforces it. A rule a check
 |---|---|
 | Every PR has exactly one `door:` label | CI workflow `Door` (`.github/workflows/door.yml`) |
 | A release tag matches the app version and has a `CHANGELOG.md` section | `scripts/release-check.sh` in `Release` (self-test `scripts/release-check.test.sh`) |
-| CI runs every gate | `CI` runs both self-tests, then by `scripts/check.sh scope`: on `full` (any app path, and every push to `main`) `scripts/check.sh integration` and the `.deb` build; on `light` (only docs, plans, `.claude/`, the factory board, `LICENSE` or root notes other than `CHANGELOG.md`) only the board and worktree self-tests; judgment (Pipeline) for new gates |
+| CI runs every gate | `CI` by `scripts/check.sh scope`: on `full` (any app path, and every push to `main`) `scripts/check.sh integration` (with the script self-tests) and the `.deb` build; on `light` (only docs, plans, `.claude/`, the factory board, `LICENSE` or root notes other than `CHANGELOG.md`) only the script, board, worktree and run log self-tests; judgment (Pipeline) for new gates |
 | The door label fits the change | judgment (Spec) |
 | A PR stays inside its ticket's modules plus the hubs | judgment (Spec) |
 | One state label per ticket; the dispatcher claims | judgment (dispatcher) |
 | Findings block only with proof | judgment (Review station) |
 | Security findings never reach GitHub | judgment (Security writes only to the private list) |
 | Runs read the traffic light at each pivot | judgment (each run); a stale light counts as yellow |
-| Branch per ticket, `t<issue>-<words>` | judgment (dispatcher sets `branch_name`) |
+| The run log is written only through `runlog.py` (UTC time, real session id, known station and outcome) | `.claude/factory/tools/runlog.py` refuses anything else (self-test `runlog.test.sh`); judgment (each run) for using it |
+| A verified ticket's evidence is its own, and open runtime criteria are named | `scripts/check.sh fresh` fails on another ticket's manifest and lists each `OPEN` runtime criterion; Merge rule 7 asks the user |
+| Branch per ticket, `t<issue>-<words>` (plus the never-merged `evidence` branch) | judgment (dispatcher sets `branch_name`); the run-start worktree check notes a folder not named for the ticket |
 
 Only the user approves an override, and only for the exact dependency or suppression they approved. A green `scripts/check.sh` never replaces security review.
