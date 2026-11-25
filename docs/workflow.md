@@ -23,20 +23,19 @@ The issue number ties them together: branch `t<issue>-<words>`, `Closes #<n>`, t
 flowchart LR
   IN["Intake<br/>sort requests"] --> SH["Shape + slice<br/>epic issue, tickets"]
   IN -- "small and clear" --> BU
-  SH --> BU["Build<br/>one owner, test-first"]
-  BU --> VE["Verify<br/>fresh verifier, real app"]
-  VE --> RV["Review<br/>5 seats by risk,<br/>block only with proof"]
+  SH --> BU["Build<br/>one owner, test-first,<br/>integration; verifier when<br/>scope full or runtime criteria"]
+  BU --> RV["Review<br/>5 seats by risk,<br/>block only with proof"]
   RV -- "proven blocker" --> BU
   RV --> ME["Merge"]
-  ME --> RE["Release<br/>on the user's yes"]
-  RE --> LE["Learn<br/>sampled retros"]
+  ME -- "door other than docs" --> RE["Release<br/>one ask: version, PR, tag"]
+  SD["Shutdown<br/>digest, then Learn"] --> LE["Learn<br/>sampled retros"]
   LE -. "at most 3 changes" .-> IN
   RV -. "follow-ups" .-> IN
-  BU & VE & RV -. "eject" .-> NH["needs-human<br/>brief on the ticket"]
+  BU & RV -. "eject" .-> NH["needs-human<br/>brief on the ticket"]
   NH -. "answered" .-> BU
 ```
 
-Each ticket carries one `state:` label: `intake`, `shaping`, `ready`, `building`, `verifying`, `reviewing`, `merged`, `released`, `needs-human`.
+Each ticket carries one `state:` label: `intake`, `shaping`, `ready`, `building`, `reviewing`, `merged`, `released`, `needs-human`.
 
 ## Dispatch
 
@@ -58,7 +57,7 @@ flowchart LR
   Start["/factory-start<br/>pickup, light, watchdog"] --> Run["runs read light.json<br/>at every pivot"]
   WD["watchdog session<br/>every 10-20 min: get_usage"] -- "green / yellow / red,<br/>slots from weekly pace" --> Run
   Run --> Shut["/factory-shutdown<br/>now: off · drain: yellow, then off"]
-  Shut --> Dig["/factory-digest"]
+  Shut --> Dig["/factory-digest, then Learn<br/>(skipped while a window is red)"]
 ```
 
 The 5-hour window sets the light (green under 70%, yellow 70-89%, red 90%+). The weekly window is paced into 3, 2, 1 or 0 slots and turns the light red at 97%. A light older than 45 minutes counts as yellow.
@@ -72,9 +71,9 @@ flowchart LR
   D -- "door:two-way" --> Min["minor"]
   D -- "door:none" --> Pat["patch"]
   D -- "only door:docs" --> No["no release"]
-  Maj & Min & Pat --> RP["release PR: bump version,<br/>## Unreleased → ## x.y.z"] --> Tag["tag v x.y.z, on the user's yes"] --> GH["Release workflow:<br/>release-check.sh, .deb, GitHub Release"]
+  Maj & Min & Pat --> RP["release PR: bump version,<br/>## Unreleased → ## x.y.z"] --> Ask["Release v x.y.z? one yes"] --> Tag["merge release PR, tag v x.y.z"] --> GH["Release workflow:<br/>release-check.sh, .deb, GitHub Release"]
 ```
 
 ## Checks
 
-`scripts/check.sh` tiers: `fast` (policy greps from `CONSTRAINTS.md`, type-check, fmt, clippy), `task` (fast plus named tests), `integration` (full suites, bindings freshness, optional evidence manifest) and `fresh`. CI runs `integration` and both self-tests; the `Door` workflow checks each PR's label.
+`scripts/check.sh` tiers: `fast` (policy greps from `CONSTRAINTS.md`, type-check, fmt, clippy), `task` (fast plus named tests), `integration` (full suites, bindings freshness, the script self-tests, optional evidence manifest) and `fresh`. CI runs `integration` on full scope and only the self-tests on light; the `Door` workflow checks each PR's label.

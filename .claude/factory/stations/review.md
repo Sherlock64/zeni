@@ -6,7 +6,7 @@
 
 ## The panel
 
-Spawn the seats in one message, each with the PR, the ticket and the verifier's comment:
+Spawn the seats in one message, each with the PR, the ticket and the verifier's comment (or the PR body's line saying it was skipped):
 
 | Seat | Agent | When |
 |---|---|---|

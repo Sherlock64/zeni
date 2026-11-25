@@ -67,7 +67,7 @@ One JSON object per line. Every event has `v: 1`, `ts` (ISO 8601 time) and `type
 | `factory_run.start` | `id`, `started_at?` (default `ts`) | A factory run began. |
 | `factory_run.end` | `id`, `retros: [{title, href}]`, `ended_at?` (default `ts`) | It ended, with links to its retros or digest (may be empty). Repeating it with more retros keeps `ended_at`. |
 
-`state` is one of `intake`, `shaping`, `ready`, `building`, `verifying`, `reviewing`, `merged`, `released`, `needs-human`.
+`state` is one of `intake`, `shaping`, `ready`, `building`, `reviewing`, `merged`, `released`, `needs-human`.
 
 ### The traffic light
 
@@ -91,7 +91,7 @@ It reads the last light file, writes `$(git rev-parse --git-common-dir)/factory/
 
 - Only the 5-hour window sets the light. It moves toward green only at a window reset, so it never flaps, and it leaves red only when both windows allow it. `reason` names the window that set it ("5-hour 82%").
 - The weekly window paces run slots instead: `pace` = weekly used ÷ the straight-line target (0% at the week's start to 97% at its reset). Pace up to 1.0 gives 3 slots, over 1.0 gives 2, over 1.1 gives 1, over 1.2 gives 0. In the first 24 hours after the weekly reset pace is 0 (3 slots), since a few percent early reads as a large pace. At weekly 97%+ the light is red until the weekly reset.
-- Shutdown: "now" writes off; "drain" writes yellow with `draining: true`, and the script keeps it no greener than yellow until no session other than `watchdog` is running, then writes off.
+- Shutdown calls `node tools/factory-board/light.js --by shutdown --mode now|drain` (no stdin), which keeps the held 5-hour and weekly windows and appends only a `light` event: "now" writes off; "drain" writes yellow (a held red stays red) with `draining: true`, and the script keeps it no greener than yellow until no session other than `watchdog` is running, then writes off.
 - Fail safe: a light whose `set_at` is more than 45 minutes old counts as yellow. The board shows it as "yellow (stale)" with the last real word.
 - `sessions` in a `light` event lists the running sessions' names; the board shows the `sessions` event's list with context % when it has one.
 

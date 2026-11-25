@@ -40,9 +40,9 @@ test("needs_human.clear and reset empty the state", () => {
 test("sessions event replaces the session list with context %", () => {
   const v = view(fold([
     { type: "sessions", sessions: [{ name: "old", running: true, context_pct: 10 }] },
-    { type: "sessions", sessions: [{ name: "t1-build", running: true, context_pct: 42 }, { name: "t2-verify", running: false, context_pct: null }] },
+    { type: "sessions", sessions: [{ name: "t1-build", running: true, context_pct: 42 }, { name: "t2-review", running: false, context_pct: null }] },
   ]));
-  assert.deepEqual(v.sessions, [{ name: "t1-build", running: true, context_pct: 42 }, { name: "t2-verify", running: false, context_pct: null }]);
+  assert.deepEqual(v.sessions, [{ name: "t1-build", running: true, context_pct: 42 }, { name: "t2-review", running: false, context_pct: null }]);
   assert.throws(() => apply(empty(), { v: 1, type: "sessions", sessions: [{ name: "s", running: true, context_pct: 140 }] }), /pct/);
   assert.throws(() => apply(empty(), { v: 1, type: "sessions", sessions: "s" }), /sessions/);
 });
@@ -51,6 +51,7 @@ test("rejects malformed events", () => {
   assert.throws(() => apply(empty(), { v: 2, type: "reset" }), /version/);
   assert.throws(() => apply(empty(), { v: 1, type: "nope" }), /unknown event/);
   assert.throws(() => apply(empty(), { v: 1, type: "item.upsert", id: "x", kind: "ticket", title: "t", state: "done" }), /bad state/);
+  assert.throws(() => apply(empty(), { v: 1, type: "item.upsert", id: "x", kind: "ticket", title: "t", state: "verifying" }), /bad state/); // #208
   assert.throws(() => apply(empty(), { v: 1, type: "light", light: "blue", reason: "r", set_at: "t" }), /bad light/);
   assert.throws(() => apply(empty(), { v: 1, type: "light", light: "green", reason: "r", set_at: "t", slots: 3, pace: 1, weekly: { pct: 1 } }), /five_hour/);
   assert.throws(() => apply(empty(), { v: 1, type: "light", light: "green", reason: "r", set_at: "t", slots: 4, pace: 1 }), /slots/);
@@ -63,30 +64,30 @@ const at = (h) => new Date(Date.parse("2026-11-24T10:00:00Z") + h * H).toISOStri
 
 test("time in state: tickets not yet merged, longest current state first, current state counts up to now", () => {
   const s = fold([
-    { type: "item.upsert", id: "#1", kind: "ticket", title: "A", state: "verifying" },
+    { type: "item.upsert", id: "#1", kind: "ticket", title: "A", state: "reviewing" },
     { type: "item.upsert", id: "#2", kind: "ticket", title: "B", state: "ready" },
     { type: "item.upsert", id: "#3", kind: "ticket", title: "Done", state: "merged" },
-    { type: "item.history", id: "#1", history: [{ state: "building", at: at(0) }, { state: "verifying", at: at(1.5) }] },
+    { type: "item.history", id: "#1", history: [{ state: "building", at: at(0) }, { state: "reviewing", at: at(1.5) }] },
     { type: "item.history", id: "#2", history: [{ state: "ready", at: at(-1) }] },
     { type: "item.history", id: "#3", history: [{ state: "ready", at: at(-5) }, { state: "merged", at: at(-4) }] },
   ]);
   const p = page2(s, Date.parse(at(2)));
   assert.deepEqual(p.timeInState.map((t) => t.id), ["#2", "#1"]);
   const one = p.timeInState.find((t) => t.id === "#1");
-  // building 10:00, verifying 11:30: 1 h 30 m in building; verifying counts to now (12:00)
-  assert.deepEqual(one.segs, [{ state: "building", ms: 1.5 * H }, { state: "verifying", ms: 0.5 * H }]);
+  // building 10:00, reviewing 11:30: 1 h 30 m in building; reviewing counts to now (12:00)
+  assert.deepEqual(one.segs, [{ state: "building", ms: 1.5 * H }, { state: "reviewing", ms: 0.5 * H }]);
   assert.equal(one.current_ms, 0.5 * H);
   assert.equal(p.timeInState[0].current_ms, 3 * H);
 });
 
 test("time in state: an unmerged ticket with no history shows its state and no time, after those with history (#194)", () => {
   const s = fold([
-    { type: "item.upsert", id: "#1", kind: "ticket", title: "A", state: "verifying" },
+    { type: "item.upsert", id: "#1", kind: "ticket", title: "A", state: "reviewing" },
     { type: "item.upsert", id: "#4", kind: "ticket", title: "New", state: "ready" },
-    { type: "item.history", id: "#1", history: [{ state: "verifying", at: at(0) }] },
+    { type: "item.history", id: "#1", history: [{ state: "reviewing", at: at(0) }] },
   ]);
   const p = page2(s, Date.parse(at(2)));
-  assert.deepEqual(p.timeInState.map((t) => [t.id, t.state, t.current_ms]), [["#1", "verifying", 2 * H], ["#4", "ready", null]]);
+  assert.deepEqual(p.timeInState.map((t) => [t.id, t.state, t.current_ms]), [["#1", "reviewing", 2 * H], ["#4", "ready", null]]);
   assert.deepEqual(p.timeInState[1].segs, []);
 });
 
@@ -114,11 +115,11 @@ test("station outcomes over the whole run log, streak of done newest first, trus
   const run = (n, station, outcome) => ({ type: "run.tokens", run: `r${n}`, session: "s", station, outcome, tokens: 1 });
   const s = fold([
     run(1, "build", "done"), run(2, "build", "back"), run(3, "build", "done"), run(4, "build", "done"),
-    run(5, "review", "eject"), run(6, "intake", "checkpoint"),
+    run(5, "review", "eject"), run(6, "intake", "checkpoint"), run(7, "verify", "done"), run(8, "merge", "done"),
     { type: "trust", levels: { intake: 1, build: 2, review: 1 } },
   ]);
   const st = page2(s, 0).stations;
-  assert.deepEqual(st.map((x) => x.station), ["intake", "build", "review"]); // the spine's order
+  assert.deepEqual(st.map((x) => x.station), ["intake", "build", "review", "merge", "verify"]); // the spine's order; old Verify rows last (#208)
   assert.deepEqual(st.find((x) => x.station === "build"), { station: "build", done: 3, back: 1, eject: 0, checkpoint: 0, streak: 2, level: 2 });
   assert.equal(st.find((x) => x.station === "review").streak, 0);
   // unreadable table: level hidden, streak kept

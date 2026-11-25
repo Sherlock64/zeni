@@ -45,9 +45,6 @@ jobs:
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - run: scripts/release-check.test.sh
-      - run: scripts/check.test.sh
-
       # Tauri 2 Linux prerequisites: https://v2.tauri.app/start/prerequisites/
       - name: Install system packages
         if: steps.scope.outputs.scope == 'full'
@@ -68,13 +65,22 @@ jobs:
         with:
           node-version: 22
 
-      # On full scope check.sh fast runs these two.
+      # On full scope check.sh integration runs these (fast the last three, integration the first two).
+      - name: Release check self-test
+        if: steps.scope.outputs.scope == 'light'
+        run: scripts/release-check.test.sh
+      - name: Check script self-test
+        if: steps.scope.outputs.scope == 'light'
+        run: scripts/check.test.sh
       - name: Factory board self-checks
         if: steps.scope.outputs.scope == 'light'
         run: node --test tools/factory-board/*.check.js
       - name: Worktree check self-test
         if: steps.scope.outputs.scope == 'light'
         run: .claude/factory/tools/worktree-check.test.sh
+      - name: Run log self-test
+        if: steps.scope.outputs.scope == 'light'
+        run: .claude/factory/tools/runlog.test.sh
 
       - name: Enable pnpm
         if: steps.scope.outputs.scope == 'full'

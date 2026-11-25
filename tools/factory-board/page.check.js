@@ -35,7 +35,8 @@ test("both views show all nine spine columns in order, empty ones included", () 
     assert.deepEqual(m.heads.map((h) => h.state), STATES, mode);
     for (const row of m.rows) assert.deepEqual(row.cells.map((c) => c.state), STATES, mode);
   }
-  assert.equal(STATES.length, 9);
+  assert.equal(STATES.length, 8);
+  assert.ok(!STATES.includes("verifying"), "Verify is not a station (#208)");
 });
 
 test("kanban is one row, epics first then by number; lanes are one row per epic plus No epic", () => {

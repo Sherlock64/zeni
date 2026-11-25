@@ -6,7 +6,6 @@ export const STATES = [
   "shaping",
   "ready",
   "building",
-  "verifying",
   "reviewing",
   "merged",
   "released",
@@ -17,7 +16,7 @@ export const LIGHTS = ["green", "yellow", "red", "off"];
 export const OUTCOMES = ["done", "back", "eject", "checkpoint"];
 export const DOORS = ["one-way", "two-way", "none", "docs"];
 // The spine's stations, in its order; page 2 lists station outcomes this way.
-const STATIONS = ["intake", "shape-slice", "build", "verify", "review", "merge", "release", "learn"];
+const STATIONS = ["intake", "shape-slice", "build", "review", "merge", "release", "learn"];
 
 export function empty() {
   return { items: {}, runs: {}, light: null, sessions: [], needsHuman: {}, factoryRuns: {}, history: {}, lightHistory: [], doors: null, ci: null, trust: null, updatedAt: null };
@@ -197,7 +196,7 @@ export function view(s) {
 }
 
 const DONE = ["merged", "released"];
-const PAST_READY = ["ready", "building", "verifying", "reviewing", "merged", "released"];
+const PAST_READY = ["ready", "building", "reviewing", "merged", "released"];
 
 function bump(tag, prs) {
   const m = tag?.match(/^v(\d+)\.(\d+)\.(\d+)$/);

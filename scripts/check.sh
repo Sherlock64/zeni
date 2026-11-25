@@ -3,7 +3,8 @@
 # Usage: scripts/check.sh fast
 #        scripts/check.sh task [--rust <cargo test filter>]... [--ts <vitest path or pattern>]...
 #        scripts/check.sh integration [--evidence snapshots/t<issue>/evidence.yaml]
-#        scripts/check.sh fresh snapshots/t<issue>/evidence.yaml
+#        scripts/check.sh fresh snapshots/t<issue>/evidence.yaml   (FAILED when the manifest's ticket is not the branch's;
+#          lists each OPEN runtime criterion)
 #        scripts/check.sh scope   (prints light or full: which checks CI runs for this change)
 # Overrides: ZENI_DEPS_APPROVED=1, ZENI_SUPPRESSIONS_APPROVED=1 (only for what the user approved).
 set -uo pipefail
@@ -103,6 +104,11 @@ rules() {
     'src/*.tsx' ':!src/components/ui/'
   rule "console.log" 'console\.log' 'src/*.ts' 'src/*.tsx'
   rule "invalidateQueries outside src/lib (use invalidate(change))" 'invalidateQueries\(' 'src/*.ts' 'src/*.tsx' ':!src/lib/'
+  # Types live in type modules (CLAUDE.md): top-level type aliases, interfaces and inline parameter types in UI code,
+  # top-level pub structs and enums in Rust. shadcn owns ui/ and use-mobile.ts; keyring.rs holds the SecretService unit struct.
+  rule "type outside the type modules" '^(export )?(declare )?(type [A-Za-z_][A-Za-z0-9_]*.*=|interface [A-Za-z_])|\}: \{' \
+    'src/*.ts' 'src/*.tsx' ':!src/types/' ':!src/components/ui/' ':!src/hooks/use-mobile.ts' ':!*.test.ts' ':!*.test.tsx'
+  rule "type outside the type modules" '^pub (struct|enum|type) ' 'src-tauri/src/*.rs' ':!src-tauri/src/types/' ':!src-tauri/src/keyring.rs'
 }
 
 # suppressions <pathspec>... -- <pattern>...: print each file with an added line containing a pattern.
@@ -126,6 +132,7 @@ fast() {
   local board=(tools/factory-board/*.check.js)
   [[ -e ${board[0]} ]] && step "factory board self-checks" node --test "${board[@]}"
   [[ -e .claude/factory/tools/worktree-check.test.sh ]] && step "worktree check self-test" .claude/factory/tools/worktree-check.test.sh
+  [[ -e .claude/factory/tools/runlog.test.sh ]] && step "run log self-test" .claude/factory/tools/runlog.test.sh
   return 0
 }
 
@@ -150,6 +157,14 @@ scope() {
   ((n && !full)) && echo light || echo full
 }
 
+# The ticket of the branch (t<n>), or of the pushed origin/t<n>-* branch a detached HEAD sits at; empty when none.
+branch_ticket() {
+  local b
+  b=$(git symbolic-ref -q --short HEAD) ||
+    b=$(git for-each-ref --points-at HEAD --format='%(refname:lstrip=3)' 'refs/remotes/origin/t[0-9]*' | head -1)
+  [[ $b =~ (^|/)t([0-9]+)- ]] && echo "t${BASH_REMATCH[2]}"
+}
+
 usage() { sed -n '/^# Usage:/,/^# Overrides:/p' "$0" >&2; exit 2; }
 
 q() { local s=${1//\'/\'\'}; printf "'%s'" "$s"; } # YAML single-quoted scalar
@@ -172,7 +187,7 @@ write_evidence() {
       echo "  - command: $(q "${r#*$'\t'}")"
       echo "    outcome: ${r%%$'\t'*}"
     done
-    [[ -f $path ]] && sed -n '/^review:/,$p' "$path"
+    [[ -f $path ]] && sed -En '/^(runtime|review):/,$p' "$path"
   } >"$tmp"
   mv "$tmp" "$path"
   echo "evidence written: $path"
@@ -208,16 +223,28 @@ case $mode in
     step "cargo test --locked" bash -c 'cd src-tauri && cargo test --locked'
     step "pnpm test" pnpm test
     step "bindings freshness" test "$(tree_sha src/types/bindings)" = "$before"
+    # CI's script self-tests, so a pass here means CI passes on the same head (#191).
+    for t in scripts/check.test.sh scripts/release-check.test.sh; do [[ -e $t ]] && step "$t" "$t"; done
     [[ -n $evidence ]] && write_evidence "$evidence"
     ;;
   fresh)
     [[ -n ${1:-} ]] || usage
     path=$1
     [[ -f $path ]] || { echo "STALE (no manifest at $path)"; exit 1; }
+    ticket=$(sed -n 's/^version: *//p' "$path") mine=$(branch_ticket)
+    [[ $ticket == "$mine" ]] || { echo "FAILED (manifest is for $ticket, branch is ${mine:-none})"; exit 1; }
     want=$(sed -n 's/^diff_sha256: *//p' "$path")
     [[ $want == "$(tree_sha)" ]] || { echo STALE; exit 1; }
     outcomes=$(sed -n '/^test_results:/,/^[^ ]/s/^ *outcome: *//p' "$path")
     [[ -n $outcomes && -z $(grep -vx pass <<<"$outcomes") ]] || { echo FAILED; exit 1; }
+    # runtime: the verifier's list of runtime criteria, each "- criterion: <n>" then "outcome: pass|fail|open".
+    while read -r c o; do
+      case $o in
+        pass) ;;
+        open) echo "OPEN runtime criterion $c" ;;
+        *) echo "FAILED runtime criterion $c ($o)"; exit 1 ;;
+      esac
+    done < <(awk '/^runtime:/ { r = 1; next } /^[^ ]/ { r = 0 } r && /criterion:/ { c = $NF } r && /outcome:/ { print c, $NF }' "$path")
     echo FRESH
     ;;
   *) usage ;;

@@ -24,7 +24,11 @@ expect() { # expect <exit code> <grep pattern> <description>
   fi
 }
 
+run 7 build; expect 0 "WORKTREE NOTE: folder wt is not named for ticket #7" "a folder not named for the ticket is a note"
+mv "$tmp/wt" "$tmp/t7-thing-ab12" && cd "$tmp/t7-thing-ab12"
 run 7 build; expect 0 "WORKTREE OK" "clean build at origin/main"
+grep -qF "WORKTREE NOTE" <<<"$out" && { echo "FAIL: note for a folder named for the ticket"; exit 1; }
+run 0 learn; grep -qF "WORKTREE NOTE" <<<"$out" && { echo "FAIL: note for a run without a ticket"; exit 1; }
 run 0 learn; expect 0 "WORKTREE OK" "run without a ticket"
 run; expect 2 "Usage" "no arguments"
 run 7 nope; expect 2 "Usage" "unknown station"
@@ -49,9 +53,10 @@ run 7 build; expect 1 "WORKTREE FAIL: HEAD" "build not at origin/main"
 
 g switch -q -c t7-thing && g push -q origin t7-thing
 run 7 build; expect 0 "WORKTREE OK" "resumed build at its pushed ticket branch"
-run 7 verify; expect 0 "WORKTREE OK" "verify at the ticket branch"
+run 7 review; expect 0 "WORKTREE OK" "review at the ticket branch"
 g switch -q --detach origin/main
 run 7 review; expect 1 "WORKTREE FAIL: HEAD" "review not at the ticket branch"
-run 8 verify; expect 1 "WORKTREE FAIL: no single origin/t8-* branch" "later station without a ticket branch"
+run 8 merge; expect 1 "WORKTREE FAIL: no single origin/t8-* branch" "later station without a ticket branch"
+run 7 verify; expect 2 "Usage" "Verify is no station"
 
 echo "worktree-check.test.sh: $pass passed"

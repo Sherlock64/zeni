@@ -12,7 +12,7 @@ Local state: `F=$(git rev-parse --git-common-dir)/factory/`. The factory run sta
 - Shipped: PRs merged (`gh pr list --state merged --search "merged:>=<date>"`) with doors, and any releases cut.
 - Waiting on the user: `state:needs-human` tickets with their eject briefs, PRs at a trust gate.
 - How it did: rows of `$F/runs.tsv` (runs per station, outcomes, ejects, sent back), escapes found, and cost per ticket from `.claude/factory/tools/tally.py` on each run's transcript (targeted reads only).
-- Lessons: the retros in `$F/retros/` from this factory run. Merge points that repeat; keep the evidence.
+- Lessons: the retros in `$F/retros/` written since `started_at`, if any (at shutdown Learn runs after the digest, so it reads this page rather than the reverse). Merge points that repeat; keep the evidence.
 
 ## Write
 
@@ -20,4 +20,4 @@ One self-contained HTML page at `$F/digests/<YYYY-MM-DD>-<run id>.html`: no exte
 
 ## Then
 
-Give the user the path and the proposed changes. On their yes, file each change as a request (`state:intake`).
+Give the user the path and the proposed changes. At shutdown, Learn runs next and files them (they count toward its three). Run on its own, file each change as a request (`state:intake`) on the user's yes.

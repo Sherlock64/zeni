@@ -195,13 +195,52 @@ echo 'client.invalidateQueries({ queryKey: ["x"] });' >src/pages/x.tsx
 run fast; expect 1 "POLICY FAIL: invalidateQueries outside src/lib (use invalidate(change)) src/pages/x.tsx:1" "invalidateQueries in a page"
 reset
 
+mkdir -p src/components/ui src/types src/hooks src-tauri/src/types
+echo 'type Props = { a: string };' >src/components/x.tsx
+run fast; expect 1 "POLICY FAIL: type outside the type modules src/components/x.tsx:1" "type alias in a component"
+echo 'export interface Props { a: string }' >src/components/x.tsx
+run fast; expect 1 "POLICY FAIL: type outside the type modules src/components/x.tsx:1" "interface in a component"
+echo 'export function X({ a }: { a: string }) { return a; }' >src/components/x.tsx
+run fast; expect 1 "POLICY FAIL: type outside the type modules src/components/x.tsx:1" "inline props type"
+echo 'pub struct S;' >src-tauri/src/x.rs
+run fast; expect 1 "POLICY FAIL: type outside the type modules src-tauri/src/x.rs:1" "pub struct outside types/"
+reset
+mkdir -p src/components/ui src/types src/hooks src-tauri/src/types
+echo 'import { type A, B } from "./a";' >src/components/x.tsx
+printf 'import {\n  type A,\n} from "./a";\n' >src/components/y.tsx
+echo 'function H({ e }: { e?: string }) { return e; }' >src/components/x.test.tsx
+echo 'export type Props = { a: string };' >src/types/ui.ts
+echo 'type Props = { a: string };' >src/components/ui/b.tsx
+echo 'type Props = { a: string };' >src/hooks/use-mobile.ts
+echo 'pub struct SecretService;' >src-tauri/src/keyring.rs
+echo 'pub struct S;' >src-tauri/src/types/x.rs
+printf 'fn f() {}\nmod tests {\n    pub(crate) struct Fake;\n    struct Fixture;\n}\n' >>src-tauri/src/main.rs
+run fast; expect 0 "CHECK policy: pass" "type imports, tests, type modules, shadcn files and keyring.rs are fine"
+reset
+
+mkdir -p scripts
+printf '#!/bin/sh\nexit 1\n' >scripts/check.test.sh
+printf '#!/bin/sh\nexit 0\n' >scripts/release-check.test.sh
+chmod +x scripts/*.sh
+run integration; expect 1 "CHECK scripts/check.test.sh: fail" "a failing script self-test fails integration"
+grep -qF "CHECK scripts/release-check.test.sh: pass" <<<"$out" || { echo "FAIL: release-check self-test not run"; exit 1; }
+run fast; expect 0 "" "fast leaves the script self-tests to integration"
+reset
+
+mkdir -p .claude/factory/tools
+printf '#!/bin/sh\nexit 1\n' >.claude/factory/tools/runlog.test.sh
+chmod +x .claude/factory/tools/runlog.test.sh
+run fast; expect 1 "CHECK run log self-test: fail" "a failing run log self-test fails fast"
+reset
+
 run task; expect 0 "ran fast checks only" "task with no filters"
 STUB_FAIL=1 run task --rust foo; expect 1 "CHECK cargo test --locked foo: fail" "task reports failing filter"
 
-ev=snapshots/V9.9/evidence.yaml
+git switch -q -c t9-thing
+ev=snapshots/t9/evidence.yaml
 echo 'fn y() {}' >>src-tauri/src/main.rs
 run integration --evidence $ev; expect 0 "CHECK bindings freshness: pass" "integration passes"
-grep -qx 'version: V9.9' $ev && grep -qF "src-tauri/src/main.rs" $ev || { echo "FAIL: manifest keys"; cat $ev; exit 1; }
+grep -qx 'version: t9' $ev && grep -qF "src-tauri/src/main.rs" $ev || { echo "FAIL: manifest keys"; cat $ev; exit 1; }
 printf 'review:\n  risk: routine\n' >>$ev
 run fresh $ev; expect 0 "FRESH" "fresh right after integration"
 run integration --evidence $ev; expect 0 "" "integration rewrite"
@@ -216,5 +255,21 @@ run fresh $ev; expect 0 "FRESH" "fresh again once the untracked file is gone"
 STUB_FAIL=1 run integration --evidence $ev; expect 1 "CHECK cargo test --locked: fail" "integration runs on after a failure"
 grep -qF "CHECK pnpm test: fail" <<<"$out" || { echo "FAIL: later steps skipped"; exit 1; }
 run fresh $ev; expect 1 "FAILED" "failed outcomes are not fresh"
+run integration --evidence $ev; expect 0 "" "integration passes again"
+printf 'runtime:\n  - criterion: 2\n    outcome: pass\n  - criterion: 5\n    outcome: open\n' >>$ev
+run fresh $ev; expect 0 "OPEN runtime criterion 5" "an open runtime criterion is reported, still fresh"
+grep -qF "criterion 2" <<<"$out" && { echo "FAIL: a passed runtime criterion reported"; exit 1; }
+run integration --evidence $ev; expect 0 "" "integration rewrite keeps runtime"
+grep -qx '    outcome: open' $ev && grep -qx '  risk: routine' $ev || { echo "FAIL: runtime or review block not kept"; cat $ev; exit 1; }
+sed -i 's/outcome: open/outcome: fail/' $ev
+run fresh $ev; expect 1 "FAILED runtime criterion 5" "a failed runtime criterion is not fresh"
+sed -i 's/outcome: fail/outcome: pass/' $ev
+git update-ref refs/remotes/origin/t9-thing HEAD && git switch -q --detach
+run fresh $ev; expect 0 "FRESH" "detached at the ticket's pushed branch"
+git switch -q t9-thing
+run integration --evidence snapshots/t8/evidence.yaml; expect 0 "" "manifest for another ticket"
+run fresh snapshots/t8/evidence.yaml; expect 1 "FAILED (manifest is for t8, branch is t9)" "another ticket's manifest is not fresh"
+git switch -q main
+run fresh $ev; expect 1 "FAILED (manifest is for t9, branch is none)" "a branch without a ticket is not fresh"
 
 echo "check.test.sh: $pass checks passed"

@@ -42,15 +42,15 @@ const EPICS = [
     [222, "Budget vs spending view", "intake"],
   ] },
 ];
-const NEXT = { intake: "shaping", shaping: "ready", ready: "building", building: "verifying", verifying: "reviewing", reviewing: "merged" };
-const STATION = { building: "build", verifying: "verify", reviewing: "review" };
+const NEXT = { intake: "shaping", shaping: "ready", ready: "building", building: "reviewing", reviewing: "merged" };
+const STATION = { building: "build", reviewing: "review" };
 // Fake model per station and cache counts per weighted token, so page 2's cost cards have data.
-const MODEL = { build: "claude-opus-5-5", verify: "claude-sonnet-5-5", review: "claude-opus-5-5" };
+const MODEL = { build: "claude-opus-5-5", review: "claude-opus-5-5" };
 const counts = (r) => ({ model: MODEL[r.station], input: Math.round(r.tokens * 0.05), cache_write: Math.round(r.tokens * 0.2), cache_read: Math.round(r.tokens * (r.station === "build" ? 4 : 2.5)) });
-const COST = { building: [3000, 14000], verifying: [1000, 5000], reviewing: [2000, 7000] };
+const COST = { building: [3000, 14000], reviewing: [2000, 7000] };
 const RANK = { green: 0, yellow: 1, red: 2, off: 3 };
 // A run leaves its station only after burning this many tokens, so stations take a few ticks.
-const BUDGET = { build: 30000, verify: 9000, review: 14000 };
+const BUDGET = { build: 30000, review: 14000 };
 
 async function cycle(n) {
   if (n === 1) {

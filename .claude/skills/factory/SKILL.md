@@ -6,7 +6,9 @@ argument-hint: "[idea, bug, #issue, 'release', or an epic name]"
 
 # Factory
 
-Read `.claude/factory/spine.md` first. You dispatch; you don't build, review or decide product questions. Local state is in `F=$(git rev-parse --git-common-dir)/factory/`.
+Read `.claude/factory/spine.md` first. Then check your own model: `get_session` with `self`. If it isn't the dispatcher model in `.claude/factory/models.md`, say so and stop before starting anything, so the user can switch models or open a fresh session.
+
+You dispatch; you don't build, review or decide product questions. Local state is in `F=$(git rev-parse --git-common-dir)/factory/`.
 
 ## 1. Read the state
 
@@ -14,9 +16,9 @@ Read `.claude/factory/spine.md` first. You dispatch; you don't build, review or 
 - PRs: `gh pr list --json number,title,headRefName,labels,statusCheckRollup,reviewDecision`.
 - Since the last tag: `git describe --tags --abbrev=0`, then the merged PRs and their doors.
 - `$F/light.json` (word, `slots`, `set_at`), `$F/runs.tsv`, and the count of open items in `$F/private.md` (count only, never content).
-- Live runs: `list_sessions` with `linked: true`; a ticket in `building`, `verifying` or `reviewing` whose run is gone is a vanished run (`factory-start` picks it up).
+- Live runs: `list_sessions` with `linked: true`; a ticket in `building` or `reviewing` whose run is gone is a vanished run (`factory-start` picks it up).
 
-A child's report is a hint, not the state. Take each item's state from its GitHub label and its last ticket comment, and a run's liveness from `list_sessions`; say an item waits on the user only when its ticket is `state:needs-human` (a merge ask included), `get_session` shows its run blocked on a question, or no run is live for it and the user hasn't yet given the yes it needs: the station that just finished is at level 1 (except Review, whose yes is Merge's merge ask), or the next station is at level 0 or is Shape and slice or Release. A ticket waiting to merge is `state:needs-human` with a merge ask; one in `reviewing` or `building` with an open PR is not waiting on the user. Where a report and GitHub disagree, say GitHub's state and note the report.
+A child's report is a hint, not the state. Take each item's state from its GitHub label and its last ticket comment, and a run's liveness from `list_sessions`; say an item waits on the user only when its ticket is `state:needs-human` (a merge or release ask included), `get_session` shows its run blocked on a question, or no run is live for it and the user hasn't yet given the yes it needs: the station that just finished is at level 1 (except Review, whose yes is Merge's merge ask), or the next station is at level 0 or is Shape and slice. A ticket waiting to merge is `state:needs-human` with a merge ask; one in `reviewing` or `building` with an open PR is not waiting on the user. Where a report and GitHub disagree, say GitHub's state and note the report.
 
 Show the user one short status, in this order:
 
@@ -29,21 +31,22 @@ If the user gave something new, run Intake on it (`stations/intake.md`) before p
 
 ## 3. Pick work, in order
 
-1. `state:needs-human` items the user has answered (a reply after the eject brief or merge ask). A yes the user gives in chat to a merge ask: comment it on the ticket, quoted, before starting the Merge run, since Merge reads the yes only there.
+1. `state:needs-human` items the user has answered (a reply after the eject brief, merge ask or release ask). A yes the user gives in chat to a merge or release ask: comment it on the ticket or release issue, quoted, before starting the Merge or Release run, since they read the yes only there.
 2. Tickets in `state:reviewing` whose latest PR comment is `Review PASS on <sha>.` and with no live run: start Merge, which checks its rules and asks or merges.
-3. Open PRs with failing CI or a "conflicts with main" note: back to their station.
-4. Frontier tickets (`state:ready`, every blocker closed), oldest epic first, never two that name the same module, nor one that shares a module with a running ticket.
-5. The intake backlog.
+3. Release, with no Release run live: when a PR with a door other than `door:docs` merged since the last tag and no open release ask lists it (none yet, or a newer merge made the open one stale), start Release (`stations/release.md`). It prepares the release PR and asks; this follows a non-docs merge in the same dispatch.
+4. Open PRs with failing CI or a "conflicts with main" note: back to their station.
+5. Frontier tickets (`state:ready`, every blocker closed), oldest epic first, never two that name the same module, nor one that shares a module with a running ticket.
+6. The intake backlog.
 
 ## 4. Gate
 
 - Start nothing unless the light is `green` (a stale or missing light counts as `yellow`), and never more runs than `slots` minus those in flight.
 - Idle shutdown (`spine.md`): on every turn, including one woken by the watchdog or a run, if the light is `yellow` or `red`, no linked run is in flight and Needs you is "Nothing", propose `/factory-shutdown` (now) to the user instead of waiting for the next wake. Name the reset time to restart at (the `resets_at` of the `five_hour` or `weekly` window in `light.json` whose light isn't `green`; "any time" when no window is non-green, as with a stale light or usage unavailable) and what is left to pick up (frontier, open PRs, intake backlog), then end.
-- Trust dial: read each station's level from the "Now" column of the table in `spine.md` every time, never from memory. A station at level 0 lists the work with a one-line brief and waits for the user's yes; at level 1 the run goes, and its next station waits for the user's yes; at level 2 or 3 nothing waits (e.g. with Build and Verify at 2, Verify starts after Build, and Review after Verify, without asking). Shape and slice and Release never start without the user's yes. Merge starts once Review passes, with no separate yes: Merge's own merge ask meets Review's level-1 gate. It asks for the yes itself at level 0 or 1 (`stations/merge.md`), read from Merge's row in the table.
+- Trust dial: read each station's level from the "Now" column of the table in `spine.md` every time, never from memory. A station at level 0 lists the work with a one-line brief and waits for the user's yes; at level 1 the run goes, and its next station waits for the user's yes; at level 2 or 3 nothing waits (e.g. with Build at 2, Review starts after Build without asking). Shape and slice never starts without the user's yes. Release starts on a non-docs merge without one: its own ask is the user's yes (`stations/release.md`). Merge starts once Review passes, with no separate yes: Merge's own merge ask meets Review's level-1 gate. It asks for the yes itself at level 0 or 1 (`stations/merge.md`), read from Merge's row in the table.
 
 ## 5. Start runs
 
-You are the only one who starts runs (`spine.md`). For each picked ticket: claim it (`state:building`, comment `claimed by <session name>`), then `start_session` with `initiation: "user_asked"`, `use_worktree: true`, `branch_name: t<issue>-<words>` (the app may add a prefix or suffix; Build renames it), the model and effort from `.claude/factory/models.md`, and a prompt of only:
+You are the only one who starts runs (`spine.md`). For each picked ticket: claim it (`state:building`, comment `claimed by <session name>`), then `start_session` with `initiation: "user_asked"`, `use_worktree: true`, `branch_name: t<issue>-<words>` (the app may add a prefix or suffix; Build renames it), `model` and `effort` from the station's row in `.claude/factory/models.md` (Build owner for Build, Review lead for Review; never left to the default), and a prompt of only:
 
 ```
 Ticket #<n>, station <station>. Read .claude/factory/spine.md, then .claude/factory/stations/<station>.md, then the ticket.

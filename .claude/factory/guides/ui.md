@@ -40,4 +40,18 @@ Check what you built by looking at it, not by reading the code. Tests prove beha
   `scripts/snapshot.sh 'snapshot.html?fail=app_info#/settings' snapshots/t<issue>/settings-error.png`
   An optional third argument sets the size (default `1280x800`); also capture `800x600`, only for pages with a table.
 - Open every PNG with Read and check it against the ticket and the existing pages: layout, alignment, spacing, overflow, truncation, empty space, readable contrast, and that the state shown is the one intended. Fix what's wrong and capture again.
-- `snapshots/` is gitignored. List every PNG you kept in `SNAPSHOTS`.
+- `snapshots/` is gitignored. To show them in the PR, push the PNGs to the `evidence` branch (never merged; it holds `t<issue>/` per ticket and replaces this ticket's folder each time). Only snapshots from `scripts/snapshot.sh`, so only the fake data in `snapshot-fixtures.ts`; never a real-app screenshot:
+
+  ```bash
+  n=<issue>; (
+    export GIT_INDEX_FILE=$(mktemp -u)
+    git fetch -q origin evidence 2>/dev/null; parent=$(git rev-parse -q --verify origin/evidence)
+    if [ -n "$parent" ]; then git read-tree "$parent"; else git read-tree --empty; fi
+    git rm -rq --cached --ignore-unmatch "t$n"
+    for f in snapshots/t$n/*.png; do git update-index --add --cacheinfo "100644,$(git hash-object -w "$f"),t$n/${f##*/}"; done
+    c=$(git commit-tree "$(git write-tree)" ${parent:+-p "$parent"} -m "t$n snapshots")
+    git push -q origin "$c:refs/heads/evidence"; rm -f "$GIT_INDEX_FILE"
+  )
+  ```
+
+  Then show each in the PR body, one line per state: `![settings, error](https://raw.githubusercontent.com/<owner>/<repo>/evidence/t<issue>/settings-error.png)` (`gh repo view --json nameWithOwner -q .nameWithOwner`).

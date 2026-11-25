@@ -107,7 +107,7 @@ main { max-width: 1700px; margin: 0 auto; padding: 14px 24px 28px; display: grid
 .bars .track, .tis .segs { grid-column: 1 / -1; height: 8px; background: var(--track); border-radius: 4px; overflow: hidden; display: flex; }
 .bars .track > i { background: var(--g3); border-radius: 4px; }
 .seg { display: block; min-width: 3px; border-right: 2px solid var(--panel); }
-.s-intake, .s-shaping { background: var(--line); } .s-ready { background: var(--g1); } .s-building { background: var(--g2); } .s-verifying { background: var(--g3); }
+.s-intake, .s-shaping { background: var(--line); } .s-ready { background: var(--g1); } .s-building { background: var(--g2); }
 .s-reviewing { background: var(--ink); } .s-needs-human { background: var(--warn-line); }
 .stations { width: 100%; border-collapse: collapse; font-size: .85rem; }
 .stations th, .stations td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--line); white-space: nowrap; }
@@ -339,7 +339,7 @@ function render(s) {
 }
 
 // Page 2: its own address (#p2) on this page, so the band and the stream are shared; its data comes from /api/page2.
-const STATION = { intake: "Intake", "shape-slice": "Shape + slice", build: "Build", verify: "Verify", review: "Review", merge: "Merge", release: "Release", learn: "Learn" };
+const STATION = { intake: "Intake", "shape-slice": "Shape + slice", build: "Build", review: "Review", merge: "Merge", release: "Release", learn: "Learn" };
 const two = () => location.hash === "#p2";
 const empty = (text) => el("p", "muted", text);
 function bars(rows, max, f) {
