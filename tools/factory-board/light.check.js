@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { decide, effective, run, wakeSeconds } from "./light.js";
+import { decide, effective, run, shutdown, wakeSeconds } from "./light.js";
 
 const H = 3600e3;
 const now = Date.parse("2026-11-23T12:00:00Z");
@@ -113,7 +113,7 @@ test("run writes the light file atomically and appends one light and one session
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "light-"));
   const lightPath = path.join(dir, "f", "light.json");
   const eventsPath = path.join(dir, "f", "events.jsonl");
-  const sessions = [{ name: "t1-build", running: true, context_pct: 42 }, { name: "t2-verify", running: false, context_pct: null }];
+  const sessions = [{ name: "t1-build", running: true, context_pct: 42 }, { name: "t2-review", running: false, context_pct: null }];
   const out = run({ input: usage(10, 2 * H, 10, 100 * H, sessions), by: "watchdog", lightPath, eventsPath, now });
   const file = JSON.parse(fs.readFileSync(lightPath, "utf8"));
   assert.deepEqual([file.light, file.set_by, file.sessions], ["green", "watchdog", ["t1-build"]]);
@@ -126,4 +126,41 @@ test("run writes the light file atomically and appends one light and one session
   fs.writeFileSync(lightPath, JSON.stringify({ ...file, light: "off" }));
   assert.equal(run({ input: usage(10, 2 * H, 10, 100 * H), by: "watchdog", lightPath, eventsPath, now }).wake_s, null);
   assert.equal(fs.readFileSync(eventsPath, "utf8").trim().split("\n").length, 2);
+});
+
+test("shutdown now writes off and keeps the held windows", () => {
+  const last = decide({ input: usage(92, 2 * H, 10, 100 * H), now: now - 0.5 * H });
+  const off = shutdown({ last, mode: "now", now });
+  assert.deepEqual([off.light, off.set_by, off.draining, off.reason], ["off", "shutdown", false, "shutdown now"]);
+  assert.deepEqual([off.five_hour, off.weekly], [last.five_hour, last.weekly]);
+});
+
+test("shutdown drain keeps the held windows, so a held red outlasts the drain", () => {
+  const last = decide({ input: usage(92, 2 * H, 10, 100 * H), now: now - 0.5 * H });
+  const drain = shutdown({ last, mode: "drain", now });
+  assert.deepEqual([drain.light, drain.draining, drain.five_hour], ["red", true, last.five_hour]);
+  const busy = [{ name: "t1-build", running: true, context_pct: 40 }];
+  const next = decide({ input: usage(40, 2 * H, 10, 100 * H, busy), last: drain, now });
+  assert.deepEqual([next.light, next.draining], ["red", true]); // the 5-hour hold survives the drain
+  const green = shutdown({ last: decide({ input: usage(10, 2 * H, 10, 100 * H), now }), mode: "drain", now });
+  assert.deepEqual([green.light, green.reason], ["yellow", "draining"]);
+  assert.equal(shutdown({ last: off(), mode: "drain", now }).light, "off"); // already off stays off
+  const none = shutdown({ last: null, mode: "drain", now });
+  assert.deepEqual([none.light, none.five_hour], ["yellow", { pct: 0, resets_at: null }]);
+  function off() {
+    return { ...decide({ input: usage(10, 2 * H, 10, 100 * H), now }), light: "off" };
+  }
+});
+
+test("run --by shutdown writes the light and one light event, no sessions event", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "light-"));
+  const lightPath = path.join(dir, "light.json");
+  const eventsPath = path.join(dir, "events.jsonl");
+  run({ input: usage(10, 2 * H, 10, 100 * H), by: "watchdog", lightPath, eventsPath, now });
+  const out = run({ by: "shutdown", mode: "now", lightPath, eventsPath, now: now + 60e3 });
+  assert.deepEqual(out, { light: "off", reason: "shutdown now", wake_s: null });
+  const file = JSON.parse(fs.readFileSync(lightPath, "utf8"));
+  assert.deepEqual([file.light, file.weekly.pct], ["off", 10]);
+  const events = fs.readFileSync(eventsPath, "utf8").trim().split("\n").map((l) => JSON.parse(l));
+  assert.deepEqual(events.map((e) => e.type), ["light", "sessions", "light"]);
 });

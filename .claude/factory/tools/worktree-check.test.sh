@@ -24,7 +24,11 @@ expect() { # expect <exit code> <grep pattern> <description>
   fi
 }
 
+run 7 build; expect 0 "WORKTREE NOTE: folder wt is not named for ticket #7" "a folder not named for the ticket is a note"
+mv "$tmp/wt" "$tmp/t7-thing-ab12" && cd "$tmp/t7-thing-ab12"
 run 7 build; expect 0 "WORKTREE OK" "clean build at origin/main"
+grep -qF "WORKTREE NOTE" <<<"$out" && { echo "FAIL: note for a folder named for the ticket"; exit 1; }
+run 0 learn; grep -qF "WORKTREE NOTE" <<<"$out" && { echo "FAIL: note for a run without a ticket"; exit 1; }
 run 0 learn; expect 0 "WORKTREE OK" "run without a ticket"
 run; expect 2 "Usage" "no arguments"
 run 7 nope; expect 2 "Usage" "unknown station"
