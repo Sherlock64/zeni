@@ -4,11 +4,28 @@
 
 **Done when:** the PR is merged with green CI, the ticket is closed by its `Closes #<n>` and carries `state:merged`, and an epic whose tickets are all closed is closed too.
 
-## Before merging
+## Merge rules
 
-- CI is green on the latest commit, including the door-label check.
-- The branch is up to date with `main`. If it's behind, rebase, rerun `scripts/check.sh fast`, push, and wait for CI again. A rebase that changes behaviour (a conflict in logic, not just in `CHANGELOG.md` or a hub's list) sends the ticket back to Verify.
-- Review's comment shows no open blocker, and the user said yes (the trust dial for Merge starts at 0).
+All must pass, at every trust level. Check them in order and stop at the first that fails:
+
+1. The latest Review comment is a pass (`Review PASS on <sha>.`) with no open blocker.
+2. The PR's latest commit (`gh pr view <n> --json headRefOid`) is the one Review passed.
+3. CI is green on that commit, including the door-label check.
+4. The branch is up to date with `main`.
+5. Exactly one `door:` label.
+6. Not `door:one-way`: a one-way door always needs the user's yes.
+
+A failed rule, at any level: set `state:needs-human` and comment, first line `Merge rule <k> failed: <what you saw>.`, then the fix (a rebase, a new Review, the label). Rule 6 alone is not a failure to fix: comment the merge ask below instead.
+
+For rule 4, the dispatcher sends the ticket to Build to rebase (`state:building`); the new head goes through Verify and Review again, and rule 2 catches a stale pass.
+
+## Asking or merging
+
+Read Merge's level from the "Now" column of the trust-dial table in `spine.md`, never from memory.
+
+- **Level 0 or 1**, or a one-way door: set `state:needs-human` and comment, first line `Merge PR #<n>? Review passed on <sha>, CI green.` The ticket shows in the board's Needs you. End the run.
+- **Level 2 or higher**, every rule passed: merge (below) without asking, and the run comment lists the six rules checked.
+- **The yes**: a fresh Merge run reads it only from a ticket comment after the merge ask (the dispatcher quotes a yes given in chat there). A yes in any other place doesn't count. Before merging, check the rules again: the PR's latest commit must still be the `<sha>` the ask names, or rule 2 fails. The yes also meets rule 6.
 
 ## Merging
 
@@ -18,8 +35,7 @@
 
 ## Eject when
 
-- CI fails on `main` after the merge;
-- a rebase conflict needs a decision neither ticket settles.
+- CI fails on `main` after the merge.
 
 ## Pointers
 

@@ -124,3 +124,18 @@ test("doors merged since the last v-tag and the last CI runs become absolute eve
   // without a tag every fetched merge counts
   assert.equal(toBoard([], [], { refs: { nodes: [] }, pullRequests: DOORS.pullRequests }).doors.tag, null);
 });
+
+test("a merge ask is in Needs you; a ticket in reviewing or building with an open PR is not", () => {
+  const ask = { body: "Merge PR #210? Review passed on abc1234, CI green.", url: "https://github.com/o/r/issues/183#c9" };
+  const b = toBoard(
+    [
+      issue(183, "Merge asks", "state:needs-human", { comments: { nodes: [ask] } }),
+      issue(184, "Under review", "state:reviewing"),
+      issue(185, "Back to build", "state:building"),
+    ],
+    [pr(210, "t183: merge asks", "state:needs-human"), pr(211, "t184: under review", "state:reviewing"), pr(212, "t185: back", "state:building")],
+  );
+  assert.deepEqual(Object.values(b.needsHuman).map((n) => [n.item, n.question, n.href]), [
+    ["#183", "Merge PR #210? Review passed on abc1234, CI green.", "https://github.com/o/r/issues/183#c9"],
+  ]);
+});
