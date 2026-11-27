@@ -34,7 +34,7 @@ If the user gave something new, run Intake on it (`stations/intake.md`) before p
 
 1. `state:needs-human` items the user has answered (a reply after the eject brief, merge ask or release ask). A yes the user gives in chat to a merge or release ask: comment it on the ticket or release issue, quoted, before starting the Merge or Release run, since they read the yes only there.
 2. Tickets in `state:reviewing` whose latest PR comment is `Review PASS on <sha>.` and with no live run: start Merge, which checks its rules and asks or merges.
-3. Release, with no Release run live: when a PR with a door other than `door:docs` merged since the last tag and no open release ask lists it (none yet, or a newer merge made the open one stale), start Release (`stations/release.md`). It prepares the release PR and asks; this follows a non-docs merge in the same dispatch.
+3. Release, with no Release run live: when a PR with a door other than `door:docs` merged since the last tag and no open release ask lists it (none yet, or a newer merge made the open one stale), start Release (`stations/release.md`). It prepares the release PR and asks; this follows a non-docs merge in the same dispatch, except a held epic's: an epic with `Release: v<x.y.z>` holds its merges and cuts that version when its last ticket merges.
 4. Open PRs with failing CI or a "conflicts with main" note: back to their station.
 5. Frontier tickets (`state:ready`, every blocker closed), oldest epic first, never two that name the same module, nor one that shares a module with a running ticket.
 6. The intake backlog.

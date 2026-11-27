@@ -1,6 +1,6 @@
 # Personal Finance App — Roadmap
 
-Each item below is an epic: named, not numbered. Shape and slice turns one into an epic issue (its body is the spec) and tickets, and an epic may ship across several releases. Release versions follow the `door:` labels of the PRs merged since the last tag (`.claude/factory/spine.md`), not the epics. Order within a section is the intended order.
+Each item below is an epic: named, not numbered. Shape and slice turns one into an epic issue (its body is the spec) and tickets, and an epic may ship across several releases. Release versions follow the `door:` labels of the PRs merged since the last tag (`.claude/factory/spine.md`), not the epics, unless an epic declares `Release: v<x.y.z>` (`.claude/factory/stations/release.md`). Order within a section is the intended order.
 
 ## Product preferences
 
