@@ -1,0 +1,29 @@
+name: Intake
+
+# Labels a newly opened issue `state:intake` so it reaches the factory (.claude/factory/spine.md, States).
+on:
+  issues:
+    types: [opened]
+
+permissions: {}
+
+jobs:
+  label:
+    name: Label new issue
+    runs-on: ubuntu-24.04
+    # Writing the label is the only thing this job does; no checkout.
+    permissions:
+      issues: write
+    steps:
+      - name: Add state:intake unless it has a state label
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ github.event.issue.number }}
+          LABELS: ${{ toJSON(github.event.issue.labels.*.name) }}
+        run: |
+          # Intake creates issues pre-labelled; a second state label would break "exactly one".
+          if jq -e 'any(.[]; startswith("state:"))' <<<"$LABELS" >/dev/null; then
+            echo "Already has a state label; skipping."
+            exit 0
+          fi
+          gh issue edit "$NUMBER" --add-label state:intake --repo "$GITHUB_REPOSITORY"

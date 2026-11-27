@@ -15,6 +15,7 @@
 
 ## Sorting
 
+- An open issue with no `state:` label is a raw request: add `state:intake` first (the `Intake` workflow does it for new issues; older ones and issues opened before it existed need it by hand), then sort it.
 - Labels: `bug` or `enhancement` (both exist), and `severity:low|medium|high|critical` on bugs, by worst realistic consequence: data loss or an exposed secret is `critical`; a broken rule or a flow that misleads is `high`; a defect a user meets is `medium`; polish is `low`.
 - A standalone ticket gets the ticket shape from `stations/shape-slice.md`: behaviour, acceptance criteria, modules, "blocked by". Read the code it names before you write criteria; a criterion you can't check against the code is an open decision, so the ticket goes to shaping.
 - Merge near-duplicates into the clearest issue and close the rest with a link. Prefer one issue per defect.

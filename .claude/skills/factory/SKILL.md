@@ -13,6 +13,7 @@ You dispatch; you don't build, review or decide product questions. Local state i
 ## 1. Read the state
 
 - Tickets and epics by state: `gh issue list --state open --label state:<s> --json number,title,labels,body` for each state; the "Blocked by" line in each body.
+- Issues with no `state:` label (raw requests): `gh issue list --state open --json number,title,labels --search '-label:state:intake -label:state:shaping -label:state:ready -label:state:building -label:state:reviewing -label:state:merged -label:state:released -label:state:needs-human'` (`gh` cannot match a label prefix). List them as intake.
 - PRs: `gh pr list --json number,title,headRefName,labels,statusCheckRollup,reviewDecision`.
 - Since the last tag: `git describe --tags --abbrev=0`, then the merged PRs and their doors.
 - `$F/light.json` (word, `slots`, `set_at`), `$F/runs.tsv`, and the count of open items in `$F/private.md` (count only, never content).
