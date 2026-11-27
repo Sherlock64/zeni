@@ -6,10 +6,10 @@ Starting point for the Foundations epic (#133), measured on `main` at `9a255b2`,
 
 | Suite | Tests | Time |
 |---|---|---|
-| `cargo test` (415 passed; 106 of them are ts-rs binding exports) | 415 | 8.5 s of test run, ~2 min wall including compile |
+| `cargo test` (415 passed; 98 of them are ts-rs binding exports) | 415 | 8.5 s of test run, ~2 min wall including compile |
 | `pnpm test` (vitest, 37 files) | 526 | 14.1 s (15.9 s wall) |
 
-Test lines for Rust are the `#[cfg(test)]` block to end of file (tests live in each module's file); for the UI, the whole `*.test.ts(x)` file. Test counts come from `cargo test -- --list` and, for the UI, `it(`/`test(` calls (`query-keys.test.ts` has none, only a type-level check; it is not counted). The `types` module's 106 tests are generated binding exports, listed separately.
+Test lines for Rust are the `#[cfg(test)]` block to end of file (tests live in each module's file); for the UI, the whole `*.test.ts(x)` file. Test counts come from `cargo test -- --list` and, for the UI, from `pnpm exec vitest run --reporter=json` (per-file assertion results, so `.each` cases count). The `types` module has 98 generated binding exports plus 8 real tests; the row counts only the 8, and its lines are the `#[cfg(test)]` blocks of `types/backup`, `error`, `imports`, `nicknames`, `security` and `transactions`.
 
 ## Rust, per module
 
@@ -41,7 +41,7 @@ Test lines for Rust are the `#[cfg(test)]` block to end of file (tests live in e
 | `transactions` | 14 | 468 |
 | `updates` | 14 | 388 |
 | `version` | 4 | 44 |
-| `types` (ts-rs binding exports) | 106 | in `types/` |
+| `types` (plus 98 ts-rs binding exports) | 8 | 458 |
 
 ## UI, per test file
 
@@ -51,17 +51,17 @@ Test lines for Rust are the `#[cfg(test)]` block to end of file (tests live in e
 | `components/app-shell.test` | 21 | 432 |
 | `components/auto-categorize-switch.test` | 2 | 51 |
 | `components/backup-card.test` | 25 | 433 |
-| `components/categorize-actions.test` | 11 | 217 |
-| `components/categorize-banner.test` | 14 | 293 |
+| `components/categorize-actions.test` | 16 | 217 |
+| `components/categorize-banner.test` | 21 | 293 |
 | `components/categorize-dialog.test` | 9 | 162 |
 | `components/category-delete-dialog.test` | 4 | 91 |
 | `components/category-select.test` | 9 | 121 |
-| `components/command-error-alert.test` | 5 | 40 |
+| `components/command-error-alert.test` | 8 | 40 |
 | `components/csv-layouts-card.test` | 12 | 231 |
-| `components/import-controls.test` | 33 | 736 |
-| `components/model-builds-section.test` | 39 | 531 |
+| `components/import-controls.test` | 38 | 736 |
+| `components/model-builds-section.test` | 43 | 531 |
 | `components/nickname-rule-fields.test` | 4 | 67 |
-| `components/ollama-card.test` | 24 | 372 |
+| `components/ollama-card.test` | 26 | 372 |
 | `components/recovery-codes.test` | 3 | 42 |
 | `components/release-notes-dialog.test` | 9 | 152 |
 | `components/rename-dialog.test` | 29 | 530 |
@@ -71,19 +71,19 @@ Test lines for Rust are the `#[cfg(test)]` block to end of file (tests live in e
 | `hooks/use-text-size.test` | 7 | 76 |
 | `lib/backup-format.test` | 2 | 15 |
 | `lib/commands.test` | 11 | 423 |
-| `lib/job-label.test` | 2 | 20 |
+| `lib/job-label.test` | 9 | 20 |
 | `lib/money.test` | 1 | 8 |
-| `lib/nickname-errors.test` | 3 | 28 |
-| `lib/query-keys.test` | 0 | 45 |
-| `pages/accounts.test` | 7 | 118 |
-| `pages/categories.test` | 18 | 322 |
+| `lib/nickname-errors.test` | 7 | 28 |
+| `lib/query-keys.test` | 11 | 45 |
+| `pages/accounts.test` | 9 | 118 |
+| `pages/categories.test` | 21 | 322 |
 | `pages/nicknames.test` | 30 | 600 |
 | `pages/review.test` | 32 | 643 |
-| `pages/settings.test` | 18 | 283 |
+| `pages/settings.test` | 24 | 283 |
 | `pages/setup.test` | 6 | 117 |
 | `pages/startup-problem.test` | 8 | 107 |
 | `pages/transactions.test` | 25 | 501 |
-| `pages/unlock.test` | 15 | 236 |
+| `pages/unlock.test` | 17 | 236 |
 
 ## Flake rate
 
