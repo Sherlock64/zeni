@@ -11,6 +11,10 @@ Load when a ticket touches `src-tauri/`, migrations, commands, shared types, bin
 - A domain's types go in `src-tauri/src/types/<domain>.rs`; `types/mod.rs` re-exports every one, so `use crate::types::X` keeps working.
 - To add or change a command, its types or its `AppError`s, follow `.claude/skills/add-command/SKILL.md`.
 
+## Tests
+
+- One owning test per behaviour, at its seam (the module's `pub fn`). Assert state and what the user sees (rows, returned values), not which calls were made. Share setup, not assertions.
+
 ## Migrations
 
 - Add `src-tauri/migrations/NNNN_<snake_name>.sql`, numbered one past the highest file.

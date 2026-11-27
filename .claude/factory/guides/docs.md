@@ -6,7 +6,7 @@ Load when a ticket changes what `CLAUDE.md`, `README.md`, `docs/` or the factory
 
 - `CLAUDE.md`: rules, layout, commands and database facts for coding agents. Add a rule only when the epic or the user sets one; keep every existing rule unless the user removes it. Pair each enforceable rule with its check in `CONSTRAINTS.md`.
 - `README.md`: for a developer on Pop!_OS: prerequisites, install, dev run, tests, release build, where the data lives.
-- `docs/`: user guides for features the user operates, for a non-developer; `docs/architecture.md` (Mermaid) when modules, pages, stores or main flows change; `docs/glossary.md` for the epic's new terms; `docs/workflow.md` when the factory's flow changes.
+- `docs/`: user guides for features the user operates, for a non-developer; `docs/architecture.md` (Mermaid) when modules, pages, stores or main flows change; `docs/glossary.md` for the epic's new terms (a PR that adds a domain term adds it there); `docs/workflow.md` when the factory's flow changes.
 - `.claude/`: agents use YAML frontmatter with `name`, `description`, and `tools` only where restricting matters; no `model:` line (`.claude/factory/models.md`). Skills live at `.claude/skills/<name>/SKILL.md` with a `description` that says when to trigger. Each rule lives in one file.
 
 ## Rules

@@ -18,6 +18,10 @@ Load when a ticket touches `src/` pages, components, hooks or styles.
 - Tests sit next to the file they test as `*.test.tsx`. Mock `@/lib/commands` with `vi.mock`, reset with `beforeEach(() => vi.resetAllMocks())` (define global stubs such as `matchMedia` and `scrollTo` as plain functions, so the reset doesn't wipe them), render inside a fresh `QueryClientProvider` with `retry: false`, give tests that route a fresh router with `createMemoryHistory` (see `src/components/app-shell.test.tsx`), and query by role or text. Radix `Select` and `RadioGroup` need a `ResizeObserver` stub (see `src/components/import-controls.test.tsx`); Radix `Select` can't be opened in jsdom, so check its options in a snapshot.
 - A dialog opened without a trigger (`open` state only) passes `onCloseAutoFocus` that calls `event.preventDefault()` and focuses the button that opened it, like `returnFocus` in `src/components/csv-layouts-card.tsx`.
 
+## Tests
+
+- One owning test per behaviour, at its seam (the rendered component or hook). Assert state and what the user sees, not which calls were made. Share setup, not assertions.
+
 ## Before you report
 
 - Every dialog, and every retry that replaces its button, returns focus to a sensible control.

@@ -50,6 +50,12 @@ Order inside the epic: types split, money, test kit, ledger, functional core, qu
 - Functional core for import, nickname matching and categorize batching: a pure plan (new rows, duplicates, suspects, balance check) applied by a thin shell; table-driven tests with no database.
 - UI: hierarchical query keys and one `invalidate(change)` map; no component lists keys itself.
 - Property tests on amount parsing and ledger totals (`proptest` dev-dependency, needs approval).
+- Clock port (`today()`, `now()`) in place of `date('now')` in SQL.
+- Network ports: small traits for the update check and the Ollama client, like `Keyring` and `Categorizer`.
+- Compile-time checked SQL for the ledger (`query!`, a committed `.sqlx` cache, `cargo sqlx prepare --check` in `check.sh`); `sqlx-cli` needs approval.
+- One fake backend through Tauri `mockIPC`, shared by UI tests and snapshots, with the UI test cleanup.
+- UI page hooks (`useTransactions`, `useSetCategory`, ...).
+- Test cleanup: one owning test per behaviour.
 - Agent rules for each new seam (ledger only, `Cents` only, pure decisions, test kit only, `invalidate(change)` only), with `scripts/check.sh` policy greps once the code exists.
 
 ## Foundations
@@ -65,11 +71,6 @@ These change what the data is, so they come before anything that reports on it.
 - Per-account views and an owner filter where useful.
 - `raw_transactions` and `imports` already carry `account_id`; the Foundations refactor's ledger decides the account scope in one place.
 - Transfer matching is pure decision logic with table-driven tests.
-- Engineering carried with it:
-  - A clock port (`today()`, `now()`) in place of `date('now')` in SQL, needed by bills, goals, forecast and month close.
-  - Network ports: small traits for the update check and the Ollama client, like `Keyring` and `Categorizer`.
-  - Compile-time checked SQL (`query!`, a committed `.sqlx` cache, `cargo sqlx prepare --check` in `check.sh`), converting each module as it is touched; `sqlx-cli` needs approval.
-  - UI domain hooks (`useTransactions`, `useSetCategory`, ...) and one fake backend through Tauri `mockIPC`, shared by tests and snapshots.
 
 ### Line items
 

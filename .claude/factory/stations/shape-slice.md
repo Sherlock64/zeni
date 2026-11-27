@@ -16,6 +16,8 @@ One session with the user: settle the decisions, write the epic, cut it into tic
 ## Slice
 
 - A ticket is vertical: backend to UI, testable end to end. Its body has the behaviour, acceptance criteria phrased as what a user sees or a command returns or stores, the modules or interfaces it touches, and `Blocked by: #a, #b`. No file paths or code.
+- Write acceptance criteria as numbered Given/When/Then examples, each naming the test that proves it, for example: `1. Given a ledger with a refund, when spending is summed, then the refund reduces it (test: spending::refund_reduces_total).` A refactor ticket opens with AC0: characterization tests of today's behaviour are written and pass first, and no existing assertion is edited in the refactor commits.
+- A multi-ticket epic that must ship as one version has `Release: v<x.y.z>` in its body (`stations/release.md`).
 - Mark a criterion `runtime` when only the running app can show it.
 - Keep tickets small enough that two can run side by side: prefer tickets that name different modules. Foundation work (shared types, a migration) is its own first ticket that the others are blocked by.
 - Give each ticket's PR the door it will likely carry, so the user sees the release impact.
