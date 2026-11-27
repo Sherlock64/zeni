@@ -23,6 +23,7 @@ Every rule the factory works under, paired with what enforces it. A rule a check
 | Never log or expose a key, password, recovery code or account number; such types don't derive `Debug` | judgment (Security) | — |
 | Prefer mature, well-documented libraries | judgment (Spec, on any approved dependency) | — |
 | Database folder 0700, files 0600 | tests in `db.rs` | none |
+| Verification never touches real data: debug build only, throwaway data folder, never the real database or the non-dev keyring item | `scripts/verify/preflight.sh` refuses a real data folder, a non-debug binary or a missing tool; `run.ts` fails if the real database's hash changed; self-test `scripts/verify/preflight.test.sh` (run by `integration`) | none |
 
 ## Factory rules (`.claude/factory/spine.md`)
 
