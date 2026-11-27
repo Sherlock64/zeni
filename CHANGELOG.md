@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The factory's verifier can now drive the real app on a throwaway database seeded with 1,200 fake transactions (`verify-zeni`, #132).
+
 ## 7.2.1
 
 - Internal: the backend's shared types are split into one file per domain; nothing changes in the app.

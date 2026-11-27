@@ -224,7 +224,7 @@ case $mode in
     step "pnpm test" pnpm test
     step "bindings freshness" test "$(tree_sha src/types/bindings)" = "$before"
     # CI's script self-tests, so a pass here means CI passes on the same head (#191).
-    for t in scripts/check.test.sh scripts/release-check.test.sh; do [[ -e $t ]] && step "$t" "$t"; done
+    for t in scripts/check.test.sh scripts/release-check.test.sh scripts/verify/preflight.test.sh; do [[ -e $t ]] && step "$t" "$t"; done
     [[ -n $evidence ]] && write_evidence "$evidence"
     ;;
   fresh)
