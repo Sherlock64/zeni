@@ -1,12 +1,14 @@
 # Release
 
-The dispatcher starts Release after any merge whose PR carries a door other than `door:docs`, in the same dispatch, or when the user says `release`. One Release is in flight at a time. Publishing to users is the user's: one yes covers the version, the release PR merge and the tag push, and this station's trust level never rises.
+The dispatcher starts Release after any merge whose PR carries a door other than `door:docs`, in the same dispatch (except a ticket of an epic that declares `Release: v<x.y.z>`: its merges are held, and Release cuts that version when the epic's last ticket merges), or when the user says `release`. One Release is in flight at a time. Publishing to users is the user's: one yes covers the version, the release PR merge and the tag push, and this station's trust level never rises.
 
 **Outcome:** a new version on GitHub Releases, with notes from `CHANGELOG.md`.
 
 **Done when:** the tag `v<version>` is pushed, the `Release` workflow published the `.deb`, every ticket shipped in it carries `state:released`, and the release issue is closed.
 
 ## Picking the version
+
+- **Held epic release.** An epic body with `Release: v<x.y.z>` declares its version. While any of its tickets is open, a merged ticket of that epic does not start Release: hold it, and leave it out of the door count. When the epic's last ticket merges, cut exactly `v<x.y.z>` (the declared version replaces the door rule) with every held merge in it.
 
 - List PRs merged since the last tag: `git log <last tag>..origin/main --merges`, then each PR's `door:` label.
 - The largest door wins: any `door:one-way` = next major, else any `door:two-way` = next minor, else any `door:none` = next patch. Only `door:docs` = nothing to release; say so and stop.

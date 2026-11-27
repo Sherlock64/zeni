@@ -65,3 +65,6 @@ Zeni's domain terms as the code uses them. One line each; details live in the li
 ## Workflow
 
 - **Evidence manifest**: `snapshots/V<n>/evidence.yaml`, written by `scripts/check.sh integration` with the changed files and check results.
+
+## Code structure
+

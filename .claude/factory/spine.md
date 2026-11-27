@@ -13,7 +13,7 @@ The GitHub issue number ties them together: it is in the branch, the PR's `Close
 | Ticket | One thin end-to-end slice: behaviour, acceptance criteria, the modules it touches, "blocked by" links. No file paths or code | sub-issue of its epic, or standalone |
 | Run | One session doing one station on one ticket, then ending | a session, one worktree, one ticket comment |
 | PR | One ticket's change to `main`, on branch `t<issue>-<words>`, with one `door:` label. The one other branch is `evidence`, never merged: UI snapshots under `t<issue>/` (`guides/ui.md`) | GitHub |
-| Release | A tag on `main`; its version follows the largest door since the last tag. Any non-docs merge starts it; the user's one yes cuts it (`stations/release.md`) | release issue, tag, GitHub Release, `CHANGELOG.md` |
+| Release | A tag on `main`; its version follows the largest door since the last tag. Any non-docs merge starts it (an epic declaring `Release: v<x.y.z>` holds its merges and cuts that version when its last ticket merges); the user's one yes cuts it (`stations/release.md`) | release issue, tag, GitHub Release, `CHANGELOG.md` |
 
 ## States
 

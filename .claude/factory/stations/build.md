@@ -16,6 +16,8 @@
 
 ## Before Review
 
+0. For a seam ticket (a refactor that introduces or reshapes a module's seam), the evidence reports four numbers, before and after: test count, test lines, and the module's `cargo-mutants` score (`cargo mutants` limited to that module's file, run locally; the tool needs the user's approval to install; approved for the Foundations epic, #133).
+
 1. `scripts/check.sh integration --evidence snapshots/t<issue>/evidence.yaml` on the pushed head. It runs the same gate and script self-tests as CI.
 2. **The verifier**, when `scripts/check.sh scope` prints `full` or the ticket has a `runtime` criterion: spawn a fresh verifier subagent (model from `models.md`) with only the ticket number, the branch and `guides/verify.md`. Otherwise skip it and say so in the PR body: `Verifier: skipped (scope light, no runtime criterion).`
 3. Check the verifier's PR comment names this ticket and the head you pushed. A fail keeps the ticket in `state:building`: fix it, push, and run a fresh verifier again.
