@@ -22,7 +22,7 @@ export function safeHref(h) {
   }
 }
 
-// Columns for one kanban (one row) or lanes by epic (a row per epic, then "No epic"); always all nine states.
+// Columns for one kanban (one row) or lanes by epic (a row per epic, then "No epic"); always all eight states.
 // A needs-human item carries `ask`; one whose card is missing still shows, as its own card.
 export function boardModel(snap, mode) {
   const asks = new Map(snap.needsHuman.map((n) => [n.item, n]));
