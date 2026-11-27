@@ -89,6 +89,35 @@ Test lines for Rust are the `#[cfg(test)]` block to end of file (tests live in e
 
 The run log (`runs.tsv`) records no flaky-test outcome in any row, so the recorded flake rate is 0 of all logged runs. It does not record test reruns, so this is a floor, not a measurement. Two consecutive full runs of both suites on this head passed.
 
-## Mutation scores (`cargo-mutants`)
+## Mutation scores (`cargo-mutants` 27.1.0)
 
-**Not yet measured.** Modules to run, one `cargo mutants --file src/<module>.rs` each, outside CI: `ofx`, `csv_import`, `imports`, `nicknames`, `categorize`, `spending`, `transactions`, `review`. `cargo install cargo-mutants` was blocked in the build session (approved for #133 in `build.md`, but the tool permission was denied), so the scores, surviving mutants and the equivalent-mutant classification are pending.
+One run per module, outside CI, at `9a255b2`: `cargo mutants --in-place --file src/<module>.rs` in `src-tauri/` (the default copied tree lacks `CHANGELOG.md`, `samples/` and `package.json`, which `include_str!` needs, so `--in-place` is required and runs are sequential; about 20 s per mutant). Score = caught / (caught + missed + timed out); unviable mutants (they don't compile) are left out. A timeout means the mutant hangs the tests; it is detected, but by a hang, not by an assertion, so it is counted against the strict score.
+
+| Module | Mutants | Caught | Missed | Timeout | Unviable | Score |
+|---|---|---|---|---|---|---|
+| `ofx` | 42 | 38 | 0 | 1 | 3 | 97.4 % (100 % if a hang counts) |
+| `csv_import` | 115 | 99 | 1 | 0 | 15 | 99.0 % |
+| `imports` | 66 | 42 | 3 | 0 | 21 | 93.3 % |
+| `nicknames` | 56 | 43 | 0 | 0 | 13 | 100 % |
+| `categorize` | 65 | 44 | 1 | 8 | 12 | 83.0 % (98.1 % if a hang counts) |
+| `spending` | 4 | 3 | 0 | 0 | 1 | 100 % |
+| `transactions` | 46 | 41 | 1 | 0 | 4 | 97.6 % |
+| `review` | 8 | 7 | 0 | 0 | 1 | 100 % |
+
+### Survivors (missed)
+
+| Mutant | Verdict |
+|---|---|
+| `csv_import.rs:234:18` `>` to `>=` in `Records::line_at` | **Equivalent.** When `start == counted` the skipped slice is empty, so the newline count adds 0 and `counted` is unchanged. |
+| `transactions.rs:173:9` delete match arm 2 in `is_date` (`2 if leap => 29`) | **Real gap.** No test feeds 29 February of a leap year; with the arm gone it is rejected as invalid. |
+| `imports.rs:20:32` `*` to `+` in `MAX_FILE_BYTES` (limit becomes about 1 MiB) | **Real gap.** No test sits near the 10 MiB limit. |
+| `imports.rs:20:39` `*` to `+` in `MAX_FILE_BYTES` (limit becomes 11 KiB) | **Real gap.** Same: the limit's value is untested. |
+| `imports.rs:71:27` `>` to `>=` in `import_path` | **Real gap.** A file of exactly 10 MiB should be accepted; no boundary test. |
+| `categorize.rs:65:36` `<` to `<=` in `user_prompt` | **Real gap (minor).** A zero amount would print `-0.00`; no test uses a zero-cent row. |
+
+### Timeouts
+
+All nine are whole-function or arithmetic replacements that make a run or the parser loop forever; none is a survivor, but no assertion catches them either.
+
+- `ofx.rs:40:28` `+` to `-` in `parse`: stalls the parser.
+- `categorize.rs:175:5` `rows` returns `Ok(vec![])`; `:206:5` `answer` returns `Ok(None)`, `Ok(Some(0))`, `Ok(Some(1))` or `Ok(Some(-1))`; `:272:5` `categorize_rows` returns `Ok((None, None))`, `Ok((None, Some(String::new())))` or `Ok((None, Some("xyzzy".into())))`. The job-level tests wait on the job and hang instead of asserting on the result. Tightening these tests to fail fast would be a test-quality item for a Foundations ticket.
