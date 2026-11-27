@@ -29,13 +29,15 @@ const snap = {
   light: null,
 };
 
-test("both views show all nine spine columns in order, empty ones included", () => {
+test("both views show all eight spine columns in order, empty ones included", () => {
   for (const mode of ["kanban", "lanes"]) {
     const m = boardModel(snap, mode);
     assert.deepEqual(m.heads.map((h) => h.state), STATES, mode);
     for (const row of m.rows) assert.deepEqual(row.cells.map((c) => c.state), STATES, mode);
   }
   assert.equal(STATES.length, 8);
+  const html = fs.readFileSync(path.join(dir, "index.html"), "utf8");
+  assert.match(html, new RegExp(`\\.board \\{[^}]*repeat\\(${STATES.length}, minmax`), "grid column count matches STATES");
   assert.ok(!STATES.includes("verifying"), "Verify is not a station (#208)");
 });
 

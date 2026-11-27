@@ -63,8 +63,8 @@ body[data-page="2"] .p1only, body:not([data-page="2"]) .p2only { display: none; 
 main { max-width: 1700px; margin: 0 auto; padding: 14px 24px 28px; display: grid; gap: 16px; }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
 
-/* board: always nine columns, in the spine's order */
-.board { display: grid; grid-template-columns: var(--lanecol, ) repeat(9, minmax(0, 1fr)); gap: 0 8px; }
+/* board: always eight columns, in the spine's order */
+.board { display: grid; grid-template-columns: var(--lanecol, ) repeat(8, minmax(0, 1fr)); gap: 0 8px; }
 .board.lanes { --lanecol: 170px; gap: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
 .hcell { font-size: .75rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; display: flex; justify-content: space-between; padding: 8px; }
 .hcell.nh { color: var(--warn); }
