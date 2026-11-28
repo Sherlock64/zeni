@@ -216,6 +216,7 @@ mod tests {
 
     use super::*;
     use crate::db;
+    use crate::types::Cents;
     use crate::types::SetBy;
 
     struct Fixture {
@@ -363,7 +364,7 @@ mod tests {
         );
         assert_eq!(
             (row.amount_cents, row.description.as_str()),
-            (-1299, "grocery store")
+            (Cents::new(-1299), "grocery store")
         );
         assert_eq!(row.memo.as_deref(), Some("50% off_sale"));
         assert_eq!(

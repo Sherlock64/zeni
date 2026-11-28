@@ -5,7 +5,7 @@ use sqlx::Row;
 use crate::security;
 use crate::transactions::validate_range;
 use crate::types::{
-    AppError, AppState, CategoryKind, CategorySpending, SpendingQuery, SpendingSummary,
+    AppError, AppState, CategoryKind, CategorySpending, Cents, SpendingQuery, SpendingSummary,
 };
 
 /// Totals by effective category over the checking account's rows from `from` to `to`, both inclusive.
@@ -31,11 +31,12 @@ pub async fn summary(state: &AppState, query: SpendingQuery) -> Result<SpendingS
     let mut summary = SpendingSummary {
         categories: Vec::new(),
         uncategorized_count: 0,
-        uncategorized_cents: 0,
+        uncategorized_cents: Cents::default(),
     };
+    let too_large = || AppError::Database("The spending totals are too large.".into());
     for row in rows {
         let count: u32 = row.get("count");
-        let total: i64 = row.get("total");
+        let total: Cents = row.get("total");
         let Some(category_id) = row.get::<Option<i64>, _>("id") else {
             summary.uncategorized_count = count;
             summary.uncategorized_cents = total;
@@ -48,14 +49,14 @@ pub async fn summary(state: &AppState, query: SpendingQuery) -> Result<SpendingS
             kind,
             count,
             spending_cents: if kind == CategoryKind::Spending {
-                -total
+                total.checked_neg().ok_or_else(too_large)?
             } else {
-                0
+                Cents::default()
             },
             income_cents: if kind == CategoryKind::Income {
                 total
             } else {
-                0
+                Cents::default()
             },
         });
     }
@@ -202,7 +203,7 @@ mod tests {
         let october = october(&f);
         assert_eq!(
             (october.uncategorized_count, october.uncategorized_cents),
-            (2, -1000)
+            (2, Cents::new(-1000))
         );
         // In sort order, only categories with rows, the other account and November left out.
         let names: Vec<&str> = october.categories.iter().map(|c| c.name.as_str()).collect();
@@ -238,7 +239,7 @@ mod tests {
         assert!(empty.categories.is_empty());
         assert_eq!(
             (empty.uncategorized_count, empty.uncategorized_cents),
-            (0, 0)
+            (0, Cents::default())
         );
     }
 
@@ -266,8 +267,8 @@ mod tests {
             (
                 self.kind,
                 self.count,
-                self.spending_cents,
-                self.income_cents,
+                self.spending_cents.get(),
+                self.income_cents.get(),
             )
         }
     }

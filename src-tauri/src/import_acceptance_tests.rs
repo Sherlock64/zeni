@@ -3,8 +3,8 @@
 use std::path::{Path, PathBuf};
 
 use crate::types::{
-    AmountColumns, AppError, AppState, BalanceCheck, CommitImportRequest, CsvMapping, DateFormat,
-    DeleteCsvLayoutRequest, FileBalanceCheck, ImportFormat, ImportReview, ImportStep,
+    AmountColumns, AppError, AppState, BalanceCheck, Cents, CommitImportRequest, CsvMapping,
+    DateFormat, DeleteCsvLayoutRequest, FileBalanceCheck, ImportFormat, ImportReview, ImportStep,
     ImportSummary, RevertImportRequest, SaveCsvLayoutRequest, SortDirection, TransactionQuery,
     TransactionSort, UpdateCsvLayoutRequest,
 };
@@ -251,7 +251,7 @@ impl Db {
             .map(|row| {
                 (
                     row.posted_date,
-                    row.amount_cents,
+                    row.amount_cents.get(),
                     row.description,
                     row.memo,
                     row.transaction_type,
@@ -277,7 +277,7 @@ fn expected(files: &[&str]) -> Vec<Shown> {
         .map(|row| {
             (
                 row.posted_date,
-                row.amount_cents,
+                row.amount_cents.get(),
                 row.description,
                 row.memo,
                 row.transaction_type,
@@ -293,8 +293,8 @@ fn outcome(summary: &ImportSummary) -> (u32, u32, BalanceCheck, Option<i64>, Opt
         summary.added,
         summary.duplicates,
         summary.balance_check,
-        summary.ledger_balance_cents,
-        summary.expected_balance_cents,
+        summary.ledger_balance_cents.map(Cents::get),
+        summary.expected_balance_cents.map(Cents::get),
     )
 }
 
@@ -375,8 +375,8 @@ fn fixture_sequence_imports_dedupes_checks_balances_and_reverts() {
                 record.id,
                 record.row_count,
                 record.balance_check,
-                record.ledger_balance_cents,
-                record.expected_balance_cents,
+                record.ledger_balance_cents.map(Cents::get),
+                record.expected_balance_cents.map(Cents::get),
             )
         })
         .collect();
@@ -432,8 +432,8 @@ fn fixture_sequence_imports_dedupes_checks_balances_and_reverts() {
             (
                 record.id,
                 record.balance_check,
-                record.ledger_balance_cents,
-                record.expected_balance_cents,
+                record.ledger_balance_cents.map(Cents::get),
+                record.expected_balance_cents.map(Cents::get),
             )
         })
         .collect();
@@ -518,7 +518,10 @@ fn unknown_csv_header_needs_a_mapping_once() {
     // The draft preview reads the pending file.
     let preview = imports::preview_csv_mapping(&db.state, bank_mapping()).unwrap();
     assert_eq!(preview.len(), 5);
-    assert_eq!((preview[1].line, preview[1].amount_cents), (3, Some(-3850)));
+    assert_eq!(
+        (preview[1].line, preview[1].amount_cents),
+        (3, Some(Cents::new(-3850)))
+    );
 
     let first = imported(db.save("  Bank  ", bank_mapping()).unwrap());
     assert_eq!(first.format, ImportFormat::Csv);
@@ -718,7 +721,7 @@ fn csv_overlapping_ofx_is_reviewed_before_anything_is_stored() {
                 pair.row_index,
                 pair.new_row.posted_date.as_str(),
                 pair.existing.posted_date.as_str(),
-                pair.new_row.amount_cents,
+                pair.new_row.amount_cents.get(),
                 pair.new_row.description.as_str(),
                 pair.existing.description.as_str(),
             )

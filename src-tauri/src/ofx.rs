@@ -123,9 +123,8 @@ fn decode(value: &str) -> String {
 }
 
 /// Decimal text to integer cents; OFX allows `.` or `,` as the decimal mark.
-fn cents(value: &str) -> Result<i64, AppError> {
+fn cents(value: &str) -> Result<Cents, AppError> {
     parse_amount(value, AmountStyle::Ofx)
-        .map(Cents::get)
         .map_err(|_| error(format!("\"{value}\" is not a valid amount.")))
 }
 
@@ -167,14 +166,14 @@ mod tests {
     fn parses_sgml_with_unclosed_leaves() {
         let statement = parse(SGML).unwrap();
         assert_eq!(statement.currency, "USD");
-        assert_eq!(statement.ledger_balance_cents, Some(10050));
+        assert_eq!(statement.ledger_balance_cents, Some(Cents::new(10050)));
         assert_eq!(statement.balance_as_of.as_deref(), Some("2026-10-15"));
         let [row] = statement.transactions.as_slice() else {
             panic!("expected one row");
         };
         assert_eq!(row.fitid.as_deref(), Some("A1"));
         assert_eq!(row.posted_date, "2026-10-02");
-        assert_eq!(row.amount_cents, -1234);
+        assert_eq!(row.amount_cents, Cents::new(-1234));
         assert_eq!(row.description, "Tom & Jerry's");
         assert_eq!(row.memo.as_deref(), Some("Card 1234"));
         assert_eq!(row.transaction_type.as_deref(), Some("DEBIT"));
@@ -195,7 +194,7 @@ mod tests {
         let rows = &statement.transactions;
         assert_eq!(rows.len(), 3);
         assert_eq!(rows[0].description, "A <B> \"C\"");
-        assert_eq!(rows[0].amount_cents, 500);
+        assert_eq!(rows[0].amount_cents, Cents::new(500));
         assert_eq!(rows[1].description, "Only memo");
         assert_eq!(rows[1].fitid, None);
         assert_eq!(rows[2].description, "");
@@ -290,8 +289,8 @@ mod tests {
         assert!(statement.transactions.is_empty());
     }
 
-    fn sum(statement: &ParsedStatement) -> i64 {
-        statement.transactions.iter().map(|t| t.amount_cents).sum()
+    fn sum(statement: &ParsedStatement) -> Cents {
+        Cents::checked_sum(statement.transactions.iter().map(|t| t.amount_cents)).unwrap()
     }
 
     #[test]
@@ -313,14 +312,17 @@ mod tests {
         }
         let [sgml, xml, overlap, broken, cad, no_fitid] = files.map(|text| parse(text).unwrap());
         assert_eq!(sgml.transactions.len(), 8);
-        assert_eq!(sgml.ledger_balance_cents, Some(245_000));
+        assert_eq!(sgml.ledger_balance_cents, Some(Cents::new(245_000)));
         assert_eq!(sgml.balance_as_of.as_deref(), Some("2026-10-15"));
         assert_eq!(sgml.transactions[3].description, "CITY POWER & LIGHT");
 
         assert_eq!(xml.transactions.len(), 8);
         assert_eq!(xml.balance_as_of.as_deref(), Some("2026-10-31"));
-        assert_eq!(xml.ledger_balance_cents, Some(245_000 + sum(&xml)));
-        assert_eq!(xml.ledger_balance_cents, Some(396_053));
+        assert_eq!(
+            xml.ledger_balance_cents,
+            Some(Cents::new(245_000).checked_add(sum(&xml)).unwrap())
+        );
+        assert_eq!(xml.ledger_balance_cents, Some(Cents::new(396_053)));
 
         assert_eq!(overlap.transactions.len(), 9);
         let shared: Vec<_> = overlap
@@ -329,19 +331,25 @@ mod tests {
             .filter(|t| xml.transactions.iter().any(|x| x.fitid == t.fitid))
             .collect();
         assert_eq!(shared.len(), 4);
-        let new_rows: i64 = overlap
+        let new_rows = overlap
             .transactions
             .iter()
             .filter(|t| t.posted_date.as_str() > "2026-10-31")
-            .map(|t| t.amount_cents)
-            .sum();
+            .map(|t| t.amount_cents);
+        let new_rows = Cents::checked_sum(new_rows).unwrap();
         assert_eq!(overlap.balance_as_of.as_deref(), Some("2026-11-10"));
-        assert_eq!(overlap.ledger_balance_cents, Some(396_053 + new_rows));
-        assert_eq!(overlap.ledger_balance_cents, Some(244_414));
+        assert_eq!(
+            overlap.ledger_balance_cents,
+            Some(Cents::new(396_053).checked_add(new_rows).unwrap())
+        );
+        assert_eq!(overlap.ledger_balance_cents, Some(Cents::new(244_414)));
 
         assert_eq!(broken.transactions.len(), 4);
-        assert_eq!(244_414 + sum(&broken), 439_302);
-        assert_eq!(broken.ledger_balance_cents, Some(439_309));
+        assert_eq!(
+            Cents::new(244_414).checked_add(sum(&broken)),
+            Some(Cents::new(439_302))
+        );
+        assert_eq!(broken.ledger_balance_cents, Some(Cents::new(439_309)));
         assert_eq!(broken.balance_as_of.as_deref(), Some("2026-11-20"));
 
         assert_eq!(cad.currency, "CAD");

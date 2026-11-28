@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use super::{CategoryKind, Ollama, Transaction};
+use super::{CategoryKind, Cents, Ollama, Transaction};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -39,7 +39,7 @@ pub struct PromptRow {
     pub description: String,
     pub memo: Option<String>,
     /// Negative means money out.
-    pub amount_cents: i64,
+    pub amount_cents: Cents,
     pub bank_category: Option<String>,
 }
 

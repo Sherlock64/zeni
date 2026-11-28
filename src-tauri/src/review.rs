@@ -80,6 +80,7 @@ mod tests {
     use super::*;
     use crate::db;
     use crate::security;
+    use crate::types::Cents;
     use crate::types::SetBy;
 
     struct Fixture {
@@ -177,7 +178,7 @@ mod tests {
             ),
             (
                 "2026-10-03",
-                -800,
+                Cents::new(-800),
                 "Diner",
                 Some(5),
                 Some("Dining out"),

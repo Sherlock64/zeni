@@ -10,7 +10,7 @@ use std::sync::{MutexGuard, PoisonError};
 use sqlx::{SqliteExecutor, SqlitePool};
 
 use crate::types::{
-    AppError, AppState, BalanceCheck, CommitImportRequest, CsvMapping, CsvMappingNeeded,
+    AppError, AppState, BalanceCheck, Cents, CommitImportRequest, CsvMapping, CsvMappingNeeded,
     CsvPreviewRow, ImportFormat, ImportRecord, ImportReview, ImportStep, ImportSummary,
     ParsedStatement, ParsedTransaction, PendingImport, PendingStep, RevertImportRequest, ReviewRow,
     SaveCsvLayoutRequest, SuspectedDuplicate,
@@ -303,7 +303,7 @@ async fn suspects(
         if repeated_in_file || is_stored(pool, account_id, 0, row).await? {
             continue;
         }
-        let existing: Option<(String, i64, String, String, ImportFormat)> = sqlx::query_as(
+        let existing: Option<(String, Cents, String, String, ImportFormat)> = sqlx::query_as(
             "SELECT r.posted_date, r.amount_cents, r.raw_description, i.file_name, i.format \
              FROM raw_transactions r JOIN imports i ON i.id = r.import_id \
              WHERE r.account_id = ? AND r.amount_cents = ? AND (i.format = 'csv') = ? \
@@ -439,12 +439,12 @@ async fn check_balance(
     account_id: i64,
     import_id: i64,
     statement: &ParsedStatement,
-) -> Result<(BalanceCheck, Option<i64>), AppError> {
+) -> Result<(BalanceCheck, Option<Cents>), AppError> {
     let (Some(ledger), Some(as_of)) = (statement.ledger_balance_cents, &statement.balance_as_of)
     else {
         return Ok((BalanceCheck::NotChecked, None));
     };
-    let previous: Option<(i64, String)> = sqlx::query_as(
+    let previous: Option<(Cents, String)> = sqlx::query_as(
         "SELECT ledger_balance_cents, balance_as_of FROM imports WHERE account_id = ? AND id <> ? \
          AND ledger_balance_cents IS NOT NULL AND balance_as_of <= ? \
          ORDER BY balance_as_of DESC, id DESC LIMIT 1",
@@ -457,18 +457,19 @@ async fn check_balance(
     let Some((previous_ledger, previous_as_of)) = previous else {
         return Ok((BalanceCheck::Baseline, None));
     };
-    let (change,): (i64,) = sqlx::query_as(
-        "SELECT COALESCE(SUM(amount_cents), 0) FROM raw_transactions \
+    let amounts: Vec<Cents> = sqlx::query_scalar(
+        "SELECT amount_cents FROM raw_transactions \
          WHERE account_id = ? AND posted_date > ? AND posted_date <= ?",
     )
     .bind(account_id)
     .bind(&previous_as_of)
     .bind(as_of)
-    .fetch_one(&mut *tx)
+    .fetch_all(&mut *tx)
     .await?;
-    let expected = previous_ledger
-        .checked_add(change)
-        .ok_or_else(|| AppError::Import("The statement amounts are too large.".into()))?;
+    let too_large = || AppError::Import("The statement amounts are too large.".into());
+    let expected = Cents::checked_sum(amounts)
+        .and_then(|change| previous_ledger.checked_add(change))
+        .ok_or_else(too_large)?;
     let check = if expected == ledger {
         BalanceCheck::Passed
     } else {
@@ -526,7 +527,7 @@ mod tests {
         ParsedTransaction {
             fitid: fitid.map(Into::into),
             posted_date: date.into(),
-            amount_cents,
+            amount_cents: Cents::new(amount_cents),
             description: description.into(),
             memo: None,
             transaction_type: None,
@@ -542,7 +543,7 @@ mod tests {
     ) -> ParsedStatement {
         ParsedStatement {
             currency: "USD".into(),
-            ledger_balance_cents: ledger.map(|(cents, _)| cents),
+            ledger_balance_cents: ledger.map(|(cents, _)| Cents::new(cents)),
             balance_as_of: ledger.map(|(_, date)| date.into()),
             transactions,
             not_posted: 0,
@@ -682,8 +683,8 @@ mod tests {
             )
             .await;
             assert_eq!(passed.balance_check, BalanceCheck::Passed);
-            assert_eq!(passed.ledger_balance_cents, Some(70_000));
-            assert_eq!(passed.expected_balance_cents, Some(70_000));
+            assert_eq!(passed.ledger_balance_cents, Some(Cents::new(70_000)));
+            assert_eq!(passed.expected_balance_cents, Some(Cents::new(70_000)));
 
             let mismatch = import(
                 &state,
@@ -694,7 +695,7 @@ mod tests {
             )
             .await;
             assert_eq!(mismatch.balance_check, BalanceCheck::Mismatch);
-            assert_eq!(mismatch.expected_balance_cents, Some(65_000));
+            assert_eq!(mismatch.expected_balance_cents, Some(Cents::new(65_000)));
 
             let unchecked = import(&state, &statement(None, vec![])).await;
             assert_eq!(unchecked.balance_check, BalanceCheck::NotChecked);
@@ -714,9 +715,17 @@ mod tests {
                 stored,
                 [
                     (BalanceCheck::NotChecked, None, None),
-                    (BalanceCheck::Mismatch, Some(60_000), Some(65_000)),
-                    (BalanceCheck::Passed, Some(70_000), Some(70_000)),
-                    (BalanceCheck::Baseline, Some(100_000), None),
+                    (
+                        BalanceCheck::Mismatch,
+                        Some(Cents::new(60_000)),
+                        Some(Cents::new(65_000))
+                    ),
+                    (
+                        BalanceCheck::Passed,
+                        Some(Cents::new(70_000)),
+                        Some(Cents::new(70_000))
+                    ),
+                    (BalanceCheck::Baseline, Some(Cents::new(100_000)), None),
                 ]
             );
             assert_eq!(records[1].balance_as_of.as_deref(), Some("2026-11-30"));
@@ -734,12 +743,12 @@ mod tests {
 
             let again = import(&state, &statement(Some((100_000, "2026-10-01")), rows())).await;
             assert_eq!(again.balance_check, BalanceCheck::Passed);
-            assert_eq!(again.expected_balance_cents, Some(100_000));
+            assert_eq!(again.expected_balance_cents, Some(Cents::new(100_000)));
 
             let other = import(&state, &statement(Some((100_700, "2026-10-01")), vec![])).await;
             assert_eq!(other.balance_check, BalanceCheck::Mismatch);
-            assert_eq!(other.ledger_balance_cents, Some(100_700));
-            assert_eq!(other.expected_balance_cents, Some(100_000));
+            assert_eq!(other.ledger_balance_cents, Some(Cents::new(100_700)));
+            assert_eq!(other.expected_balance_cents, Some(Cents::new(100_000)));
         });
         std::fs::remove_dir_all(&dir).unwrap();
     }
