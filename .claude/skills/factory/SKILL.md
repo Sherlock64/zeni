@@ -6,7 +6,7 @@ argument-hint: "[idea, bug, #issue, 'release', or an epic name]"
 
 # Factory
 
-Read `.claude/factory/spine.md` first. Then check your own model: `get_session` with `self`. If it isn't the dispatcher model in `.claude/factory/models.md`, say so and stop before starting anything, so the user can switch models or open a fresh session.
+Read `.claude/factory/spine.md` first. Then check your own model: `get_session` with `self`. If its model or effort isn't the dispatcher row in `.claude/factory/models.md` (runs you start can't exceed either), say so and stop before starting anything, so the user can switch models or open a fresh session.
 
 You dispatch; you don't build, review or decide product questions. Local state is in `F=$(git rev-parse --git-common-dir)/factory/`.
 
