@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { RenameDialog } from "@/components/rename-dialog";
 import { countRuleMatches, listCategories, listNicknames, saveNicknameRule, updateNickname } from "@/lib/commands";
 import type { Category } from "@/types/bindings/Category";
@@ -81,7 +81,7 @@ function renderDialog(transaction: Transaction = row) {
 // Save waits for the nickname list, which holds the default category to keep.
 Element.prototype.scrollIntoView = function () {};
 const listLoaded = () =>
-  vi.waitFor(() => expect(screen.getByRole("button", { name: "Save nickname" }).getAttribute("aria-disabled")).toBe("false"));
+  waitFor(() => expect(screen.getByRole("button", { name: "Save nickname" }).getAttribute("aria-disabled")).toBe("false"));
 // Radix Select opens on ArrowDown; returns the named option of the Default category picker.
 function defaultOption(name: string) {
   fireEvent.keyDown(screen.getByRole("combobox", { name: "Default category" }), { key: "ArrowDown" });
@@ -170,7 +170,7 @@ test("saves the rule, refreshes the lists and closes", async () => {
   await listLoaded();
   fireEvent.click(screen.getByRole("button", { name: "Save nickname" }));
 
-  await vi.waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+  await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
   expect(vi.mocked(saveNicknameRule).mock.calls[0][0]).toEqual({ name: "Coffee", rule: exact });
   expect(invalidate).toHaveBeenCalledWith({ queryKey: LEDGER_KEY });
 });
@@ -294,21 +294,21 @@ describe("on a row that already has a nickname", () => {
     let rejectRetry: (error: unknown) => void = () => {};
     vi.mocked(listNicknames).mockReturnValueOnce(new Promise((_, reject) => (rejectRetry = reject)));
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
-    await vi.waitFor(() =>
+    await waitFor(() =>
       expect(screen.getByRole("button", { name: "Trying again…" }).getAttribute("aria-disabled")).toBe("true"),
     );
     expect(screen.getByText("Couldn't load your nicknames")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Trying again…" }));
     expect(listNicknames).toHaveBeenCalledTimes(2);
     rejectRetry({ kind: "Locked", message: "Unlock Zeni first." });
-    await vi.waitFor(() =>
+    await waitFor(() =>
       expect(screen.getByRole("button", { name: "Try again" }).getAttribute("aria-disabled")).toBe("false"),
     );
     expect(screen.getByText("Couldn't load your nicknames")).toBeTruthy();
 
     vi.mocked(listNicknames).mockResolvedValue([coffee]);
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
-    await vi.waitFor(() => expect(screen.queryByText("Couldn't load your nicknames")).toBeNull());
+    await waitFor(() => expect(screen.queryByText("Couldn't load your nicknames")).toBeNull());
     expect(document.activeElement).toBe(screen.getByLabelText("Nickname"));
     expect(screen.getByRole("button", { name: "Save nickname" }).getAttribute("aria-disabled")).toBe("false");
   });
@@ -328,7 +328,7 @@ describe("on a row that already has a nickname", () => {
     fireEvent.click(defaultOption("Groceries"));
     expect(screen.queryByText("Couldn't load your nicknames")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Save nickname" }));
-    await vi.waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
     expect(vi.mocked(saveNicknameRule).mock.calls[0][0]).toEqual({
       name: "Coffee",
       rule: { ...exact, mode: "contains" },
@@ -340,7 +340,7 @@ describe("on a row that already has a nickname", () => {
   test("a new name for a nickname that no longer exists shows NotFound and never adds a rule instead", async () => {
     vi.mocked(listNicknames).mockResolvedValue([{ ...coffee, id: 9, name: "Other" }]);
     const { onOpenChange } = renderDialog(named);
-    await vi.waitFor(() =>
+    await waitFor(() =>
       expect(screen.getByRole("button", { name: "Save nickname" }).getAttribute("aria-disabled")).toBe("false"),
     );
     typeName("Tea");
@@ -356,12 +356,12 @@ describe("on a row that already has a nickname", () => {
 
   test("the current name in another case or with spaces just closes", async () => {
     const { onOpenChange } = renderDialog(named);
-    await vi.waitFor(() =>
+    await waitFor(() =>
       expect(screen.getByRole("button", { name: "Save nickname" }).getAttribute("aria-disabled")).toBe("false"),
     );
     typeName(" coffee ");
     fireEvent.click(screen.getByRole("button", { name: "Save nickname" }));
-    await vi.waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
     expect(saveNicknameRule).not.toHaveBeenCalled();
     expect(updateNickname).not.toHaveBeenCalled();
   });
@@ -369,9 +369,9 @@ describe("on a row that already has a nickname", () => {
   test("Save with nothing changed just closes", async () => {
     const { onOpenChange } = renderDialog(named);
     await screen.findByText("Matches 12 transactions");
-    await vi.waitFor(() => expect(listNicknames).toHaveBeenCalled());
+    await waitFor(() => expect(listNicknames).toHaveBeenCalled());
     fireEvent.click(screen.getByRole("button", { name: "Save nickname" }));
-    await vi.waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
     expect(saveNicknameRule).not.toHaveBeenCalled();
     expect(updateNickname).not.toHaveBeenCalled();
   });
@@ -383,7 +383,7 @@ describe("on a row that already has a nickname", () => {
     typeName("Morning coffee");
     fireEvent.click(screen.getByRole("button", { name: "Save nickname" }));
 
-    await vi.waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
     expect(updateNickname).toHaveBeenCalledWith({ id: 3, name: "Morning coffee", enabled: true, staleExempt: false });
     expect(saveNicknameRule).not.toHaveBeenCalled();
     expect(invalidate).toHaveBeenCalledWith({ queryKey: LEDGER_KEY });
@@ -392,7 +392,7 @@ describe("on a row that already has a nickname", () => {
   test("ignores repeat presses while renaming", async () => {
     vi.mocked(updateNickname).mockReturnValue(new Promise(() => {}));
     renderDialog(named);
-    await vi.waitFor(() => expect(listNicknames).toHaveBeenCalled());
+    await waitFor(() => expect(listNicknames).toHaveBeenCalled());
     await screen.findByText("Matches 12 transactions");
     typeName("Tea");
     fireEvent.click(screen.getByRole("button", { name: "Save nickname" }));
@@ -413,7 +413,7 @@ describe("on a row that already has a nickname", () => {
     expect(screen.getByText("This row is shown as “Coffee”. Its rule may still win over this one.")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Save nickname" }));
 
-    await vi.waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
     expect(vi.mocked(saveNicknameRule).mock.calls[0][0]).toEqual({ name: "tea", rule: exact });
     expect(updateNickname).not.toHaveBeenCalled();
   });
@@ -440,7 +440,7 @@ describe("on a row that already has a nickname", () => {
     typeName("Cafe");
     await listLoaded();
     fireEvent.click(screen.getByRole("button", { name: "Save nickname" }));
-    await vi.waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
     expect(vi.mocked(saveNicknameRule).mock.calls[0][0]).toEqual({ name: "Cafe", rule: { ...exact, mode: "contains" } });
     expect(updateNickname).not.toHaveBeenCalled();
   });
@@ -467,7 +467,7 @@ describe("default category", () => {
     typeName("coffee");
     expect(screen.getByRole("combobox", { name: "Default category" }).textContent).toBe("Housing");
     fireEvent.click(screen.getByRole("button", { name: "Save nickname" }));
-    await vi.waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
     expect(vi.mocked(saveNicknameRule).mock.calls[0][0]).toEqual({ name: "coffee", rule: exact, defaultCategoryId: 1 });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: LEDGER_KEY });
   });
@@ -479,7 +479,7 @@ describe("default category", () => {
     typeName("Coffee");
     fireEvent.click(defaultOption("Groceries"));
     fireEvent.click(screen.getByRole("button", { name: "Save nickname" }));
-    await vi.waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
     expect(vi.mocked(saveNicknameRule).mock.calls[0][0]).toEqual({ name: "Coffee", rule: exact, defaultCategoryId: 4 });
   });
 
@@ -491,7 +491,7 @@ describe("default category", () => {
     expect(screen.getByRole("combobox", { name: "Default category" }).textContent).toBe("Housing");
     typeName("Cafe");
     fireEvent.click(screen.getByRole("button", { name: "Save nickname" }));
-    await vi.waitFor(() => expect(updateNickname).toHaveBeenCalled());
+    await waitFor(() => expect(updateNickname).toHaveBeenCalled());
     expect(vi.mocked(updateNickname).mock.calls[0][0]).toEqual({
       id: 3,
       name: "Cafe",
@@ -508,7 +508,7 @@ describe("default category", () => {
     await listLoaded();
     fireEvent.click(defaultOption("No default"));
     fireEvent.click(screen.getByRole("button", { name: "Save nickname" }));
-    await vi.waitFor(() => expect(updateNickname).toHaveBeenCalled());
+    await waitFor(() => expect(updateNickname).toHaveBeenCalled());
     const request = vi.mocked(updateNickname).mock.calls[0][0];
     expect(request).toEqual({ id: 3, name: "Coffee", enabled: true, staleExempt: false });
     // An omitted default clears it.
