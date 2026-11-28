@@ -4,8 +4,11 @@
 //! unclosed, so a leaf's value is the text up to the next `<`. Header lines and XML
 //! processing instructions sit before `<OFX>` and are skipped.
 
+use crate::money::parse_amount;
 use crate::transactions::is_date;
-use crate::types::{AppError, FileBalanceCheck, ParsedStatement, ParsedTransaction};
+use crate::types::{
+    AmountStyle, AppError, Cents, FileBalanceCheck, ParsedStatement, ParsedTransaction,
+};
 
 /// Parses one OFX/QFX bank statement.
 pub fn parse(text: &str) -> Result<ParsedStatement, AppError> {
@@ -119,32 +122,11 @@ fn decode(value: &str) -> String {
         .replace("&amp;", "&")
 }
 
-/// Decimal text to integer cents without floats. OFX allows `.` or `,` as the decimal mark.
+/// Decimal text to integer cents; OFX allows `.` or `,` as the decimal mark.
 fn cents(value: &str) -> Result<i64, AppError> {
-    let invalid = || error(format!("\"{value}\" is not a valid amount."));
-    let (negative, digits) = match value.strip_prefix('-') {
-        Some(digits) => (true, digits),
-        None => (false, value.strip_prefix('+').unwrap_or(value)),
-    };
-    let (whole, fraction) = digits.split_once(['.', ',']).unwrap_or((digits, ""));
-    let all_digits = whole
-        .bytes()
-        .chain(fraction.bytes())
-        .all(|b| b.is_ascii_digit());
-    if !all_digits || (whole.is_empty() && fraction.is_empty()) || fraction.len() > 2 {
-        return Err(invalid());
-    }
-    let whole: i64 = if whole.is_empty() {
-        0
-    } else {
-        whole.parse().map_err(|_| invalid())?
-    };
-    let fraction: i64 = format!("{fraction:0<2}").parse().map_err(|_| invalid())?;
-    let cents = whole
-        .checked_mul(100)
-        .and_then(|c| c.checked_add(fraction))
-        .ok_or_else(invalid)?;
-    Ok(if negative { -cents } else { cents })
+    parse_amount(value, AmountStyle::Ofx)
+        .map(Cents::get)
+        .map_err(|_| error(format!("\"{value}\" is not a valid amount.")))
 }
 
 /// The first 8 digits of an OFX date (`YYYYMMDD[HHMMSS[.XXX]][[TZ]]`) as "YYYY-MM-DD".
@@ -222,40 +204,6 @@ mod tests {
             rows[2].original,
             "<STMTTRN><DTPOSTED>20261018</DTPOSTED><TRNAMT>-2.00</TRNAMT></STMTTRN>"
         );
-    }
-
-    #[test]
-    fn amounts_parse_to_cents_without_floats() {
-        for (text, expected) in [
-            ("-12.34", -1234),
-            ("-12.3", -1230),
-            ("12", 1200),
-            ("+5.00", 500),
-            (".5", 50),
-            ("-.05", -5),
-            ("7.", 700),
-            ("1,25", 125),
-            ("0.10", 10),
-            ("92233720368547758.07", i64::MAX),
-        ] {
-            assert_eq!(cents(text).unwrap(), expected, "{text}");
-        }
-        for text in [
-            "",
-            "-",
-            ".",
-            "1.234",
-            "1e5",
-            "--1",
-            "+-1",
-            "1.2.3",
-            "1,000.00",
-            " 1",
-            "abc",
-            "92233720368547758.08",
-        ] {
-            assert!(cents(text).is_err(), "{text:?} should be rejected");
-        }
     }
 
     #[test]

@@ -1,9 +1,10 @@
 //! CSV parsing: header fingerprint, mapping preview and full parse into a `ParsedStatement`.
 
+use crate::money::parse_amount;
 use crate::transactions::is_date;
 use crate::types::{
-    AmountColumns, AppError, CsvMapping, CsvPreviewRow, DateFormat, FileBalanceCheck,
-    ParsedStatement, ParsedTransaction,
+    AmountColumns, AmountError, AmountStyle, AppError, Cents, CsvMapping, CsvPreviewRow,
+    DateFormat, FileBalanceCheck, ParsedStatement, ParsedTransaction,
 };
 
 /// The header cells, trimmed, in file order.
@@ -429,37 +430,14 @@ fn iso_date(value: &str, format: DateFormat) -> Option<String> {
     is_date(&iso).then_some(iso)
 }
 
-/// R3: optional `-`, optional `$` (also `$-`), digits, optional `.` and 1-5 digits; whole cents only.
-/// Parsed as text, never via float.
+/// R3: the CSV amount text rules live in `money::parse_amount`; this words its errors.
 fn cents(value: &str) -> Result<i64, &'static str> {
-    const NOT_AN_AMOUNT: &str = "isn't an amount.";
-    let (negative, rest) = if let Some(rest) = value.strip_prefix('-') {
-        (true, rest.strip_prefix('$').unwrap_or(rest))
-    } else if let Some(rest) = value.strip_prefix("$-") {
-        (true, rest)
-    } else {
-        (false, value.strip_prefix('$').unwrap_or(value))
-    };
-    let (whole, fraction) = match rest.split_once('.') {
-        Some((whole, fraction)) if (1..=5).contains(&fraction.len()) => (whole, fraction),
-        Some(_) => return Err(NOT_AN_AMOUNT),
-        None => (rest, ""),
-    };
-    let all_digits = |part: &str| part.bytes().all(|byte| byte.is_ascii_digit());
-    if whole.is_empty() || !all_digits(whole) || !all_digits(fraction) {
-        return Err(NOT_AN_AMOUNT);
-    }
-    let (fraction, beyond_cents) = fraction.split_at(fraction.len().min(2));
-    if beyond_cents.bytes().any(|byte| byte != b'0') {
-        return Err("isn't a whole number of cents.");
-    }
-    let total = whole
-        .parse::<i64>()
-        .ok()
-        .and_then(|whole| whole.checked_mul(100))
-        .and_then(|whole| whole.checked_add(format!("{fraction:0<2}").parse().ok()?))
-        .ok_or(NOT_AN_AMOUNT)?;
-    Ok(if negative { -total } else { total })
+    parse_amount(value, AmountStyle::Csv)
+        .map(Cents::get)
+        .map_err(|problem| match problem {
+            AmountError::NotAnAmount => "isn't an amount.",
+            AmountError::NotWholeCents => "isn't a whole number of cents.",
+        })
 }
 
 #[cfg(test)]
@@ -581,42 +559,6 @@ mod tests {
                 expected,
                 "{text} as {format:?}"
             );
-        }
-    }
-
-    #[test]
-    fn amounts_parse_to_cents_without_floats() {
-        let ok = [
-            ("-18.40000", -1840),
-            ("2100.00000", 210_000),
-            ("$12.5", 1250),
-            ("-$4.25", -425),
-            ("$-4.25", -425),
-            ("7", 700),
-            ("0.10", 10),
-            ("-0.00", 0),
-        ];
-        for (text, expected) in ok {
-            assert_eq!(cents(text), Ok(expected), "{text}");
-        }
-        for text in ["0.00500", "12.345", "0.001"] {
-            assert_eq!(cents(text), Err("isn't a whole number of cents."), "{text}");
-        }
-        for text in [
-            "1,200.00",
-            "",
-            "$",
-            "-",
-            ".50",
-            "12.",
-            "1.000000",
-            "+5",
-            "--5",
-            "5-",
-            "1e3",
-            "99999999999999999999",
-        ] {
-            assert_eq!(cents(text), Err("isn't an amount."), "{text}");
         }
     }
 
