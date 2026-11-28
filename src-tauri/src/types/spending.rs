@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use super::CategoryKind;
+use super::{CategoryKind, Cents};
 
 #[derive(Debug, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -24,10 +24,10 @@ pub struct CategorySpending {
     pub count: u32,
     /// Minus the sum of amounts in a spending category; a refund reduces it.
     #[ts(type = "number")]
-    pub spending_cents: i64,
+    pub spending_cents: Cents,
     /// The sum of amounts in an income category.
     #[ts(type = "number")]
-    pub income_cents: i64,
+    pub income_cents: Cents,
 }
 
 #[derive(Debug, Serialize, TS)]
@@ -38,5 +38,5 @@ pub struct SpendingSummary {
     pub uncategorized_count: u32,
     /// The sum of amounts of uncategorized rows.
     #[ts(type = "number")]
-    pub uncategorized_cents: i64,
+    pub uncategorized_cents: Cents,
 }

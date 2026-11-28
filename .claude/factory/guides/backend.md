@@ -9,6 +9,7 @@ Load when a ticket touches `src-tauri/`, migrations, commands, shared types, bin
 - The app version lives only in `src-tauri/Cargo.toml`; `tauri.conf.json` has no `version` key.
 - `keyring.rs` holds the `Keyring` trait and its thin oo7 `SecretService` impl; tests use `FakeKeyring` in `security.rs`.
 - A domain's types go in `src-tauri/src/types/<domain>.rs`; `types/mod.rs` re-exports every one, so `use crate::types::X` keeps working.
+- Money is `Cents` (`types/money.rs`, checked ops only); parse amount text only with `money::parse_amount`.
 - To add or change a command, its types or its `AppError`s, follow `.claude/skills/add-command/SKILL.md`.
 
 ## Tests

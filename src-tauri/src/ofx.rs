@@ -4,8 +4,11 @@
 //! unclosed, so a leaf's value is the text up to the next `<`. Header lines and XML
 //! processing instructions sit before `<OFX>` and are skipped.
 
+use crate::money::parse_amount;
 use crate::transactions::is_date;
-use crate::types::{AppError, FileBalanceCheck, ParsedStatement, ParsedTransaction};
+use crate::types::{
+    AmountStyle, AppError, Cents, FileBalanceCheck, ParsedStatement, ParsedTransaction,
+};
 
 /// Parses one OFX/QFX bank statement.
 pub fn parse(text: &str) -> Result<ParsedStatement, AppError> {
@@ -119,32 +122,10 @@ fn decode(value: &str) -> String {
         .replace("&amp;", "&")
 }
 
-/// Decimal text to integer cents without floats. OFX allows `.` or `,` as the decimal mark.
-fn cents(value: &str) -> Result<i64, AppError> {
-    let invalid = || error(format!("\"{value}\" is not a valid amount."));
-    let (negative, digits) = match value.strip_prefix('-') {
-        Some(digits) => (true, digits),
-        None => (false, value.strip_prefix('+').unwrap_or(value)),
-    };
-    let (whole, fraction) = digits.split_once(['.', ',']).unwrap_or((digits, ""));
-    let all_digits = whole
-        .bytes()
-        .chain(fraction.bytes())
-        .all(|b| b.is_ascii_digit());
-    if !all_digits || (whole.is_empty() && fraction.is_empty()) || fraction.len() > 2 {
-        return Err(invalid());
-    }
-    let whole: i64 = if whole.is_empty() {
-        0
-    } else {
-        whole.parse().map_err(|_| invalid())?
-    };
-    let fraction: i64 = format!("{fraction:0<2}").parse().map_err(|_| invalid())?;
-    let cents = whole
-        .checked_mul(100)
-        .and_then(|c| c.checked_add(fraction))
-        .ok_or_else(invalid)?;
-    Ok(if negative { -cents } else { cents })
+/// Decimal text to integer cents; OFX allows `.` or `,` as the decimal mark.
+fn cents(value: &str) -> Result<Cents, AppError> {
+    parse_amount(value, AmountStyle::Ofx)
+        .map_err(|_| error(format!("\"{value}\" is not a valid amount.")))
 }
 
 /// The first 8 digits of an OFX date (`YYYYMMDD[HHMMSS[.XXX]][[TZ]]`) as "YYYY-MM-DD".
@@ -185,14 +166,14 @@ mod tests {
     fn parses_sgml_with_unclosed_leaves() {
         let statement = parse(SGML).unwrap();
         assert_eq!(statement.currency, "USD");
-        assert_eq!(statement.ledger_balance_cents, Some(10050));
+        assert_eq!(statement.ledger_balance_cents, Some(Cents::new(10050)));
         assert_eq!(statement.balance_as_of.as_deref(), Some("2026-10-15"));
         let [row] = statement.transactions.as_slice() else {
             panic!("expected one row");
         };
         assert_eq!(row.fitid.as_deref(), Some("A1"));
         assert_eq!(row.posted_date, "2026-10-02");
-        assert_eq!(row.amount_cents, -1234);
+        assert_eq!(row.amount_cents, Cents::new(-1234));
         assert_eq!(row.description, "Tom & Jerry's");
         assert_eq!(row.memo.as_deref(), Some("Card 1234"));
         assert_eq!(row.transaction_type.as_deref(), Some("DEBIT"));
@@ -213,7 +194,7 @@ mod tests {
         let rows = &statement.transactions;
         assert_eq!(rows.len(), 3);
         assert_eq!(rows[0].description, "A <B> \"C\"");
-        assert_eq!(rows[0].amount_cents, 500);
+        assert_eq!(rows[0].amount_cents, Cents::new(500));
         assert_eq!(rows[1].description, "Only memo");
         assert_eq!(rows[1].fitid, None);
         assert_eq!(rows[2].description, "");
@@ -222,40 +203,6 @@ mod tests {
             rows[2].original,
             "<STMTTRN><DTPOSTED>20261018</DTPOSTED><TRNAMT>-2.00</TRNAMT></STMTTRN>"
         );
-    }
-
-    #[test]
-    fn amounts_parse_to_cents_without_floats() {
-        for (text, expected) in [
-            ("-12.34", -1234),
-            ("-12.3", -1230),
-            ("12", 1200),
-            ("+5.00", 500),
-            (".5", 50),
-            ("-.05", -5),
-            ("7.", 700),
-            ("1,25", 125),
-            ("0.10", 10),
-            ("92233720368547758.07", i64::MAX),
-        ] {
-            assert_eq!(cents(text).unwrap(), expected, "{text}");
-        }
-        for text in [
-            "",
-            "-",
-            ".",
-            "1.234",
-            "1e5",
-            "--1",
-            "+-1",
-            "1.2.3",
-            "1,000.00",
-            " 1",
-            "abc",
-            "92233720368547758.08",
-        ] {
-            assert!(cents(text).is_err(), "{text:?} should be rejected");
-        }
     }
 
     #[test]
@@ -342,8 +289,8 @@ mod tests {
         assert!(statement.transactions.is_empty());
     }
 
-    fn sum(statement: &ParsedStatement) -> i64 {
-        statement.transactions.iter().map(|t| t.amount_cents).sum()
+    fn sum(statement: &ParsedStatement) -> Cents {
+        Cents::checked_sum(statement.transactions.iter().map(|t| t.amount_cents)).unwrap()
     }
 
     #[test]
@@ -365,14 +312,17 @@ mod tests {
         }
         let [sgml, xml, overlap, broken, cad, no_fitid] = files.map(|text| parse(text).unwrap());
         assert_eq!(sgml.transactions.len(), 8);
-        assert_eq!(sgml.ledger_balance_cents, Some(245_000));
+        assert_eq!(sgml.ledger_balance_cents, Some(Cents::new(245_000)));
         assert_eq!(sgml.balance_as_of.as_deref(), Some("2026-10-15"));
         assert_eq!(sgml.transactions[3].description, "CITY POWER & LIGHT");
 
         assert_eq!(xml.transactions.len(), 8);
         assert_eq!(xml.balance_as_of.as_deref(), Some("2026-10-31"));
-        assert_eq!(xml.ledger_balance_cents, Some(245_000 + sum(&xml)));
-        assert_eq!(xml.ledger_balance_cents, Some(396_053));
+        assert_eq!(
+            xml.ledger_balance_cents,
+            Some(Cents::new(245_000).checked_add(sum(&xml)).unwrap())
+        );
+        assert_eq!(xml.ledger_balance_cents, Some(Cents::new(396_053)));
 
         assert_eq!(overlap.transactions.len(), 9);
         let shared: Vec<_> = overlap
@@ -381,19 +331,25 @@ mod tests {
             .filter(|t| xml.transactions.iter().any(|x| x.fitid == t.fitid))
             .collect();
         assert_eq!(shared.len(), 4);
-        let new_rows: i64 = overlap
+        let new_rows = overlap
             .transactions
             .iter()
             .filter(|t| t.posted_date.as_str() > "2026-10-31")
-            .map(|t| t.amount_cents)
-            .sum();
+            .map(|t| t.amount_cents);
+        let new_rows = Cents::checked_sum(new_rows).unwrap();
         assert_eq!(overlap.balance_as_of.as_deref(), Some("2026-11-10"));
-        assert_eq!(overlap.ledger_balance_cents, Some(396_053 + new_rows));
-        assert_eq!(overlap.ledger_balance_cents, Some(244_414));
+        assert_eq!(
+            overlap.ledger_balance_cents,
+            Some(Cents::new(396_053).checked_add(new_rows).unwrap())
+        );
+        assert_eq!(overlap.ledger_balance_cents, Some(Cents::new(244_414)));
 
         assert_eq!(broken.transactions.len(), 4);
-        assert_eq!(244_414 + sum(&broken), 439_302);
-        assert_eq!(broken.ledger_balance_cents, Some(439_309));
+        assert_eq!(
+            Cents::new(244_414).checked_add(sum(&broken)),
+            Some(Cents::new(439_302))
+        );
+        assert_eq!(broken.ledger_balance_cents, Some(Cents::new(439_309)));
         assert_eq!(broken.balance_as_of.as_deref(), Some("2026-11-20"));
 
         assert_eq!(cad.currency, "CAD");

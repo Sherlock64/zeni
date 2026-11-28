@@ -62,12 +62,9 @@ pub(crate) fn user_prompt(row: &PromptRow) -> String {
     if let Some(memo) = &row.memo {
         message.push_str(&format!("Memo: {memo}\n"));
     }
-    let sign = if row.amount_cents < 0 { "-" } else { "" };
-    let cents = row.amount_cents.unsigned_abs();
     message.push_str(&format!(
-        "Amount: {sign}{}.{:02} dollars (negative is money out)\n",
-        cents / 100,
-        cents % 100
+        "Amount: {} dollars (negative is money out)\n",
+        row.amount_cents
     ));
     if let Some(bank_category) = &row.bank_category {
         message.push_str(&format!("Bank category: {bank_category}\n"));
@@ -369,6 +366,7 @@ mod tests {
 
     use super::*;
     use crate::db;
+    use crate::types::Cents;
     use crate::types::{
         FileBalanceCheck, ImportFormat, Jobs, ParsedStatement, ParsedTransaction, PendingImport,
         PendingStep, SetOllamaPortRequest,
@@ -1173,7 +1171,7 @@ mod tests {
                     transactions: vec![ParsedTransaction {
                         fitid: Some("D1".into()),
                         posted_date: "2026-12-01".into(),
-                        amount_cents: -900,
+                        amount_cents: Cents::new(-900),
                         description: "Books".into(),
                         memo: None,
                         transaction_type: None,

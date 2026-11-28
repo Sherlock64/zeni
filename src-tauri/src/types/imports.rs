@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+use super::Cents;
+
 /// A file read by `import_file` but not stored yet (Rust only). Holds file text, never secrets.
 pub struct PendingImport {
     pub file_name: String,
@@ -169,13 +171,13 @@ pub struct CsvPreviewRow {
     /// "YYYY-MM-DD" when it parsed.
     pub posted_date: Option<String>,
     #[ts(type = "number | null")]
-    pub amount_cents: Option<i64>,
+    pub amount_cents: Option<Cents>,
     pub description: Option<String>,
     pub transaction_id: Option<String>,
     pub memo: Option<String>,
     pub transaction_type: Option<String>,
     #[ts(type = "number | null")]
-    pub running_balance_cents: Option<i64>,
+    pub running_balance_cents: Option<Cents>,
     pub posting_status: Option<String>,
     pub bank_category: Option<String>,
     /// The first problem on this row.
@@ -211,7 +213,7 @@ pub struct ReviewRow {
     /// "YYYY-MM-DD".
     pub posted_date: String,
     #[ts(type = "number")]
-    pub amount_cents: i64,
+    pub amount_cents: Cents,
     pub description: String,
 }
 
@@ -253,9 +255,9 @@ pub struct ImportSummary {
     pub duplicates: u32,
     pub balance_check: BalanceCheck,
     #[ts(type = "number | null")]
-    pub ledger_balance_cents: Option<i64>,
+    pub ledger_balance_cents: Option<Cents>,
     #[ts(type = "number | null")]
-    pub expected_balance_cents: Option<i64>,
+    pub expected_balance_cents: Option<Cents>,
     /// Rows skipped because their posting status isn't `Posted`.
     pub not_posted: u32,
     /// Rows skipped as "Yes, duplicate" in review.
@@ -280,11 +282,11 @@ pub struct ImportRecord {
     /// Raw rows currently stored for this import.
     pub row_count: u32,
     #[ts(type = "number | null")]
-    pub ledger_balance_cents: Option<i64>,
+    pub ledger_balance_cents: Option<Cents>,
     /// "YYYY-MM-DD".
     pub balance_as_of: Option<String>,
     #[ts(type = "number | null")]
-    pub expected_balance_cents: Option<i64>,
+    pub expected_balance_cents: Option<Cents>,
     pub balance_check: BalanceCheck,
     pub file_balance_check: FileBalanceCheck,
 }
@@ -302,7 +304,7 @@ pub struct RevertImportRequest {
 pub struct ParsedStatement {
     /// `CURDEF`.
     pub currency: String,
-    pub ledger_balance_cents: Option<i64>,
+    pub ledger_balance_cents: Option<Cents>,
     /// `DTASOF` as "YYYY-MM-DD".
     pub balance_as_of: Option<String>,
     pub transactions: Vec<ParsedTransaction>,
@@ -320,14 +322,14 @@ pub struct ParsedTransaction {
     /// `DTPOSTED` as "YYYY-MM-DD".
     pub posted_date: String,
     /// `TRNAMT` parsed as decimal text into cents, never via float.
-    pub amount_cents: i64,
+    pub amount_cents: Cents,
     /// `NAME`, else `PAYEE/NAME`, else `MEMO`, else "".
     pub description: String,
     pub memo: Option<String>,
     /// `TRNTYPE`.
     pub transaction_type: Option<String>,
     /// CSV running balance; `None` for OFX/QFX.
-    pub running_balance_cents: Option<i64>,
+    pub running_balance_cents: Option<Cents>,
     /// CSV bank category; `None` for OFX/QFX.
     pub bank_category: Option<String>,
     /// The full `<STMTTRN>...</STMTTRN>` block text, or the CSV record's source line.
@@ -350,7 +352,7 @@ mod tests {
                 duplicates: 3,
                 balance_check: BalanceCheck::NotChecked,
                 ledger_balance_cents: None,
-                expected_balance_cents: Some(-150),
+                expected_balance_cents: Some(Cents::new(-150)),
                 not_posted: 1,
                 review_skipped: 2,
                 file_balance_check: FileBalanceCheck::Passed,
@@ -380,9 +382,9 @@ mod tests {
                 imported_at: "2026-11-01 09:30:00".into(),
                 account_id: 1,
                 row_count: 7,
-                ledger_balance_cents: Some(123_456),
+                ledger_balance_cents: Some(Cents::new(123_456)),
                 balance_as_of: Some("2026-10-31".into()),
-                expected_balance_cents: Some(123_400),
+                expected_balance_cents: Some(Cents::new(123_400)),
                 balance_check: BalanceCheck::Mismatch,
                 file_balance_check: FileBalanceCheck::NotChecked,
             })
@@ -476,7 +478,7 @@ mod tests {
         );
         let review_row = || ReviewRow {
             posted_date: "2026-10-03".into(),
-            amount_cents: -4500,
+            amount_cents: Cents::new(-4500),
             description: "GROCER".into(),
         };
         assert_eq!(

@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use super::SetBy;
+use super::{Cents, SetBy};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -58,13 +58,13 @@ pub struct Transaction {
     pub posted_date: String,
     /// Negative means money out.
     #[ts(type = "number")]
-    pub amount_cents: i64,
+    pub amount_cents: Cents,
     /// The raw description.
     pub description: String,
     pub memo: Option<String>,
     pub transaction_type: Option<String>,
     #[ts(type = "number | null")]
-    pub running_balance_cents: Option<i64>,
+    pub running_balance_cents: Option<Cents>,
     /// The winning rule's nickname name; `None` when unmapped.
     pub nickname: Option<String>,
     /// The effective category; `None` when uncategorized.
@@ -128,7 +128,7 @@ mod tests {
                     id: 5,
                     import_id: 2,
                     posted_date: "2026-10-03".into(),
-                    amount_cents: -1299,
+                    amount_cents: Cents::new(-1299),
                     description: "CORNER COFFEE".into(),
                     memo: None,
                     transaction_type: Some("DEBIT".into()),

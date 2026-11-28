@@ -1,9 +1,10 @@
 //! CSV parsing: header fingerprint, mapping preview and full parse into a `ParsedStatement`.
 
+use crate::money::parse_amount;
 use crate::transactions::is_date;
 use crate::types::{
-    AmountColumns, AppError, CsvMapping, CsvPreviewRow, DateFormat, FileBalanceCheck,
-    ParsedStatement, ParsedTransaction,
+    AmountColumns, AmountError, AmountStyle, AppError, Cents, CsvMapping, CsvPreviewRow,
+    DateFormat, FileBalanceCheck, ParsedStatement, ParsedTransaction,
 };
 
 /// The header cells, trimmed, in file order.
@@ -127,7 +128,9 @@ pub fn parse(text: &str, mapping: &CsvMapping) -> Result<ParsedStatement, AppErr
 }
 
 /// R9: the within-file check, and the newest row's balance and date as the ledger.
-fn check_running_balance(rows: &[ParsedTransaction]) -> (FileBalanceCheck, Option<(i64, String)>) {
+fn check_running_balance(
+    rows: &[ParsedTransaction],
+) -> (FileBalanceCheck, Option<(Cents, String)>) {
     let (Some(first), Some(last)) = (rows.first(), rows.last()) else {
         return (FileBalanceCheck::NotChecked, None);
     };
@@ -344,7 +347,7 @@ impl Row<'_> {
         })
     }
 
-    fn amount(&self, columns: AmountColumns) -> Result<i64, FieldError> {
+    fn amount(&self, columns: AmountColumns) -> Result<Cents, FieldError> {
         match columns {
             AmountColumns::Signed { column } => {
                 let cell = self.cell(column)?;
@@ -362,23 +365,32 @@ impl Row<'_> {
                         problem: "are both empty.".into(),
                     });
                 }
+                // Parsed amounts never reach i64::MIN, so negating a negative one cannot fail.
                 let magnitude = |column: u32, cell: &str| match cell {
-                    "" => Ok(0),
+                    "" => Ok(Cents::new(0)),
                     _ => cents(cell)
-                        .map(i64::abs)
+                        .map(|a| {
+                            if a.get() < 0 {
+                                a.checked_neg().unwrap_or(a)
+                            } else {
+                                a
+                            }
+                        })
                         .map_err(|problem| self.error(column, cell, problem)),
                 };
                 let (out, into) = (
                     magnitude(debit, debit_cell)?,
                     magnitude(credit, credit_cell)?,
                 );
-                Ok(into - out)
+                // Both are non-negative, so the difference cannot overflow.
+                into.checked_sub(out)
+                    .ok_or_else(|| self.error(credit, credit_cell, "isn't an amount."))
             }
         }
     }
 
     /// A running balance; an empty cell is `None`.
-    fn balance(&self, column: Option<u32>) -> Result<Option<i64>, FieldError> {
+    fn balance(&self, column: Option<u32>) -> Result<Option<Cents>, FieldError> {
         let Some(column) = column else {
             return Ok(None);
         };
@@ -429,37 +441,12 @@ fn iso_date(value: &str, format: DateFormat) -> Option<String> {
     is_date(&iso).then_some(iso)
 }
 
-/// R3: optional `-`, optional `$` (also `$-`), digits, optional `.` and 1-5 digits; whole cents only.
-/// Parsed as text, never via float.
-fn cents(value: &str) -> Result<i64, &'static str> {
-    const NOT_AN_AMOUNT: &str = "isn't an amount.";
-    let (negative, rest) = if let Some(rest) = value.strip_prefix('-') {
-        (true, rest.strip_prefix('$').unwrap_or(rest))
-    } else if let Some(rest) = value.strip_prefix("$-") {
-        (true, rest)
-    } else {
-        (false, value.strip_prefix('$').unwrap_or(value))
-    };
-    let (whole, fraction) = match rest.split_once('.') {
-        Some((whole, fraction)) if (1..=5).contains(&fraction.len()) => (whole, fraction),
-        Some(_) => return Err(NOT_AN_AMOUNT),
-        None => (rest, ""),
-    };
-    let all_digits = |part: &str| part.bytes().all(|byte| byte.is_ascii_digit());
-    if whole.is_empty() || !all_digits(whole) || !all_digits(fraction) {
-        return Err(NOT_AN_AMOUNT);
-    }
-    let (fraction, beyond_cents) = fraction.split_at(fraction.len().min(2));
-    if beyond_cents.bytes().any(|byte| byte != b'0') {
-        return Err("isn't a whole number of cents.");
-    }
-    let total = whole
-        .parse::<i64>()
-        .ok()
-        .and_then(|whole| whole.checked_mul(100))
-        .and_then(|whole| whole.checked_add(format!("{fraction:0<2}").parse().ok()?))
-        .ok_or(NOT_AN_AMOUNT)?;
-    Ok(if negative { -total } else { total })
+/// R3: the CSV amount text rules live in `money::parse_amount`; this words its errors.
+fn cents(value: &str) -> Result<Cents, &'static str> {
+    parse_amount(value, AmountStyle::Csv).map_err(|problem| match problem {
+        AmountError::NotAnAmount => "isn't an amount.",
+        AmountError::NotWholeCents => "isn't a whole number of cents.",
+    })
 }
 
 #[cfg(test)]
@@ -511,7 +498,7 @@ mod tests {
         statement
             .transactions
             .iter()
-            .map(|t| t.amount_cents)
+            .map(|t| t.amount_cents.get())
             .collect()
     }
 
@@ -581,42 +568,6 @@ mod tests {
                 expected,
                 "{text} as {format:?}"
             );
-        }
-    }
-
-    #[test]
-    fn amounts_parse_to_cents_without_floats() {
-        let ok = [
-            ("-18.40000", -1840),
-            ("2100.00000", 210_000),
-            ("$12.5", 1250),
-            ("-$4.25", -425),
-            ("$-4.25", -425),
-            ("7", 700),
-            ("0.10", 10),
-            ("-0.00", 0),
-        ];
-        for (text, expected) in ok {
-            assert_eq!(cents(text), Ok(expected), "{text}");
-        }
-        for text in ["0.00500", "12.345", "0.001"] {
-            assert_eq!(cents(text), Err("isn't a whole number of cents."), "{text}");
-        }
-        for text in [
-            "1,200.00",
-            "",
-            "$",
-            "-",
-            ".50",
-            "12.",
-            "1.000000",
-            "+5",
-            "--5",
-            "5-",
-            "1e3",
-            "99999999999999999999",
-        ] {
-            assert_eq!(cents(text), Err("isn't an amount."), "{text}");
         }
     }
 
@@ -827,7 +778,7 @@ mod tests {
         let statement =
             balance_check("10/01/2026,A,-5.00,95.00,Posted\n10/02/2026,B,10.00,105.00,Posted\n");
         assert_eq!(statement.file_balance_check, FileBalanceCheck::Passed);
-        assert_eq!(statement.ledger_balance_cents, Some(10_500));
+        assert_eq!(statement.ledger_balance_cents, Some(Cents::new(10_500)));
         assert_eq!(statement.balance_as_of.as_deref(), Some("2026-10-02"));
     }
 
@@ -839,7 +790,7 @@ mod tests {
              10/29/2026,B,-120.00,8197.91,Posted\n",
         );
         assert_eq!(statement.file_balance_check, FileBalanceCheck::Passed);
-        assert_eq!(statement.ledger_balance_cents, Some(1_029_791));
+        assert_eq!(statement.ledger_balance_cents, Some(Cents::new(1_029_791)));
         assert_eq!(statement.balance_as_of.as_deref(), Some("2026-10-30"));
         assert_eq!(statement.not_posted, 1);
     }
@@ -849,12 +800,12 @@ mod tests {
         let statement =
             balance_check("10/01/2026,A,-5.00,95.00,Posted\n10/01/2026,B,-5.00,90.00,Posted\n");
         assert_eq!(statement.file_balance_check, FileBalanceCheck::Passed);
-        assert_eq!(statement.ledger_balance_cents, Some(9000));
+        assert_eq!(statement.ledger_balance_cents, Some(Cents::new(9000)));
         // Read newest-first, the same rows would not add up.
         let reversed =
             balance_check("10/01/2026,B,-5.00,90.00,Posted\n10/01/2026,A,-5.00,95.00,Posted\n");
         assert_eq!(reversed.file_balance_check, FileBalanceCheck::Mismatch);
-        assert_eq!(reversed.ledger_balance_cents, Some(9500));
+        assert_eq!(reversed.ledger_balance_cents, Some(Cents::new(9500)));
     }
 
     #[test]
@@ -862,12 +813,12 @@ mod tests {
         let off =
             balance_check("10/02/2026,B,10.00,105.01,Posted\n10/01/2026,A,-5.00,95.00,Posted\n");
         assert_eq!(off.file_balance_check, FileBalanceCheck::Mismatch);
-        assert_eq!(off.ledger_balance_cents, Some(10_501));
+        assert_eq!(off.ledger_balance_cents, Some(Cents::new(10_501)));
         assert_eq!(off.balance_as_of.as_deref(), Some("2026-10-02"));
 
         let gap = balance_check("10/01/2026,A,-5.00,,Posted\n10/02/2026,B,10.00,105.00,Posted\n");
         assert_eq!(gap.file_balance_check, FileBalanceCheck::Mismatch);
-        assert_eq!(gap.ledger_balance_cents, Some(10_500));
+        assert_eq!(gap.ledger_balance_cents, Some(Cents::new(10_500)));
 
         let newest_empty =
             balance_check("10/01/2026,A,-5.00,95.00,Posted\n10/02/2026,B,10.00,,Posted\n");
@@ -885,7 +836,7 @@ mod tests {
     fn running_balance_single_row_passes_and_unmapped_or_empty_is_not_checked() {
         let one = balance_check("10/01/2026,A,-5.00,95.00,Posted\n");
         assert_eq!(one.file_balance_check, FileBalanceCheck::Passed);
-        assert_eq!(one.ledger_balance_cents, Some(9500));
+        assert_eq!(one.ledger_balance_cents, Some(Cents::new(9500)));
 
         let one_empty = balance_check("10/01/2026,A,-5.00,,Posted\n");
         assert_eq!(one_empty.file_balance_check, FileBalanceCheck::Mismatch);
@@ -925,9 +876,9 @@ mod tests {
         assert_eq!(rows.len(), 3);
         assert_eq!(rows[0].line, 2);
         assert_eq!(rows[0].posted_date.as_deref(), Some("2026-10-01"));
-        assert_eq!(rows[0].amount_cents, Some(-100));
+        assert_eq!(rows[0].amount_cents, Some(Cents::new(-100)));
         assert_eq!(rows[0].description.as_deref(), Some("A"));
-        assert_eq!(rows[0].running_balance_cents, Some(9900));
+        assert_eq!(rows[0].running_balance_cents, Some(Cents::new(9900)));
         assert_eq!(rows[0].posting_status.as_deref(), Some("Posted"));
         assert_eq!(rows[0].error, None);
 
@@ -964,11 +915,11 @@ mod tests {
         assert_eq!(statement.transactions.len(), 27);
         assert_eq!(statement.not_posted, 1);
         assert_eq!(statement.file_balance_check, FileBalanceCheck::Passed);
-        assert_eq!(statement.ledger_balance_cents, Some(1_029_791));
+        assert_eq!(statement.ledger_balance_cents, Some(Cents::new(1_029_791)));
         assert_eq!(statement.balance_as_of.as_deref(), Some("2026-10-30"));
         let first = &statement.transactions[0];
         assert_eq!(first.fitid.as_deref(), Some("20261030 ECB 00027"));
-        assert_eq!(first.amount_cents, 210_000);
+        assert_eq!(first.amount_cents, Cents::new(210_000));
         assert_eq!(first.description, "Acme Payroll");
         assert_eq!(first.memo.as_deref(), Some("ACME PAYROLL"));
         assert_eq!(first.transaction_type.as_deref(), Some("Credit"));
@@ -987,7 +938,7 @@ mod tests {
         assert_eq!(bank_file.transactions.len(), 6);
         assert_eq!(bank_file.not_posted, 1);
         assert_eq!(bank_file.file_balance_check, FileBalanceCheck::Passed);
-        assert_eq!(bank_file.ledger_balance_cents, Some(630_401));
+        assert_eq!(bank_file.ledger_balance_cents, Some(Cents::new(630_401)));
         assert_eq!(bank_file.balance_as_of.as_deref(), Some("2026-11-30"));
         // Ledger of checking-broken-balance.ofx plus checking-no-fitid.ofx's rows, then this file.
         let opening = 439_309 - 450 - 450 - 1999;
@@ -1000,7 +951,7 @@ mod tests {
         let reimport = parse(&fixture("checking-bank-reimport.csv"), &bank()).unwrap();
         assert_eq!(reimport.transactions.len(), 5);
         assert_eq!(reimport.file_balance_check, FileBalanceCheck::Passed);
-        assert_eq!(reimport.ledger_balance_cents, Some(646_061));
+        assert_eq!(reimport.ledger_balance_cents, Some(Cents::new(646_061)));
         assert_eq!(reimport.balance_as_of.as_deref(), Some("2026-12-03"));
         let shared = reimport
             .transactions
@@ -1028,7 +979,7 @@ mod tests {
         assert_eq!(amounts(&split), [-2310, 210_000, -9120, -450]);
         assert_eq!(split.transactions[2].description, "City Power, Light & Gas");
         assert_eq!(split.file_balance_check, FileBalanceCheck::Passed);
-        assert_eq!(split.ledger_balance_cents, Some(844_181));
+        assert_eq!(split.ledger_balance_cents, Some(Cents::new(844_181)));
         assert_eq!(split.balance_as_of.as_deref(), Some("2026-12-08"));
         assert_eq!(646_061 + amounts(&split).iter().sum::<i64>(), 844_181);
 
@@ -1052,7 +1003,7 @@ mod tests {
         let broken = parse(&fixture("checking-broken-running-balance.csv"), &bank()).unwrap();
         assert_eq!(broken.transactions.len(), 3);
         assert_eq!(broken.file_balance_check, FileBalanceCheck::Mismatch);
-        assert_eq!(broken.ledger_balance_cents, Some(146_501));
+        assert_eq!(broken.ledger_balance_cents, Some(Cents::new(146_501)));
         assert_eq!(broken.balance_as_of.as_deref(), Some("2026-12-12"));
 
         assert_eq!(
