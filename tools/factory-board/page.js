@@ -113,7 +113,7 @@ export function page2Tiles(p) {
   const w = p.weekly, c = p.cache;
   const pace = w
     ? { title: "Weekly pace", value: w.pace.toFixed(2), sub: `${w.pct}% used · ${w.slots} run slots` }
-    : { title: "Weekly pace", value: "–", sub: "No weekly usage reading yet." };
+    : { title: "Weekly pace", value: "–", sub: "No current weekly usage reading." };
   const cache = c
     ? { title: "Cache hits", value: `${Math.round(c.overall * 100)}%`, sub: "of all input tokens, every run in the log" }
     : { title: "Cache hits", value: "–", sub: "No cache counts yet." };

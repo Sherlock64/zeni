@@ -160,7 +160,7 @@ test("page-2 tiles: weekly pace and cache hits, or say there is no data", () => 
   assert.deepEqual([pace.title, pace.value, pace.sub], ["Weekly pace", "1.34", "34% used · 0 run slots"]);
   assert.deepEqual([cache.title, cache.value, cache.sub], ["Cache hits", "88%", "of all input tokens, every run in the log"]);
   assert.deepEqual(page2Tiles({ doors: null, ci: null, weekly: null, cache: null }).slice(2).map((x) => [x.value, x.sub]), [
-    ["–", "No weekly usage reading yet."], ["–", "No cache counts yet."],
+    ["–", "No current weekly usage reading."], ["–", "No cache counts yet."],
   ]);
 });
 

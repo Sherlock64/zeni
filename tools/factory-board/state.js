@@ -259,7 +259,7 @@ export function page2(s, now) {
   const median = !ms.length ? null : ms.length % 2 ? ms[mid] : Math.round((ms[mid - 1] + ms[mid]) / 2);
   const ci = last.length ? { passed: last.filter((r) => r.conclusion === "success").length, of: last.length, median_ms: median } : null;
 
-  return { doors, ci, stations, timeInState, cycle, tokens: tokensBy(s), cache: cacheHits(s, rank), ...usage(s) };
+  return { doors, ci, stations, timeInState, cycle, tokens: tokensBy(s), cache: cacheHits(s, rank), ...usage(s, now) };
 }
 
 // Weighted tokens summed by a run's field, largest first; runs with unknown tokens add nothing.
@@ -293,11 +293,12 @@ function cacheHits(s, rank) {
   return { overall, stations };
 }
 
-// The current weekly and 5-hour windows, each from its reset time back one window length.
-function usage(s) {
+// The current weekly and 5-hour windows, each from its reset time back one window length;
+// a window whose reset has passed (the watchdog was quiet across it) has no current reading.
+function usage(s, now) {
   const l = s.light;
   const win = (w, len, field) => {
-    if (!w?.resets_at || Number.isNaN(Date.parse(w.resets_at))) return null;
+    if (!w?.resets_at || Number.isNaN(Date.parse(w.resets_at)) || Date.parse(w.resets_at) <= now) return null;
     const end = Date.parse(w.resets_at), start = end - len;
     const points = s.lightHistory
       .filter((p) => Date.parse(p.at) >= start && Date.parse(p.at) <= end)

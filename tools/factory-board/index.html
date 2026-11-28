@@ -380,9 +380,9 @@ function renderPage2(p) {
     : bars(rows, Math.max(...rows.map((r) => r[1])), String));
   const left = (w) => `resets in ${dur(Date.parse(w.end) - Date.now())}`;
   $("weekly").replaceChildren(...(p.weekly ? [chart(p.weekly, "weekly", `Weekly usage ${p.weekly.pct}% against the straight-line target`),
-    el("p", "small muted", `Dashed: the straight line to 97% at the reset · ${p.weekly.pct}% used, pace ${p.weekly.pace.toFixed(2)} · ${left(p.weekly)}`)] : [empty("No weekly usage reading yet.")]));
+    el("p", "small muted", `Dashed: the straight line to 97% at the reset · ${p.weekly.pct}% used, pace ${p.weekly.pace.toFixed(2)} · ${left(p.weekly)}`)] : [empty("No current weekly usage reading.")]));
   $("five").replaceChildren(...(p.fiveHour ? [chart(p.fiveHour, "five", `5-hour window use ${p.fiveHour.pct}%, with the 70% and 90% lines`),
-    el("p", "small muted", `Dotted: 70% (yellow) and 90% (red) · ${p.fiveHour.pct}% used · ${left(p.fiveHour)}`)] : [empty("No 5-hour usage reading yet.")]));
+    el("p", "small muted", `Dotted: 70% (yellow) and 90% (red) · ${p.fiveHour.pct}% used · ${left(p.fiveHour)}`)] : [empty("No current 5-hour usage reading.")]));
   const tok = (rows, label) => rows.length ? bars(rows.map((r) => [label(r), r.tokens]), rows[0].tokens, kfmt) : empty("No run tokens yet.");
   $("tok-ticket").replaceChildren(tok(p.tokens.ticket, (r) => (r.title ? `${r.key} ${r.title}` : r.key)));
   $("tok-station").replaceChildren(tok(p.tokens.station, (r) => STATION[r.key] ?? r.key));
