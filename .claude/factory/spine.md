@@ -41,7 +41,8 @@ Any run may stop and hand a decision to the user. It is a normal outcome. Eject 
 - anything irreversible: data, a migration that rebuilds a table, publishing, a dependency, secrets;
 - the same check failing twice on one premise;
 - work no station guide fits, where an improvised plan would be risky;
-- a security-sensitive finding.
+- a security-sensitive finding;
+- a shaped ticket a medium run can't finish (only the user raises effort, by hand).
 
 To eject: push the branch, set `state:needs-human`, and comment a brief (what happened, the options, your pick and why, the evidence). The next `/factory` takes answered ejects first, in a fresh run.
 
@@ -99,4 +100,4 @@ Every run reads its station's level from the "Now" column above, never from memo
 
 ## Run log
 
-Every run ends with one comment on its ticket: station, outcome, evidence, what's next. Its final report starts with the outcome, then any question for the user, in the first 400 characters (only those reach the dispatcher); detail comes after. It also appends one row to `$(git rev-parse --git-common-dir)/factory/runs.tsv`, only ever through `python3 -I .claude/factory/tools/runlog.py append <ticket> <station> <outcome> <note>`: `ticket` is `#n`, `SB-n` for private work, or `-` for none; `station` its guide's file name; `outcome` `done`, `back`, `eject` or `checkpoint`. The script stamps `ended_at` in UTC and the session id, and refuses anything else. Learn and the digest add cost from the transcripts later. Models and effort per role: `models.md`; every run is started on its row's model and effort, never a default. No row is above medium, so every run starts at medium or lower; only the user raises effort, by hand, and a shaped ticket a medium run can't finish ejects to the user.
+Every run ends with one comment on its ticket: station, outcome, evidence, what's next. Its final report starts with the outcome, then any question for the user, in the first 400 characters (only those reach the dispatcher); detail comes after. It also appends one row to `$(git rev-parse --git-common-dir)/factory/runs.tsv`, only ever through `python3 -I .claude/factory/tools/runlog.py append <ticket> <station> <outcome> <note>`: `ticket` is `#n`, `SB-n` for private work, or `-` for none; `station` its guide's file name; `outcome` `done`, `back`, `eject` or `checkpoint`. The script stamps `ended_at` in UTC and the session id, and refuses anything else. Learn and the digest add cost from the transcripts later. Models and effort per role: `models.md`; every run is started on its row's model and effort, never a default.
