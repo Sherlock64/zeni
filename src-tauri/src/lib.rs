@@ -13,6 +13,7 @@ mod import_acceptance_tests;
 mod imports;
 mod jobs;
 mod keyring;
+mod money;
 mod nicknames;
 mod ofx;
 mod ollama;
