@@ -226,6 +226,13 @@ test("a window without a reset time has no chart", () => {
   assert.deepEqual([p.weekly, p.fiveHour], [null, null]);
 });
 
+test("a window whose reset has passed has no current reading (#204)", () => {
+  const s = fold([{ type: "light", light: "green", reason: "r", set_at: at(-6), slots: 2, pace: 1,
+    five_hour: { pct: 40, resets_at: at(-1) }, weekly: { pct: 60, resets_at: at(-1) } }]);
+  assert.deepEqual([page2(s, Date.parse(at(0))).weekly, page2(s, Date.parse(at(0))).fiveHour], [null, null]);
+  assert.notEqual(page2(s, Date.parse(at(-2))).fiveHour, null);
+});
+
 test("rejects malformed cache counts", () => {
   assert.throws(() => apply(empty(), { v: 1, type: "run.tokens", run: "r", session: "s", tokens: 1, cache_read: -1 }), /cache_read/);
 });
