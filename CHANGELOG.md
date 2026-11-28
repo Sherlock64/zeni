@@ -3,6 +3,7 @@
 ## Unreleased
 
 - The factory's verifier can now drive the real app on a throwaway database seeded with 1,200 fake transactions (`verify-zeni`, #132).
+- Internal: the nickname dialog tests no longer print React act(...) warnings (#202).
 
 ## 7.2.1
 
