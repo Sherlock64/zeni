@@ -7,7 +7,7 @@ description: Switch Zeni's factory on, beginning a factory run. Picks up runs th
 
 Local state: `F=$(git rev-parse --git-common-dir)/factory/`; create it with mode 0700 if missing.
 
-0. **Model.** `get_session` with `self`. If its model isn't the dispatcher model in `.claude/factory/models.md`, say so and stop before writing or starting anything: the user switches models or opens a fresh session.
+0. **Model.** `get_session` with `self`. If its model or effort isn't the dispatcher row in `.claude/factory/models.md` (runs it starts can't exceed either), say so and stop before writing or starting anything: the user switches models or opens a fresh session.
 
 1. **New factory run.** Write `$F/run.json`: `{"id": "fr-<YYYYMMDD-HHMM>", "started_at": "<ISO time>"}`. The digest covers everything since `started_at`.
 2. **Pickup.** For every ticket in `state:building` or `reviewing` with no live run (`list_sessions` with `linked: true`, matched by the `claimed by` comment): if its last comment is a checkpoint, leave it for `/factory` to resume; otherwise look at its branch (`git ls-remote origin t<issue>-*`), comment what is there, and set it back to `state:ready` (keeping the branch) or to the station it reached. List each one for the user.
