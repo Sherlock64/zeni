@@ -2,8 +2,104 @@
 
 use crate::types::{AmountError, AmountStyle, Cents};
 
-pub fn parse_amount(_text: &str, _style: AmountStyle) -> Result<Cents, AmountError> {
-    todo!()
+/// What one source's amount text may look like.
+struct Rules {
+    plus: bool,
+    dollar: bool,
+    marks: &'static [char],
+    /// Most digits after the mark; digits past the second must be zero.
+    max_fraction: usize,
+    /// `.5` is an amount.
+    empty_whole: bool,
+    /// `7.` is an amount.
+    empty_fraction: bool,
+}
+
+const OFX: Rules = Rules {
+    plus: true,
+    dollar: false,
+    marks: &['.', ','],
+    max_fraction: 2,
+    empty_whole: true,
+    empty_fraction: true,
+};
+
+const CSV: Rules = Rules {
+    plus: false,
+    dollar: true,
+    marks: &['.'],
+    max_fraction: 5,
+    empty_whole: false,
+    empty_fraction: false,
+};
+
+/// Decimal text to integer cents without floats.
+pub fn parse_amount(text: &str, style: AmountStyle) -> Result<Cents, AmountError> {
+    let rules = match style {
+        AmountStyle::Ofx => OFX,
+        AmountStyle::Csv => CSV,
+    };
+    let (negative, rest) = if let Some(rest) = text.strip_prefix('-') {
+        (
+            true,
+            rules
+                .dollar
+                .then(|| rest.strip_prefix('$'))
+                .flatten()
+                .unwrap_or(rest),
+        )
+    } else if let Some(rest) = text.strip_prefix("$-").filter(|_| rules.dollar) {
+        (true, rest)
+    } else {
+        let rest = text
+            .strip_prefix('+')
+            .filter(|_| rules.plus)
+            .unwrap_or(text);
+        (
+            false,
+            rules
+                .dollar
+                .then(|| rest.strip_prefix('$'))
+                .flatten()
+                .unwrap_or(rest),
+        )
+    };
+    let (whole, fraction, has_mark) = match rest.split_once(rules.marks) {
+        Some((whole, fraction)) => (whole, fraction, true),
+        None => (rest, "", false),
+    };
+    let digits = |part: &str| part.bytes().all(|b| b.is_ascii_digit());
+    if !digits(whole)
+        || !digits(fraction)
+        || (whole.is_empty() && !(rules.empty_whole && !fraction.is_empty()))
+        || (has_mark && fraction.is_empty() && !rules.empty_fraction)
+        || fraction.len() > rules.max_fraction
+    {
+        return Err(AmountError::NotAnAmount);
+    }
+    let (fraction, beyond_cents) = fraction.split_at(fraction.len().min(2));
+    if beyond_cents.bytes().any(|b| b != b'0') {
+        return Err(AmountError::NotWholeCents);
+    }
+    let whole: i64 = if whole.is_empty() {
+        0
+    } else {
+        whole.parse().map_err(|_| AmountError::NotAnAmount)?
+    };
+    let fraction: i64 = format!("{fraction:0<2}")
+        .parse()
+        .map_err(|_| AmountError::NotAnAmount)?;
+    // The magnitude is checked first, so i64::MIN is never accepted.
+    let total = whole
+        .checked_mul(100)
+        .and_then(|c| c.checked_add(fraction))
+        .map(Cents::new)
+        .ok_or(AmountError::NotAnAmount)?;
+    if negative {
+        total.checked_neg().ok_or(AmountError::NotAnAmount)
+    } else {
+        Ok(total)
+    }
 }
 
 #[cfg(test)]
