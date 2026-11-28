@@ -4,7 +4,7 @@ The one place that says which model and effort each role runs on. Agent files ca
 
 | Role | Model | Effort | Why |
 |---|---|---|---|
-| Dispatcher (`/factory`) | Opus (`claude-opus-5-5`) | high | starts every run; `start_session` caps a run's model and effort at the caller's, so Opus/high rows need an Opus/high dispatcher |
+| Dispatcher (`/factory`) | Opus (`claude-opus-5-5`) | medium | starts every run; `start_session` caps a run's model and effort at the caller's, so an Opus dispatcher starts Opus rows on Opus, and high-effort rows start at medium |
 | Intake | Sonnet | medium | sorting is cheap to correct |
 | Shape and slice | Opus | high | product decisions and the ticket cut |
 | Build owner | Opus | high | holds the ticket's design |
@@ -24,4 +24,4 @@ The one place that says which model and effort each role runs on. Agent files ca
 |---|---|---|---|
 | 2026-11-21 | Starting sheet | spine design | — |
 | 2026-11-25 | Review lead row added at Opus, high (what it ran on); Verify becomes the Verifier subagent row | #170, #197 (#208) | — |
-| 2026-11-28 | Dispatcher from Sonnet, medium to Opus, high | Opus/high runs started by the Sonnet/medium dispatcher came up as Sonnet/medium; Sonnet dispatcher misread state (#226) | — |
+| 2026-11-28 | Dispatcher from Sonnet, medium to Opus, medium (user's call) | Opus runs started by the Sonnet dispatcher came up as Sonnet; Sonnet dispatcher misread state (#226) | — |

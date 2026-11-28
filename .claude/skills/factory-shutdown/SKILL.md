@@ -41,4 +41,4 @@ rm -f "$P"
 
 ## Then
 
-Close with the digest's path, what Learn filed, and the reset time to restart at: the `resets_at` of the window you noted whose light wasn't `green`, in the user's local time, or "any time" if both were `green`. Say to restart with `/factory-start` in a new session on the dispatcher model (`.claude/factory/models.md`), not in this one.
+Close with the digest's path, what Learn filed, and the reset time to restart at: the `resets_at` of the window you noted whose light wasn't `green`, in the user's local time, or "any time" if both were `green`. Say to restart with `/factory-start` in a new session on the dispatcher model and effort (`.claude/factory/models.md`), not in this one.
