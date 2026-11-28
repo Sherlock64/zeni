@@ -90,7 +90,7 @@ Every PR carries exactly one door label, with one line of reasoning in its body:
 |---|---|---|
 | Intake | 1 | 3 |
 | Shape + slice | 0 | 1 |
-| Build | 2 | 3 |
+| Build | 1 | 3 |
 | Review | 1 | 3 |
 | Merge | 0 | 2 |
 | Release | 0 | 0 |
