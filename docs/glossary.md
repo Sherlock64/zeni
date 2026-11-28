@@ -68,3 +68,6 @@ Zeni's domain terms as the code uses them. One line each; details live in the li
 
 ## Code structure
 
+- **Cents**: the money type (`types/money.rs`): integer cents with checked arithmetic only, so an overflow is an error, never a wrap.
+- **Amount style**: which file format's rules `money::parse_amount` applies to amount text: `Ofx` (`+`, `.` or `,` decimal mark, up to 2 fraction digits) or `Csv` (`$`, `.` with up to 5 fraction digits that must be whole cents).
+

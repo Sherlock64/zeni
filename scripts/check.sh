@@ -97,6 +97,7 @@ rule() {
 rules() {
   # A non-money float carries "// float-ok: <why>" on its line.
   rule "float type (money is integer cents)" '\bf(32|64)\b' 'src-tauri/src/*.rs'
+  rule "amount parsing outside money.rs (use parse_amount)" 'checked_mul\(100\)' 'src-tauri/src/*.rs' ':!src-tauri/src/money.rs'
   rule "backend call outside src/lib/commands.ts" '@tauri-apps/api/core' 'src/*.ts' 'src/*.tsx' \
     ':!src/lib/commands.ts' ':!src/lib/commands.test.ts'
   rule "raw colour (use theme tokens)" \

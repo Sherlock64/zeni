@@ -159,6 +159,13 @@ echo 'fn r() -> f64 { 1.0 } // float-ok: a ratio' >>src-tauri/src/main.rs
 run fast; expect 0 "CHECK policy: pass" "marked float is allowed"
 reset
 
+echo 'fn c(w: i64) -> Option<i64> { w.checked_mul(100) }' >>src-tauri/src/main.rs
+run fast; expect 1 "POLICY FAIL: amount parsing outside money.rs (use parse_amount) src-tauri/src/main.rs:" "amount parsing outside money.rs"
+reset
+echo 'fn c(w: i64) -> Option<i64> { w.checked_mul(100) }' >src-tauri/src/money.rs
+run fast; expect 0 "CHECK policy: pass" "amount parsing inside money.rs is fine"
+reset
+
 mkdir -p src/lib src/pages src/components/ui
 echo 'import { invoke } from "@tauri-apps/api/core";' >src/lib/commands.ts
 run fast; expect 0 "CHECK policy: pass" "invoke inside commands.ts is fine"

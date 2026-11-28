@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Internal: OFX and CSV amounts are now read by one shared parser into a checked money type; nothing changes in the app (#147).
 - The factory's verifier can now drive the real app on a throwaway database seeded with 1,200 fake transactions (`verify-zeni`, #132).
 - Internal: the nickname dialog tests no longer print React act(...) warnings (#202).
 

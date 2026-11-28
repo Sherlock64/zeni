@@ -10,6 +10,7 @@ Every rule the factory works under, paired with what enforces it. A rule a check
 | No dependency added or removed without asking | policy: an added or removed dependency line in `src-tauri/Cargo.toml` or `package.json` (noted in `task`, failed in `fast` and `integration`) | `ZENI_DEPS_APPROVED=1` |
 | No new lint or test suppressions | policy: an added `#[allow(`, `#![allow(`, `#[ignore` in Rust, or `eslint-disable`, `@ts-ignore`, `@ts-expect-error`, `@ts-nocheck`, `.skip(`, `.only(`, `it.todo(` in `src/` (`src/components/ui/`, `src/types/bindings/` exempt) | `ZENI_SUPPRESSIONS_APPROVED=1` |
 | Money is integer cents, never floats | policy: no `f32`/`f64` in `src-tauri/src/` (a non-money float marks its line `// float-ok: <why>`); judgment (Standards) for UI arithmetic and `formatCents` | the marker |
+| Amounts are parsed only by `money::parse_amount` | policy: no `checked_mul(100)` in `src-tauri/src/` outside `money.rs` | none |
 | The UI calls the backend only through `src/lib/commands.ts` | policy: no `@tauri-apps/api/core` import elsewhere in `src/` | none |
 | Colours come from theme tokens | policy: no Tailwind palette colour or `#rrggbb` in `src/**/*.tsx` outside `src/components/ui/` | none |
 | No stray debug output in the UI | policy: no `console.log` in `src/` | none |
